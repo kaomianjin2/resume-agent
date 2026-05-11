@@ -55,7 +55,7 @@
 
 ## Task 2: SQLite Stable Storage Layer
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 1
 
