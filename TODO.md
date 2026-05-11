@@ -96,7 +96,7 @@
 
 ## Task 4: Local Embedding, FTS, And Hybrid Retrieval
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 3
 
