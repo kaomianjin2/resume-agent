@@ -206,7 +206,7 @@
 
 ## Task 9: Interactive CLI
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 8B
 
