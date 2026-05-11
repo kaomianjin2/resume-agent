@@ -4,16 +4,16 @@ api_key = "your-key"
 model = "your-model"
 
 [embedding]
-provider = "local"
-model_name = "BAAI/bge-m3"
-model_path = "./models/bge-m3"
+provider = "your-embedding-provider"
+model_name = "your-embedding-model-name"
+model_path = "./path/to/your-embedding-model"
 
 [storage]
-database_path = "./data/interview_agent.sqlite"
+database_path = "./path/to/your-database.sqlite"
 
 [knowledge_base]
-source = "/Users/cynicism/Desktop/面试"
-chunk_size = 900
-chunk_overlap = 120
-top_k = 8
-index_version = "v1"
+source = "/path/to/your-knowledge-base-source"
+chunk_size = 0
+chunk_overlap = 0
+top_k = 0
+index_version = "your-index-version"

@@ -30,4 +30,6 @@ def test_example_config_exists_with_placeholders_only() -> None:
 
     assert 'base_url = "https://your-openai-compatible-endpoint/v1"' in content
     assert 'api_key = "your-key"' in content
-    assert 'source = "/Users/cynicism/Desktop/面试"' in content
+    assert 'provider = "your-embedding-provider"' in content
+    assert 'database_path = "./path/to/your-database.sqlite"' in content
+    assert 'source = "/path/to/your-knowledge-base-source"' in content
