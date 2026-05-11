@@ -21,11 +21,15 @@ def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) ->
 
 
 def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "resume_parse",
         services=_mutable_services(context),
         prompt_inputs={"resume_text": _require_text(inputs, "resume_text")},
     )
+    resume_profile = result.get("resume_profile")
+    if not isinstance(resume_profile, dict):
+        return result
+    return {**result, "candidate_profile": dict(resume_profile)}
 
 
 def project_extract_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:

@@ -39,8 +39,9 @@ def build_prompt(
         for key, value in prompt_inputs.items()
     }
     base_prompt = render_prompt(node_name, **serialized_inputs)
+    node_inputs = json.dumps(prompt_inputs, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     rag_context = _format_rag_context(rag_results)
-    return f"{base_prompt}\nrag_context:\n{rag_context}"
+    return f"{base_prompt}\nnode_inputs:\n{node_inputs}\nrag_context:\n{rag_context}"
 
 
 def resolve_rag_results(
@@ -70,7 +71,7 @@ def resolve_rag_results(
 def _serialize_prompt_value(value: object) -> str:
     if isinstance(value, str):
         return value
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _format_rag_context(rag_results: list[dict[str, object]]) -> str:
@@ -87,4 +88,4 @@ def _format_rag_context(rag_results: list[dict[str, object]]) -> str:
                 "content": result.get("content"),
             }
         )
-    return json.dumps(context_items, ensure_ascii=False, sort_keys=True)
+    return json.dumps(context_items, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

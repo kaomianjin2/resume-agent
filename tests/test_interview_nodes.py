@@ -140,6 +140,7 @@ def test_interview_runtime_nodes_return_structured_outputs_and_write_session_sta
 
     assert state_keys >= {
         "resume_profile",
+        "candidate_profile",
         "project_experiences",
         "jd_requirements",
         "match_report",
@@ -153,6 +154,87 @@ def test_interview_runtime_nodes_return_structured_outputs_and_write_session_sta
     }
     assert document_count == (0,)
     assert chunk_count == (0,)
+
+
+def test_resume_parse_output_can_drive_question_generate_via_sqlite_session_state(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    llm = RecordingLLM(
+        responses={
+            "你是简历解析助手": '{"resume_profile":{"name":"Alice","skills":["Python"],"highlight":"SLA ownership"}}',
+            "你是面试题生成助手": '{"questions":["请解释你如何维护 SLA"]}',
+        }
+    )
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={"llm": llm},
+    )
+
+    parse_result = executor.execute_node(
+        session_id="session-1",
+        node_name="resume_parse",
+        inputs={"resume_text": "Alice owned SLA and Python services."},
+    )
+    question_result = executor.execute_node(
+        session_id="session-1",
+        node_name="question_generate",
+        inputs={"target_role": "Backend"},
+    )
+
+    assert parse_result.status == "success"
+    assert parse_result.output["resume_profile"] == parse_result.output["candidate_profile"]
+    assert question_result.status == "success"
+    assert question_result.output == {"questions": ["请解释你如何维护 SLA"]}
+
+
+def test_prompt_includes_node_inputs_for_fields_not_declared_in_template(tmp_path: Path) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    llm = RecordingLLM(
+        responses={
+            "你是面试题生成助手": '{"questions":["请解释你如何维护 SLA"]}',
+            "你是回答评分助手": '{"score_report":{"score":9,"strengths":["SLA ownership"]}}',
+        }
+    )
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={"llm": llm},
+    )
+
+    question_result = executor.execute_node(
+        session_id="session-1",
+        node_name="question_generate",
+        inputs={
+            "candidate_profile": {"name": "Alice", "highlight": "SLA ownership"},
+            "target_role": "Backend",
+            "difficulty": "staff",
+            "jd_requirements": {"must_have": ["Python", "SLA"]},
+        },
+    )
+    score_result = executor.execute_node(
+        session_id="session-1",
+        node_name="answer_score",
+        inputs={
+            "question": "如何保障 SLA？",
+            "answer": "我会建立告警与容量预案。",
+            "rubric": "请按 SLA、告警、容量三个维度评分",
+        },
+    )
+
+    assert question_result.status == "success"
+    assert score_result.status == "success"
+    assert 'node_inputs:\n{"candidate_profile":{"highlight":"SLA ownership","name":"Alice"}' in llm.prompts[0]
+    assert '"jd_requirements":{"must_have":["Python","SLA"]}' in llm.prompts[0]
+    assert '"difficulty":"staff"' in llm.prompts[0]
+    assert '"target_role":"Backend"' in llm.prompts[0]
+    assert 'node_inputs:\n{"answer":"我会建立告警与容量预案。"' in llm.prompts[1]
+    assert '"rubric":"请按 SLA、告警、容量三个维度评分"' in llm.prompts[1]
+    assert "SLA" in llm.prompts[0]
+    assert "SLA" in llm.prompts[1]
 
 
 def test_rag_nodes_read_retrieval_chunks_and_pass_them_into_llm_prompt(tmp_path: Path) -> None:
