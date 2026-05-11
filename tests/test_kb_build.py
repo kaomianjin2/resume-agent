@@ -7,6 +7,10 @@ import sys
 import zlib
 import zipfile
 
+import pytest
+
+from interview_agent.kb.build import build_knowledge_base
+from interview_agent.kb.embedding import FakeEmbedder
 from interview_agent.storage import get_knowledge_base_status
 
 
@@ -30,9 +34,8 @@ def test_build_knowledge_base_parses_supported_documents_and_marks_ready(tmp_pat
     ignored_resume.parent.mkdir(parents=True, exist_ok=True)
     ignored_resume.write_text("do not index", encoding="utf-8")
 
-    result = run_build_module(source_dir, config_path, database_path)
+    build_with_fake_embedder(source_dir, config_path, database_path)
 
-    assert result.returncode == 0, result.stderr
     assert get_knowledge_base_status(database_path) == "ready"
 
     with sqlite3.connect(database_path) as connection:
@@ -72,11 +75,8 @@ def test_build_knowledge_base_skips_reinserting_chunks_when_document_is_unchange
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_path.write_text("abcdefghij klmnopqrst uvwxyz", encoding="utf-8")
 
-    first_result = run_build_module(source_dir, config_path, database_path)
-    second_result = run_build_module(source_dir, config_path, database_path)
-
-    assert first_result.returncode == 0, first_result.stderr
-    assert second_result.returncode == 0, second_result.stderr
+    build_with_fake_embedder(source_dir, config_path, database_path)
+    build_with_fake_embedder(source_dir, config_path, database_path)
 
     with sqlite3.connect(database_path) as connection:
         document_count = connection.execute(
@@ -104,15 +104,14 @@ def test_build_knowledge_base_records_failed_status_and_preserves_previous_ready
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_path.write_text("stable ready content", encoding="utf-8")
 
-    first_result = run_build_module(source_dir, config_path, database_path)
-    assert first_result.returncode == 0, first_result.stderr
+    build_with_fake_embedder(source_dir, config_path, database_path)
     assert get_knowledge_base_status(database_path) == "ready"
 
     write_pdf_fixture(pdf_path, "broken content", compressed=True, truncate_stream=True)
 
-    second_result = run_build_module(source_dir, config_path, database_path)
+    with pytest.raises(ValueError, match="PDF FlateDecode 解压失败"):
+        build_with_fake_embedder(source_dir, config_path, database_path)
 
-    assert second_result.returncode != 0
     assert get_knowledge_base_status(database_path) == "failed"
 
     with sqlite3.connect(database_path) as connection:
@@ -148,9 +147,7 @@ def test_build_knowledge_base_extracts_text_from_flate_pdf_tj_arrays(tmp_path: P
         use_tj_array=True,
     )
 
-    result = run_build_module(source_dir, config_path, database_path)
-
-    assert result.returncode == 0, result.stderr
+    build_with_fake_embedder(source_dir, config_path, database_path)
 
     with sqlite3.connect(database_path) as connection:
         chunk_row = connection.execute(
@@ -235,6 +232,19 @@ def run_build_module(
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
+    )
+
+
+def build_with_fake_embedder(
+    source_dir: Path,
+    config_path: Path,
+    database_path: Path,
+) -> None:
+    build_knowledge_base(
+        source=source_dir,
+        config_path=config_path,
+        database_path=database_path,
+        embedder=FakeEmbedder(vocabulary=()),
     )
 
 

@@ -7,7 +7,7 @@ import pytest
 
 from interview_agent.config import EmbeddingConfig
 from interview_agent.kb.build import build_knowledge_base
-from interview_agent.kb.embedding import FakeEmbedder, build_embedder
+from interview_agent.kb.embedding import FakeEmbedder, LocalBGEEmbedder, build_embedder
 from interview_agent.kb.retrieval import (
     get_chunk_embedding,
     hybrid_search,
@@ -54,6 +54,18 @@ def test_local_bge_embedder_raises_clear_error_when_dependency_missing(
 
     assert str(model_path) in str(exc_info.value)
     assert "sentence_transformers" in str(exc_info.value)
+
+
+def test_build_embedder_does_not_use_fake_embedder_for_placeholder_model_name() -> None:
+    embedder = build_embedder(
+        EmbeddingConfig(
+            provider="local",
+            model_name="unused",
+            model_path="./unused",
+        )
+    )
+
+    assert isinstance(embedder, LocalBGEEmbedder)
 
 
 def test_keyword_search_returns_matching_chunk_from_fts(tmp_path: Path) -> None:
