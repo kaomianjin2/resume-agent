@@ -73,7 +73,7 @@
 
 ## Task 3: Offline Knowledge Documents Builder
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 2
 
