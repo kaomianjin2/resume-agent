@@ -1,0 +1,19 @@
+[llm]
+base_url = "https://your-openai-compatible-endpoint/v1"
+api_key = "your-key"
+model = "your-model"
+
+[embedding]
+provider = "local"
+model_name = "BAAI/bge-m3"
+model_path = "./models/bge-m3"
+
+[storage]
+database_path = "./data/interview_agent.sqlite"
+
+[knowledge_base]
+source = "/Users/cynicism/Desktop/面试"
+chunk_size = 900
+chunk_overlap = 120
+top_k = 8
+index_version = "v1"

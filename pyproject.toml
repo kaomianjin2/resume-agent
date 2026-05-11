@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "interview-agent"
+version = "0.1.0"
+description = "Bootstrap package for the interview agent CLI."
+readme = "AGENTS.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+interview-agent = "interview_agent.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/interview_agent"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+]
