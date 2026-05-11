@@ -228,3 +228,24 @@ def test_failed_node_preserves_existing_successful_state(tmp_path: Path) -> None
     assert result.status == "failed"
     assert session_store.get_state("session-1", "candidate_profile") == {"name": "Alice"}
     assert session_store.get_state("session-1", "failed_output") is None
+
+
+def test_session_store_set_state_creates_session_for_fresh_session_id(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    session_store.set_state("fresh-session", "key", {"v": 1})
+
+    with sqlite3.connect(database_path) as connection:
+        session_row = connection.execute(
+            "SELECT session_id, status FROM sessions WHERE session_id = ?",
+            ("fresh-session",),
+        ).fetchone()
+        state_row = connection.execute(
+            "SELECT state_value FROM session_state WHERE session_id = ? AND state_key = ?",
+            ("fresh-session", "key"),
+        ).fetchone()
+
+    assert session_row == ("fresh-session", "active")
+    assert state_row == ('{"v":1}',)

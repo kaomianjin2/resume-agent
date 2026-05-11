@@ -50,6 +50,7 @@ class SessionStore:
     def set_state(self, session_id: str, key: str, value: object) -> None:
         with get_connection(self.database_path) as connection:
             with transaction(connection):
+                ensure_session(connection, session_id)
                 write_session_state(connection, session_id, {key: value})
 
 
