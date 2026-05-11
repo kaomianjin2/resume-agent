@@ -2,7 +2,20 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from .spec import NodeContext, NodeSpec
+from .interview import (
+    answer_score_handler,
+    jd_match_handler,
+    jd_parse_handler,
+    knowledge_search_handler,
+    mock_followup_handler,
+    project_extract_handler,
+    question_generate_handler,
+    resume_optimize_handler,
+    resume_parse_handler,
+    session_summary_handler,
+    weakness_train_handler,
+)
+from .spec import NodeSpec
 
 
 class UnknownNodeError(KeyError):
@@ -67,19 +80,27 @@ def _runtime_spec(
     optional_inputs: tuple[str, ...],
     outputs: tuple[str, ...],
 ) -> NodeSpec:
+    handler = _RUNTIME_HANDLERS[name]
     return NodeSpec(
         name=name,
         description=f"Runtime node: {name.replace('_', ' ')}.",
         required_inputs=required_inputs,
         optional_inputs=optional_inputs,
         outputs=outputs,
-        handler=_unimplemented_handler,
+        handler=handler,
     )
 
 
-def _unimplemented_handler(
-    context: NodeContext,
-    inputs: dict[str, object],
-) -> dict[str, object]:
-    del context, inputs
-    raise NotImplementedError("节点 handler 尚未实现")
+_RUNTIME_HANDLERS = {
+    "knowledge_search": knowledge_search_handler,
+    "resume_parse": resume_parse_handler,
+    "project_extract": project_extract_handler,
+    "jd_parse": jd_parse_handler,
+    "jd_match": jd_match_handler,
+    "question_generate": question_generate_handler,
+    "mock_followup": mock_followup_handler,
+    "answer_score": answer_score_handler,
+    "weakness_train": weakness_train_handler,
+    "resume_optimize": resume_optimize_handler,
+    "session_summary": session_summary_handler,
+}
