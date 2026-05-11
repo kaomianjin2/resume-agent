@@ -35,14 +35,21 @@ def initialize_database(database_path: Path | str) -> None:
 
 
 def get_knowledge_base_status(database_path: Path | str) -> str:
-    with get_connection(database_path) as connection:
-        row = connection.execute(
-            """
-            SELECT status
-            FROM knowledge_base_meta
-            WHERE singleton_id = 1
-            """
-        ).fetchone()
+    resolved_path = Path(database_path)
+    if not resolved_path.exists():
+        return DEFAULT_KNOWLEDGE_BASE_STATUS
+
+    try:
+        with _get_readonly_connection(resolved_path) as connection:
+            row = connection.execute(
+                """
+                SELECT status
+                FROM knowledge_base_meta
+                WHERE singleton_id = 1
+                """
+            ).fetchone()
+    except sqlite3.OperationalError:
+        return DEFAULT_KNOWLEDGE_BASE_STATUS
 
     if row is None:
         return DEFAULT_KNOWLEDGE_BASE_STATUS
@@ -69,12 +76,18 @@ def transaction(connection: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     connection.execute("BEGIN")
     try:
         yield connection
+        connection.commit()
     except Exception:
         connection.rollback()
         raise
-    else:
-        connection.commit()
 
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _get_readonly_connection(database_path: Path) -> sqlite3.Connection:
+    database_uri = database_path.resolve().as_uri() + "?mode=ro"
+    connection = sqlite3.connect(database_uri, uri=True)
+    connection.execute("PRAGMA foreign_keys = ON")
+    return connection
