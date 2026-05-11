@@ -81,7 +81,7 @@ def test_plan_dataclasses_support_multi_node_display() -> None:
     plan = build_execution_plan(
         user_message="生成 Go 面试题",
         selected_node="question_generate",
-        session_inputs={"candidate_profile": {"skills": ["Go"]}, "target_role": "Go工程师", "jd_text": "需要 Go 经验"},
+        session_inputs={"candidate_profile": {"skills": ["Go"]}, "target_role": "Go工程师"},
         registry=build_default_registry(),
     )
 
@@ -91,8 +91,9 @@ def test_plan_dataclasses_support_multi_node_display() -> None:
         reason="用户已确认",
     )
 
-    assert plan.summary
+    assert plan.summary == "jd_parse -> question_generate"
     assert plan.steps[0].title
+    assert len(plan.steps) == 2
     assert confirmation.confirmed is True
 
 
@@ -121,6 +122,52 @@ def test_old_confirmation_cannot_confirm_new_plan() -> None:
 
     assert first_plan.plan_id != second_plan.plan_id
     assert blocked_message == "该计划包含多个节点，执行前需要用户确认"
+
+
+def test_plan_id_changes_when_session_inputs_change_for_same_message_and_steps() -> None:
+    registry = build_default_registry()
+    first_plan = build_execution_plan(
+        user_message="生成面试题",
+        selected_node="question_generate",
+        session_inputs={"candidate_profile": {"skills": ["Go"]}, "target_role": "Go工程师"},
+        registry=registry,
+    )
+    second_plan = build_execution_plan(
+        user_message="生成面试题",
+        selected_node="question_generate",
+        session_inputs={"candidate_profile": {"skills": ["Java"]}, "target_role": "Java工程师"},
+        registry=registry,
+    )
+
+    reused_confirmation = PlanConfirmation(
+        plan_id=first_plan.plan_id,
+        confirmed=True,
+        reason="旧确认",
+    )
+
+    blocked_message = ensure_plan_confirmation(second_plan, reused_confirmation)
+
+    assert [step.node_name for step in first_plan.steps] == [step.node_name for step in second_plan.steps]
+    assert first_plan.plan_id != second_plan.plan_id
+    assert blocked_message == "该计划包含多个节点，执行前需要用户确认"
+
+
+def test_build_execution_plan_accepts_non_json_serializable_session_inputs() -> None:
+    registry = build_default_registry()
+
+    plan = build_execution_plan(
+        user_message="生成面试题",
+        selected_node="question_generate",
+        session_inputs={
+            "candidate_profile": {"skills": ["Go"]},
+            "target_role": "Go工程师",
+            "opaque_value": object(),
+        },
+        registry=registry,
+    )
+
+    assert plan.plan_id
+    assert plan.summary == "jd_parse -> question_generate"
 
 
 def test_multi_node_plan_requires_confirmation() -> None:

@@ -58,8 +58,10 @@ def build_execution_plan(
     summary = " -> ".join(step.node_name for step in steps)
     plan_id = _build_plan_id(
         user_message=user_message,
+        selected_node=selected_node,
         steps=steps,
         missing_inputs=missing_inputs,
+        session_inputs=session_inputs,
     )
 
     return ExecutionPlan(
@@ -114,11 +116,14 @@ def _build_step(node_name: str) -> PlanStep:
 
 def _build_plan_id(
     user_message: str,
+    selected_node: str,
     steps: list[PlanStep],
     missing_inputs: list[str],
+    session_inputs: dict[str, object],
 ) -> str:
     plan_payload = {
         "user_message": user_message,
+        "selected_node": selected_node,
         "steps": [
             {
                 "node_name": step.node_name,
@@ -128,8 +133,38 @@ def _build_plan_id(
             for step in steps
         ],
         "missing_inputs": missing_inputs,
+        "session_inputs": _make_stable_value(session_inputs),
     }
     plan_digest = hashlib.sha256(
         json.dumps(plan_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()
     return plan_digest[:16]
+
+
+def _make_stable_value(value: object) -> object:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+
+    if isinstance(value, dict):
+        stable_mapping: dict[str, object] = {}
+        for key in sorted(value):
+            stable_mapping[str(key)] = _make_stable_value(value[key])
+        return stable_mapping
+
+    if isinstance(value, list | tuple):
+        return [_make_stable_value(item) for item in value]
+
+    if isinstance(value, set | frozenset):
+        stable_items = [_make_stable_value(item) for item in value]
+        return sorted(stable_items, key=_stable_sort_key)
+
+    try:
+        json.dumps(value, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        return repr(value)
+
+    return value
+
+
+def _stable_sort_key(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
