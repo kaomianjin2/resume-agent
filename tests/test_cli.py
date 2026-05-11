@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from io import StringIO
+import json
 from pathlib import Path
 import subprocess
 import sys
+import urllib.request
 
 from interview_agent import cli
+from interview_agent.config import LLMConfig
+from interview_agent.llm import OpenAICompatibleClient
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, NodeSpec
 from interview_agent.session import SessionStore
@@ -69,8 +73,12 @@ def test_does_not_build_knowledge_base_on_startup(tmp_path: Path) -> None:
     output = StringIO()
     executor_factory_called = False
 
-    def fail_executor_factory(database_path: Path, registry: NodeRegistry) -> object:
-        del database_path, registry
+    def fail_executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry, services
         nonlocal executor_factory_called
         executor_factory_called = True
         raise AssertionError("KB 未 ready 时不应初始化执行器")
@@ -165,8 +173,12 @@ def test_multi_node_plan_does_not_execute_without_confirmation(tmp_path: Path) -
     output = StringIO()
     calls: list[tuple[str, dict[str, object] | None]] = []
 
-    def spy_executor_factory(database_path: Path, registry: NodeRegistry) -> object:
-        del database_path, registry
+    def spy_executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry, services
 
         class SpyExecutor:
             def execute_node(
@@ -226,6 +238,132 @@ def test_direct_node_command_executes_selected_node(tmp_path: Path) -> None:
     assert session_store.get_state(DEFAULT_SESSION_ID, "questions") == [
         "Alice:后端工程师:后端 JD"
     ]
+
+
+def test_default_registry_and_executor_execute_real_handler_with_fake_openai_transport(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["/node jd_parse", "负责 Go 服务开发", "exit"]),
+        output=output,
+        llm_factory=lambda llm_config: OpenAICompatibleClient(
+            llm_config,
+            transport=build_fake_transport(
+                {
+                    "JD 内容：负责 Go 服务开发": {
+                        "jd_requirements": {"role": "Go 后端工程师"}
+                    }
+                }
+            ),
+        ),
+    )
+
+    assert exit_code == 0
+    assert "指定节点: jd_parse" in output.getvalue()
+    assert SessionStore(database_path).get_state(DEFAULT_SESSION_ID, "jd_requirements") == {
+        "role": "Go 后端工程师"
+    }
+
+
+def test_llm_route_receives_client_on_default_cli_path(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+    route_llm_client: OpenAICompatibleClient | None = None
+    factory_llm_client: OpenAICompatibleClient | None = None
+
+    def llm_factory(llm_config: LLMConfig) -> OpenAICompatibleClient:
+        nonlocal factory_llm_client
+        factory_llm_client = OpenAICompatibleClient(
+            llm_config,
+            transport=build_fake_transport(
+                {"问题：帮我找资料": {"search_results": ["命中"]}}
+            ),
+        )
+        return factory_llm_client
+
+    def route_func(
+        user_message: str,
+        registry: NodeRegistry,
+        llm_client: OpenAICompatibleClient | None = None,
+    ) -> cli.RouteResult:
+        del user_message, registry
+        nonlocal route_llm_client
+        route_llm_client = llm_client
+        return cli.RouteResult(
+            selected_node="knowledge_search",
+            candidate_nodes=["knowledge_search"],
+            via="llm",
+        )
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["帮我找资料", "给我 Go 资料", "exit"]),
+        output=output,
+        llm_factory=llm_factory,
+        route_func=route_func,
+    )
+
+    assert exit_code == 0
+    assert route_llm_client is factory_llm_client
+    assert "执行结果: success" in output.getvalue()
+
+
+def test_direct_node_command_with_empty_name_prints_friendly_error_and_continues(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["/node", "exit"]),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    assert "节点名不能为空" in output.getvalue()
+    assert "已退出。" in output.getvalue()
+
+
+def test_direct_node_command_with_unknown_name_prints_friendly_error_and_continues(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["/node unknown_node", "exit"]),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    assert "未知节点: unknown_node" in output.getvalue()
+    assert "已退出。" in output.getvalue()
+
+
+def test_missing_input_eof_cancels_current_execution_without_traceback(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["生成面试题", "y"]),
+        output=output,
+        registry_builder=build_cli_registry,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="question_generate",
+            candidate_nodes=["question_generate"],
+            via="rule",
+        ),
+    )
+
+    assert exit_code == 0
+    assert "输入结束，已取消当前执行。" in output.getvalue()
+    assert session_store.get_state(DEFAULT_SESSION_ID, "jd_text") is None
 
 
 def prepare_ready_runtime(tmp_path: Path) -> tuple[Path, Path]:
@@ -328,3 +466,31 @@ def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -
             f"{profile['name']}:{inputs['target_role']}:{requirements.get('role', 'NO_JD')}"
         ]
     }
+
+
+def build_fake_transport(responses: dict[str, dict[str, object]]) -> Callable[[urllib.request.Request], str]:
+    def transport(request: urllib.request.Request) -> str:
+        request_body = json.loads(request.data.decode("utf-8"))
+        messages = request_body["messages"]
+        prompt = messages[-1]["content"]
+        for marker, payload in responses.items():
+            if marker in prompt:
+                return build_openai_response(payload)
+        return build_openai_response({"search_results": []})
+
+    return transport
+
+
+def build_openai_response(content_payload: dict[str, object]) -> str:
+    return json.dumps(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(content_payload, ensure_ascii=False)
+                    }
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )

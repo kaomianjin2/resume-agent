@@ -1,24 +1,48 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 import sys
-from typing import TextIO
+from typing import Protocol, TextIO
 
-from interview_agent.config import DEFAULT_CONFIG_PATH, ConfigError, load_config
+from interview_agent.config import DEFAULT_CONFIG_PATH, ConfigError, LLMConfig, load_config
 from interview_agent.executor import NodeExecutionResult, NodeExecutor
-from interview_agent.nodes.registry import NodeRegistry, build_default_registry
-from interview_agent.planner import PlanConfirmation, build_execution_plan, ensure_plan_confirmation
+from interview_agent.llm import FakeLLMClient, OpenAICompatibleClient
+from interview_agent.nodes.registry import NodeRegistry, UnknownNodeError, build_default_registry
+from interview_agent.planner import (
+    ExecutionPlan,
+    PlanConfirmation,
+    build_execution_plan,
+    ensure_plan_confirmation,
+)
 from interview_agent.router import RouteResult, route_conversation
 from interview_agent.session import SessionStore
 from interview_agent.storage import get_knowledge_base_status
 
 
 DEFAULT_SESSION_ID = "interactive-cli-session"
+LLMClient = FakeLLMClient | OpenAICompatibleClient
+ServiceMap = Mapping[str, object]
 InputFunc = Callable[[str], str]
-RouteFunc = Callable[[str, NodeRegistry, object | None], RouteResult]
-ExecutorFactory = Callable[[Path, NodeRegistry], object]
+RouteFunc = Callable[[str, NodeRegistry, LLMClient | None], RouteResult]
+LLMFactory = Callable[[LLMConfig], LLMClient]
+
+
+class ExecutorProtocol(Protocol):
+    def execute_node(
+        self,
+        session_id: str,
+        node_name: str,
+        inputs: dict[str, object] | None = None,
+    ) -> NodeExecutionResult: ...
+
+
+ExecutorFactory = Callable[[Path, NodeRegistry, ServiceMap], ExecutorProtocol]
+
+
+class InputCancelledError(RuntimeError):
+    """Raised when the user stops providing required interactive inputs."""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +66,7 @@ def main(
     registry_builder: Callable[[], NodeRegistry] = build_default_registry,
     route_func: RouteFunc = route_conversation,
     executor_factory: ExecutorFactory | None = None,
+    llm_factory: LLMFactory = OpenAICompatibleClient,
     session_id: str = DEFAULT_SESSION_ID,
 ) -> int:
     output_stream = output or sys.stdout
@@ -65,7 +90,9 @@ def main(
     registry = registry_builder()
     session_store = SessionStore(database_path)
     session_store.create_session(session_id)
-    executor = (executor_factory or _default_executor_factory)(database_path, registry)
+    llm_client = llm_factory(config.llm)
+    services = {"llm": llm_client}
+    executor = (executor_factory or _default_executor_factory)(database_path, registry, services)
 
     _write_line(output_stream, "请输入需求，输入 exit 退出。")
     while True:
@@ -83,22 +110,32 @@ def main(
 
         direct_node_name = _parse_direct_node_name(normalized_message)
         if direct_node_name is not None:
+            if not direct_node_name:
+                _write_line(output_stream, "节点名不能为空，请使用 /node <节点名>。")
+                continue
+            if direct_node_name not in registry.list_names():
+                _write_line(output_stream, f"未知节点: {direct_node_name}")
+                continue
             _write_line(output_stream, f"指定节点: {direct_node_name}")
             selected_node = direct_node_name
         else:
-            route_result = route_func(normalized_message, registry, None)
+            route_result = route_func(normalized_message, registry, llm_client)
             _write_line(output_stream, f"匹配节点: {route_result.selected_node}")
             if route_result.candidate_nodes:
                 _write_line(output_stream, "候选节点: " + ", ".join(route_result.candidate_nodes))
             selected_node = route_result.selected_node
 
         session_inputs = session_store.get_all_state(session_id)
-        plan = build_execution_plan(
-            user_message=normalized_message,
-            selected_node=selected_node,
-            session_inputs=session_inputs,
-            registry=registry,
-        )
+        try:
+            plan = build_execution_plan(
+                user_message=normalized_message,
+                selected_node=selected_node,
+                session_inputs=session_inputs,
+                registry=registry,
+            )
+        except UnknownNodeError:
+            _write_line(output_stream, f"未知节点: {selected_node}")
+            continue
         _print_plan(output_stream, plan)
 
         if not _confirm_plan_if_needed(plan, input_func, output_stream):
@@ -106,21 +143,29 @@ def main(
             continue
 
         for step in plan.steps:
-            result = _execute_step_with_prompt(
-                executor=executor,
-                session_store=session_store,
-                session_id=session_id,
-                node_name=step.node_name,
-                input_func=input_func,
-                output=output_stream,
-            )
+            try:
+                result = _execute_step_with_prompt(
+                    executor=executor,
+                    session_store=session_store,
+                    session_id=session_id,
+                    node_name=step.node_name,
+                    input_func=input_func,
+                    output=output_stream,
+                )
+            except InputCancelledError:
+                _write_line(output_stream, "输入结束，已取消当前执行。")
+                break
             _write_result(output_stream, result)
             if result.status != "success":
                 break
 
 
-def _default_executor_factory(database_path: Path, registry: NodeRegistry) -> NodeExecutor:
-    return NodeExecutor(database_path, registry)
+def _default_executor_factory(
+    database_path: Path,
+    registry: NodeRegistry,
+    services: ServiceMap,
+) -> NodeExecutor:
+    return NodeExecutor(database_path, registry, services=dict(services))
 
 
 def _build_offline_command(config_path: Path, database_path: Path, source_path: Path) -> str:
@@ -149,13 +194,13 @@ def _parse_direct_node_name(user_message: str) -> str | None:
     return segments[1].strip()
 
 
-def _print_plan(output: TextIO, plan: object) -> None:
+def _print_plan(output: TextIO, plan: ExecutionPlan) -> None:
     _write_line(output, f"执行计划: {plan.summary}")
     for index, step in enumerate(plan.steps, start=1):
         _write_line(output, f"{index}. {step.node_name} - {step.description}")
 
 
-def _confirm_plan_if_needed(plan: object, input_func: InputFunc, output: TextIO) -> bool:
+def _confirm_plan_if_needed(plan: ExecutionPlan, input_func: InputFunc, output: TextIO) -> bool:
     if not plan.requires_confirmation:
         return True
 
@@ -169,7 +214,7 @@ def _confirm_plan_if_needed(plan: object, input_func: InputFunc, output: TextIO)
 
 
 def _execute_step_with_prompt(
-    executor: object,
+    executor: ExecutorProtocol,
     session_store: SessionStore,
     session_id: str,
     node_name: str,
@@ -200,7 +245,7 @@ def _collect_missing_inputs(
     for input_name in input_names:
         raw_value = _read_line(input_func, output, f"请输入 {input_name}（可直接粘贴文本，或输入文件路径）: ")
         if raw_value is None:
-            raise EOFError("缺少节点输入")
+            raise InputCancelledError("缺少节点输入")
         input_value = _resolve_input_value(raw_value)
         session_store.set_state(session_id, input_name, input_value)
         collected_inputs[input_name] = input_value
