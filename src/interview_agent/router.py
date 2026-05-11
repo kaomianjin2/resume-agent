@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from interview_agent.llm import FakeLLMClient, OpenAICompatibleClient, request_structured_output
+from interview_agent.llm import (
+    FakeLLMClient,
+    LLMError,
+    OpenAICompatibleClient,
+    request_structured_output,
+)
 from interview_agent.nodes.registry import NodeRegistry
 
 
@@ -36,11 +41,14 @@ def route_conversation(
             via="default",
         )
 
-    llm_candidates = classify_with_llm(
-        user_message=user_message,
-        registry=registry,
-        llm_client=llm_client,
-    )
+    try:
+        llm_candidates = classify_with_llm(
+            user_message=user_message,
+            registry=registry,
+            llm_client=llm_client,
+        )
+    except LLMError:
+        llm_candidates = []
     if llm_candidates:
         return RouteResult(
             selected_node=llm_candidates[0],

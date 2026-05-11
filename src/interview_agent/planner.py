@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 
 from interview_agent.nodes.registry import NodeRegistry
 
@@ -54,7 +56,11 @@ def build_execution_plan(
 
     requires_confirmation = len(steps) > 1
     summary = " -> ".join(step.node_name for step in steps)
-    plan_id = f"{selected_node}:{len(steps)}"
+    plan_id = _build_plan_id(
+        user_message=user_message,
+        steps=steps,
+        missing_inputs=missing_inputs,
+    )
 
     return ExecutionPlan(
         plan_id=plan_id,
@@ -104,3 +110,26 @@ def _build_step(node_name: str) -> PlanStep:
         title=node_name.replace("_", " ").title(),
         description=f"执行节点 {node_name}。",
     )
+
+
+def _build_plan_id(
+    user_message: str,
+    steps: list[PlanStep],
+    missing_inputs: list[str],
+) -> str:
+    plan_payload = {
+        "user_message": user_message,
+        "steps": [
+            {
+                "node_name": step.node_name,
+                "title": step.title,
+                "description": step.description,
+            }
+            for step in steps
+        ],
+        "missing_inputs": missing_inputs,
+    }
+    plan_digest = hashlib.sha256(
+        json.dumps(plan_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    return plan_digest[:16]
