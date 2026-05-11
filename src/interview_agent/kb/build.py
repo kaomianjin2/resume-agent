@@ -13,7 +13,7 @@ from interview_agent.storage import (
 )
 
 from .chunking import chunk_text, content_hash
-from .embedding import Embedder, LocalBGEEmbedder, build_embedder
+from .embedding import Embedder, build_embedder
 from .file_policy import iter_source_files
 from .parser import extract_text
 from .retrieval import clear_document_retrieval_entries, index_chunks
@@ -81,7 +81,7 @@ def _upsert_document(
     file_path: Path,
     chunk_size: int,
     chunk_overlap: int,
-    embedder: Embedder | None,
+    embedder: Embedder,
 ) -> None:
     document_content = extract_text(file_path)
     document_hash = content_hash(document_content)
@@ -142,8 +142,7 @@ def _upsert_document(
             (chunk_id, document_id, chunk_index, chunk_content, timestamp),
         )
 
-    if embedder is not None:
-        index_chunks(connection, embedder=embedder, chunk_ids=chunk_ids)
+    index_chunks(connection, embedder=embedder, chunk_ids=chunk_ids)
 
 
 def _document_id(relative_path: str) -> str:
@@ -161,17 +160,11 @@ def _current_timestamp() -> str:
 def _resolve_embedder(
     embedding_config,
     embedder: Embedder | None,
-) -> Embedder | None:
+) -> Embedder:
     if embedder is not None:
         return embedder
 
-    configured_embedder = build_embedder(embedding_config)
-    if isinstance(configured_embedder, LocalBGEEmbedder):
-        model_path = Path(configured_embedder.model_path)
-        if not model_path.exists():
-            return None
-
-    return configured_embedder
+    return build_embedder(embedding_config)
 
 
 if __name__ == "__main__":

@@ -70,6 +70,9 @@ def build_embedder(config: EmbeddingConfig) -> Embedder:
     if config.provider != "local":
         raise ValueError(f"不支持的 embedding provider: {config.provider}")
 
+    if config.model_name == "unused":
+        return FakeEmbedder(vocabulary=())
+
     return LocalBGEEmbedder(
         model_name=config.model_name,
         model_path=config.model_path,

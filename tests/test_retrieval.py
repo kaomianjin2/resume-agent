@@ -15,7 +15,7 @@ from interview_agent.kb.retrieval import (
     keyword_search,
     vector_search,
 )
-from interview_agent.storage import get_connection, initialize_database
+from interview_agent.storage import get_connection, get_knowledge_base_status, initialize_database
 
 
 def test_fake_embedder_returns_deterministic_vectors_without_model_download() -> None:
@@ -348,6 +348,41 @@ def test_keyword_search_escapes_double_quotes_in_query(tmp_path: Path) -> None:
     assert [match["chunk_id"] for match in matches] == ["chunk-1"]
 
 
+def test_build_knowledge_base_fails_when_default_local_model_path_is_missing(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    missing_model_path = tmp_path / "models" / "missing-bge-m3"
+    config_path = write_config(
+        tmp_path,
+        source_dir,
+        database_path,
+        model_path=missing_model_path.as_posix(),
+    )
+    markdown_path = source_dir / "notes.md"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text("python retry planning", encoding="utf-8")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        build_knowledge_base(
+            source=source_dir,
+            config_path=config_path,
+            database_path=database_path,
+        )
+
+    with sqlite3.connect(database_path) as connection:
+        document_count = connection.execute("SELECT COUNT(*) FROM knowledge_documents").fetchone()
+        chunk_count = connection.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()
+        embedding_count = count_table_rows_if_exists(connection, "knowledge_chunk_embeddings")
+        fts_count = count_table_rows_if_exists(connection, "knowledge_chunks_fts")
+
+    assert str(missing_model_path) in str(exc_info.value)
+    assert get_knowledge_base_status(database_path) == "failed"
+    assert document_count == (0,)
+    assert chunk_count == (0,)
+    assert embedding_count == 0
+    assert fts_count == 0
+
+
 def insert_chunk(
     connection: sqlite3.Connection,
     document_id: str,
@@ -384,7 +419,13 @@ def insert_chunk(
     )
 
 
-def write_config(tmp_path: Path, source_dir: Path, database_path: Path) -> Path:
+def write_config(
+    tmp_path: Path,
+    source_dir: Path,
+    database_path: Path,
+    *,
+    model_path: str = "./models/bge-m3",
+) -> Path:
     config_path = tmp_path / "interview-agent.toml"
     config_path.write_text(
         "\n".join(
@@ -397,7 +438,7 @@ def write_config(tmp_path: Path, source_dir: Path, database_path: Path) -> Path:
                 "[embedding]",
                 'provider = "local"',
                 'model_name = "BAAI/bge-m3"',
-                'model_path = "./models/bge-m3"',
+                f'model_path = "{model_path}"',
                 "",
                 "[storage]",
                 f'database_path = "{database_path.as_posix()}"',
