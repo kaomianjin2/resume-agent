@@ -115,7 +115,7 @@
 
 ## Task 5: LLM Client And Structured Output
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 1
 
