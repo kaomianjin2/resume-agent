@@ -37,7 +37,7 @@
 
 ## Task 1: Project Config System
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 0
 
