@@ -169,5 +169,21 @@ def test_example_config_contains_placeholder_values_only() -> None:
     assert 'base_url = "https://your-openai-compatible-endpoint/v1"' in content
     assert 'api_key = "your-key"' in content
     assert 'model = "your-model"' in content
+    assert 'provider = "your-embedding-provider"' in content
+    assert 'model_name = "your-embedding-model-name"' in content
+    assert 'model_path = "./path/to/your-embedding-model"' in content
+    assert 'database_path = "./path/to/your-database.sqlite"' in content
+    assert 'source = "/path/to/your-knowledge-base-source"' in content
+    assert 'chunk_size = 900' not in content
+    assert 'chunk_size = 0' in content
+    assert 'chunk_overlap = 120' not in content
+    assert 'chunk_overlap = 0' in content
+    assert 'top_k = 8' not in content
+    assert 'top_k = 0' in content
+    assert 'index_version = "v1"' not in content
+    assert 'index_version = "your-index-version"' in content
+    assert "/Users/cynicism/Desktop/面试" not in content
+    assert "./models/bge-m3" not in content
+    assert "./data/interview_agent.sqlite" not in content
     assert "sk-" not in content
     assert "实际" not in content
