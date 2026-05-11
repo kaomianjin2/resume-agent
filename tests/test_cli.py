@@ -8,8 +8,12 @@ import subprocess
 import sys
 import urllib.request
 
+import pytest
+
 from interview_agent import cli
 from interview_agent.config import LLMConfig
+from interview_agent.kb.embedding import FakeEmbedder
+from interview_agent.kb.retrieval import SQLiteHybridRetriever
 from interview_agent.llm import OpenAICompatibleClient
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, NodeSpec
@@ -267,11 +271,19 @@ def test_default_registry_and_executor_execute_real_handler_with_fake_openai_tra
     }
 
 
-def test_llm_route_receives_client_on_default_cli_path(tmp_path: Path) -> None:
+def test_llm_route_receives_client_on_default_cli_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
     route_llm_client: OpenAICompatibleClient | None = None
     factory_llm_client: OpenAICompatibleClient | None = None
+
+    monkeypatch.setattr(
+        "interview_agent.kb.retrieval.build_embedder",
+        lambda embedding_config: FakeEmbedder(vocabulary=("go", "资料")),
+    )
 
     def llm_factory(llm_config: LLMConfig) -> OpenAICompatibleClient:
         nonlocal factory_llm_client
@@ -308,6 +320,76 @@ def test_llm_route_receives_client_on_default_cli_path(tmp_path: Path) -> None:
     assert exit_code == 0
     assert route_llm_client is factory_llm_client
     assert "执行结果: success" in output.getvalue()
+
+
+def test_default_cli_services_include_retriever_for_executor(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+    captured_services: dict[str, object] = {}
+
+    def executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry
+        captured_services.update(services)
+
+        class ExitExecutor:
+            def execute_node(
+                self,
+                session_id: str,
+                node_name: str,
+                inputs: dict[str, object] | None = None,
+            ) -> cli.NodeExecutionResult:
+                del node_name, inputs
+                return cli.NodeExecutionResult(
+                    run_id="run-id",
+                    session_id=session_id,
+                    node_name="knowledge_search",
+                    status="success",
+                    output={"search_results": []},
+                    missing_inputs=[],
+                )
+
+        return ExitExecutor()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["帮我找资料", "exit"]),
+        output=output,
+        executor_factory=executor_factory,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="knowledge_search",
+            candidate_nodes=["knowledge_search"],
+            via="rule",
+        ),
+    )
+
+    assert exit_code == 0
+    assert "llm" in captured_services
+    assert "retriever" in captured_services
+    assert isinstance(captured_services["retriever"], SQLiteHybridRetriever)
+
+
+def test_default_cli_does_not_build_embedder_on_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    def fail_build_embedder(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise AssertionError("CLI 启动阶段不应加载 embedder")
+
+    monkeypatch.setattr("interview_agent.kb.retrieval.build_embedder", fail_build_embedder)
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["exit"]),
+        output=output,
+    )
+
+    assert exit_code == 0
+    assert "已退出。" in output.getvalue()
 
 
 def test_direct_node_command_with_empty_name_prints_friendly_error_and_continues(tmp_path: Path) -> None:

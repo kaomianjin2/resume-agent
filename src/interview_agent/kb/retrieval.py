@@ -2,9 +2,38 @@ from __future__ import annotations
 
 import json
 from math import sqrt
+from pathlib import Path
 import sqlite3
 
-from .embedding import Embedder
+from interview_agent.config import EmbeddingConfig
+from interview_agent.storage import get_connection
+
+from .embedding import Embedder, build_embedder
+
+
+class SQLiteHybridRetriever:
+    def __init__(
+        self,
+        database_path: Path | str,
+        embedding_config: EmbeddingConfig,
+    ) -> None:
+        self.database_path = Path(database_path)
+        self.embedding_config = embedding_config
+        self._embedder: Embedder | None = None
+
+    def search(self, query: str, limit: int) -> list[dict[str, str | float]]:
+        with get_connection(self.database_path) as connection:
+            return hybrid_search(
+                connection,
+                query=query,
+                embedder=self._get_embedder(),
+                limit=limit,
+            )
+
+    def _get_embedder(self) -> Embedder:
+        if self._embedder is None:
+            self._embedder = build_embedder(self.embedding_config)
+        return self._embedder
 
 
 def ensure_retrieval_schema(connection: sqlite3.Connection) -> None:

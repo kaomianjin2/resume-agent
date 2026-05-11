@@ -8,6 +8,7 @@ from typing import Protocol, TextIO
 
 from interview_agent.config import DEFAULT_CONFIG_PATH, ConfigError, LLMConfig, load_config
 from interview_agent.executor import NodeExecutionResult, NodeExecutor
+from interview_agent.kb.retrieval import SQLiteHybridRetriever
 from interview_agent.llm import FakeLLMClient, OpenAICompatibleClient
 from interview_agent.nodes.registry import NodeRegistry, UnknownNodeError, build_default_registry
 from interview_agent.planner import (
@@ -91,7 +92,10 @@ def main(
     session_store = SessionStore(database_path)
     session_store.create_session(session_id)
     llm_client = llm_factory(config.llm)
-    services = {"llm": llm_client}
+    services = {
+        "llm": llm_client,
+        "retriever": SQLiteHybridRetriever(database_path, config.embedding),
+    }
     executor = (executor_factory or _default_executor_factory)(database_path, registry, services)
 
     _write_line(output_stream, "请输入需求，输入 exit 退出。")
