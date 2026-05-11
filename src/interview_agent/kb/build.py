@@ -29,16 +29,20 @@ def build_knowledge_base(
     initialize_database(resolved_database_path)
     set_knowledge_base_status(resolved_database_path, "building")
 
-    with get_connection(resolved_database_path) as connection:
-        with transaction(connection):
-            for file_path in iter_source_files(source_root):
-                _upsert_document(
-                    connection=connection,
-                    source_root=source_root,
-                    file_path=file_path,
-                    chunk_size=config.knowledge_base.chunk_size,
-                    chunk_overlap=config.knowledge_base.chunk_overlap,
-                )
+    try:
+        with get_connection(resolved_database_path) as connection:
+            with transaction(connection):
+                for file_path in iter_source_files(source_root):
+                    _upsert_document(
+                        connection=connection,
+                        source_root=source_root,
+                        file_path=file_path,
+                        chunk_size=config.knowledge_base.chunk_size,
+                        chunk_overlap=config.knowledge_base.chunk_overlap,
+                    )
+    except Exception:
+        set_knowledge_base_status(resolved_database_path, "failed")
+        raise
 
     set_knowledge_base_status(resolved_database_path, "ready")
 
