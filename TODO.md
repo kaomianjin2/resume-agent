@@ -133,7 +133,7 @@
 
 ## Task 6: Runtime Node Registry
 
-**Status:** `[ ]`  
+**Status:** `[x]`
 **Owner:** implementer  
 **Dependencies:** Task 2, Task 4, Task 5
 
