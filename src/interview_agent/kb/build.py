@@ -13,8 +13,10 @@ from interview_agent.storage import (
 )
 
 from .chunking import chunk_text, content_hash
+from .embedding import Embedder
 from .file_policy import iter_source_files
 from .parser import extract_text
+from .retrieval import index_chunks
 
 
 def build_knowledge_base(
@@ -22,6 +24,7 @@ def build_knowledge_base(
     source: Path | str,
     config_path: Path | str,
     database_path: Path | str,
+    embedder: Embedder | None = None,
 ) -> None:
     config = load_config(config_path)
     source_root = Path(source)
@@ -39,6 +42,7 @@ def build_knowledge_base(
                         file_path=file_path,
                         chunk_size=config.knowledge_base.chunk_size,
                         chunk_overlap=config.knowledge_base.chunk_overlap,
+                        embedder=embedder,
                     )
     except Exception:
         set_knowledge_base_status(resolved_database_path, "failed")
@@ -76,6 +80,7 @@ def _upsert_document(
     file_path: Path,
     chunk_size: int,
     chunk_overlap: int,
+    embedder: Embedder | None,
 ) -> None:
     document_content = extract_text(file_path)
     document_hash = content_hash(document_content)
@@ -117,7 +122,10 @@ def _upsert_document(
         (document_id, relative_path, document_hash, "ready", timestamp, timestamp),
     )
 
+    chunk_ids: list[str] = []
     for chunk_index, chunk_content in enumerate(chunks):
+        chunk_id = _chunk_id(document_id, chunk_index, chunk_content)
+        chunk_ids.append(chunk_id)
         connection.execute(
             """
             INSERT INTO knowledge_chunks (
@@ -129,8 +137,11 @@ def _upsert_document(
             )
             VALUES (?, ?, ?, ?, ?)
             """,
-            (_chunk_id(document_id, chunk_index, chunk_content), document_id, chunk_index, chunk_content, timestamp),
+            (chunk_id, document_id, chunk_index, chunk_content, timestamp),
         )
+
+    if embedder is not None:
+        index_chunks(connection, embedder=embedder, chunk_ids=chunk_ids)
 
 
 def _document_id(relative_path: str) -> str:
