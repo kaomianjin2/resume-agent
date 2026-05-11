@@ -13,10 +13,10 @@ from interview_agent.storage import (
 )
 
 from .chunking import chunk_text, content_hash
-from .embedding import Embedder
+from .embedding import Embedder, LocalBGEEmbedder, build_embedder
 from .file_policy import iter_source_files
 from .parser import extract_text
-from .retrieval import index_chunks
+from .retrieval import clear_document_retrieval_entries, index_chunks
 
 
 def build_knowledge_base(
@@ -27,6 +27,7 @@ def build_knowledge_base(
     embedder: Embedder | None = None,
 ) -> None:
     config = load_config(config_path)
+    resolved_embedder = _resolve_embedder(config.embedding, embedder)
     source_root = Path(source)
     resolved_database_path = Path(database_path)
     initialize_database(resolved_database_path)
@@ -42,7 +43,7 @@ def build_knowledge_base(
                         file_path=file_path,
                         chunk_size=config.knowledge_base.chunk_size,
                         chunk_overlap=config.knowledge_base.chunk_overlap,
-                        embedder=embedder,
+                        embedder=resolved_embedder,
                     )
     except Exception:
         set_knowledge_base_status(resolved_database_path, "failed")
@@ -101,6 +102,7 @@ def _upsert_document(
     timestamp = _current_timestamp()
     chunks = chunk_text(document_content, chunk_size, chunk_overlap)
 
+    clear_document_retrieval_entries(connection, document_id=document_id)
     connection.execute("DELETE FROM knowledge_chunks WHERE document_id = ?", (document_id,))
     connection.execute(
         """
@@ -154,6 +156,22 @@ def _chunk_id(document_id: str, chunk_index: int, chunk_content: str) -> str:
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _resolve_embedder(
+    embedding_config,
+    embedder: Embedder | None,
+) -> Embedder | None:
+    if embedder is not None:
+        return embedder
+
+    configured_embedder = build_embedder(embedding_config)
+    if isinstance(configured_embedder, LocalBGEEmbedder):
+        model_path = Path(configured_embedder.model_path)
+        if not model_path.exists():
+            return None
+
+    return configured_embedder
 
 
 if __name__ == "__main__":

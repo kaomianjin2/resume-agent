@@ -8,7 +8,7 @@ from .embedding import Embedder
 
 
 def ensure_retrieval_schema(connection: sqlite3.Connection) -> None:
-    connection.executescript(
+    connection.execute(
         """
         CREATE TABLE IF NOT EXISTS knowledge_chunk_embeddings (
             chunk_id TEXT PRIMARY KEY,
@@ -16,13 +16,16 @@ def ensure_retrieval_schema(connection: sqlite3.Connection) -> None:
             dimension INTEGER NOT NULL,
             updated_at TEXT NOT NULL,
             FOREIGN KEY (chunk_id) REFERENCES knowledge_chunks(chunk_id) ON DELETE CASCADE
-        );
-
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
             chunk_id UNINDEXED,
             source_path UNINDEXED,
             content
-        );
+        )
         """
     )
 
@@ -91,6 +94,31 @@ def get_chunk_embedding(connection: sqlite3.Connection, chunk_id: str) -> list[f
         return None
 
     return [float(value) for value in json.loads(str(row[0]))]
+
+
+def clear_document_retrieval_entries(connection: sqlite3.Connection, *, document_id: str) -> None:
+    ensure_retrieval_schema(connection)
+    chunk_rows = connection.execute(
+        """
+        SELECT chunk_id
+        FROM knowledge_chunks
+        WHERE document_id = ?
+        """,
+        (document_id,),
+    ).fetchall()
+    if not chunk_rows:
+        return
+
+    chunk_ids = [str(row[0]) for row in chunk_rows]
+    placeholders = ", ".join("?" for _ in chunk_ids)
+    connection.execute(
+        f"DELETE FROM knowledge_chunk_embeddings WHERE chunk_id IN ({placeholders})",
+        chunk_ids,
+    )
+    connection.execute(
+        f"DELETE FROM knowledge_chunks_fts WHERE chunk_id IN ({placeholders})",
+        chunk_ids,
+    )
 
 
 def keyword_search(
@@ -177,7 +205,8 @@ def hybrid_search(
 
 def _build_fts_query(query: str) -> str:
     tokens = [token.strip() for token in query.split() if token.strip()]
-    return " AND ".join(f'"{token}"' for token in tokens)
+    escaped_tokens = [token.replace('"', '""') for token in tokens]
+    return " AND ".join(f'"{token}"' for token in escaped_tokens)
 
 
 def _rows_to_ranked_results(rows: list[tuple[object, ...]]) -> list[dict[str, str | float]]:

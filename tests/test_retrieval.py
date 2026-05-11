@@ -218,6 +218,136 @@ def test_build_knowledge_base_populates_retrieval_indexes_with_fake_embedder(tmp
     assert matches[0]["source_path"] == "notes.md"
 
 
+def test_build_knowledge_base_uses_configured_embedder_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path)
+    markdown_path = source_dir / "notes.md"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text("python retry planning", encoding="utf-8")
+    fake_embedder = FakeEmbedder(vocabulary=("python", "retry", "planning"))
+    calls: list[EmbeddingConfig] = []
+
+    def fake_build_embedder(config: EmbeddingConfig) -> FakeEmbedder:
+        calls.append(config)
+        return fake_embedder
+
+    monkeypatch.setattr("interview_agent.kb.build.build_embedder", fake_build_embedder)
+
+    build_knowledge_base(
+        source=source_dir,
+        config_path=config_path,
+        database_path=database_path,
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        embedding_count = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_chunk_embeddings"
+        ).fetchone()
+        fts_count = connection.execute("SELECT COUNT(*) FROM knowledge_chunks_fts").fetchone()
+
+    assert len(calls) == 1
+    assert calls[0].model_name == "BAAI/bge-m3"
+    assert calls[0].model_path == "./models/bge-m3"
+    assert embedding_count == (1,)
+    assert fts_count == (1,)
+
+
+def test_build_knowledge_base_rolls_back_documents_chunks_and_indexes_when_indexing_fails(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path)
+    markdown_path = source_dir / "notes.md"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text("python retry planning", encoding="utf-8")
+
+    class FailingEmbedder:
+        def embed_texts(self, texts: list[str]) -> list[list[float]]:
+            raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        build_knowledge_base(
+            source=source_dir,
+            config_path=config_path,
+            database_path=database_path,
+            embedder=FailingEmbedder(),
+        )
+
+    with sqlite3.connect(database_path) as connection:
+        document_count = connection.execute("SELECT COUNT(*) FROM knowledge_documents").fetchone()
+        chunk_count = connection.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()
+        embedding_count = count_table_rows_if_exists(connection, "knowledge_chunk_embeddings")
+        fts_count = count_table_rows_if_exists(connection, "knowledge_chunks_fts")
+
+    assert document_count == (0,)
+    assert chunk_count == (0,)
+    assert embedding_count == 0
+    assert fts_count == 0
+
+
+def test_build_knowledge_base_replaces_fts_rows_when_document_content_changes(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path)
+    markdown_path = source_dir / "notes.md"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    embedder = FakeEmbedder(vocabulary=("python", "legacy", "modern", "api"))
+
+    markdown_path.write_text("legacy python guidance", encoding="utf-8")
+    build_knowledge_base(
+        source=source_dir,
+        config_path=config_path,
+        database_path=database_path,
+        embedder=embedder,
+    )
+
+    markdown_path.write_text("modern python api guidance", encoding="utf-8")
+    build_knowledge_base(
+        source=source_dir,
+        config_path=config_path,
+        database_path=database_path,
+        embedder=embedder,
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        legacy_matches = keyword_search(connection, query="legacy", limit=5)
+        modern_matches = keyword_search(connection, query="modern", limit=5)
+        fts_contents = connection.execute(
+            "SELECT content FROM knowledge_chunks_fts ORDER BY rowid"
+        ).fetchall()
+
+    assert legacy_matches == []
+    assert [match["chunk_id"] for match in modern_matches] == [modern_matches[0]["chunk_id"]]
+    assert all("legacy" not in row[0] for row in fts_contents)
+
+
+def test_keyword_search_escapes_double_quotes_in_query(tmp_path: Path) -> None:
+    database_path = tmp_path / "knowledge.sqlite3"
+    initialize_database(database_path)
+
+    with get_connection(database_path) as connection:
+        insert_chunk(
+            connection,
+            document_id="doc-1",
+            chunk_id="chunk-1",
+            source_path="notes/backend.md",
+            content='python "api" patterns',
+        )
+        index_chunks(
+            connection,
+            embedder=FakeEmbedder(vocabulary=("python", "api", "patterns")),
+            chunk_ids=["chunk-1"],
+        )
+
+        matches = keyword_search(connection, query='python "api"', limit=2)
+
+    assert isinstance(matches, list)
+    assert [match["chunk_id"] for match in matches] == ["chunk-1"]
+
+
 def insert_chunk(
     connection: sqlite3.Connection,
     document_id: str,
@@ -284,3 +414,20 @@ def write_config(tmp_path: Path, source_dir: Path, database_path: Path) -> Path:
         encoding="utf-8",
     )
     return config_path
+
+
+def count_table_rows_if_exists(connection: sqlite3.Connection, table_name: str) -> int:
+    row = connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM sqlite_master
+        WHERE type IN ('table', 'view') AND name = ?
+        """,
+        (table_name,),
+    ).fetchone()
+    if row != (1,):
+        return 0
+
+    count_row = connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+    assert count_row is not None
+    return int(count_row[0])
