@@ -13,8 +13,10 @@ from interview_agent.storage import (
 )
 
 from .chunking import chunk_text, content_hash
+from .embedding import Embedder, build_embedder
 from .file_policy import iter_source_files
 from .parser import extract_text
+from .retrieval import clear_document_retrieval_entries, index_chunks
 
 
 def build_knowledge_base(
@@ -22,8 +24,10 @@ def build_knowledge_base(
     source: Path | str,
     config_path: Path | str,
     database_path: Path | str,
+    embedder: Embedder | None = None,
 ) -> None:
     config = load_config(config_path)
+    resolved_embedder = _resolve_embedder(config.embedding, embedder)
     source_root = Path(source)
     resolved_database_path = Path(database_path)
     initialize_database(resolved_database_path)
@@ -39,6 +43,7 @@ def build_knowledge_base(
                         file_path=file_path,
                         chunk_size=config.knowledge_base.chunk_size,
                         chunk_overlap=config.knowledge_base.chunk_overlap,
+                        embedder=resolved_embedder,
                     )
     except Exception:
         set_knowledge_base_status(resolved_database_path, "failed")
@@ -76,6 +81,7 @@ def _upsert_document(
     file_path: Path,
     chunk_size: int,
     chunk_overlap: int,
+    embedder: Embedder,
 ) -> None:
     document_content = extract_text(file_path)
     document_hash = content_hash(document_content)
@@ -96,6 +102,7 @@ def _upsert_document(
     timestamp = _current_timestamp()
     chunks = chunk_text(document_content, chunk_size, chunk_overlap)
 
+    clear_document_retrieval_entries(connection, document_id=document_id)
     connection.execute("DELETE FROM knowledge_chunks WHERE document_id = ?", (document_id,))
     connection.execute(
         """
@@ -117,7 +124,10 @@ def _upsert_document(
         (document_id, relative_path, document_hash, "ready", timestamp, timestamp),
     )
 
+    chunk_ids: list[str] = []
     for chunk_index, chunk_content in enumerate(chunks):
+        chunk_id = _chunk_id(document_id, chunk_index, chunk_content)
+        chunk_ids.append(chunk_id)
         connection.execute(
             """
             INSERT INTO knowledge_chunks (
@@ -129,8 +139,10 @@ def _upsert_document(
             )
             VALUES (?, ?, ?, ?, ?)
             """,
-            (_chunk_id(document_id, chunk_index, chunk_content), document_id, chunk_index, chunk_content, timestamp),
+            (chunk_id, document_id, chunk_index, chunk_content, timestamp),
         )
+
+    index_chunks(connection, embedder=embedder, chunk_ids=chunk_ids)
 
 
 def _document_id(relative_path: str) -> str:
@@ -143,6 +155,16 @@ def _chunk_id(document_id: str, chunk_index: int, chunk_content: str) -> str:
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _resolve_embedder(
+    embedding_config,
+    embedder: Embedder | None,
+) -> Embedder:
+    if embedder is not None:
+        return embedder
+
+    return build_embedder(embedding_config)
 
 
 if __name__ == "__main__":
