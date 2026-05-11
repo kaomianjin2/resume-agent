@@ -20,7 +20,7 @@
 
 ## Task 0: Repository Bootstrap
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** none
 
