@@ -151,7 +151,7 @@
 
 ## Task 7: Conversation Router And Planner
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 6
 
