@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Bootstrap package for the interview agent CLI."
 readme = "AGENTS.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "sentence-transformers>=5.4.1",
+]
 
 [project.scripts]
 interview-agent = "interview_agent.cli:main"
