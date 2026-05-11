@@ -188,7 +188,7 @@
 
 ## Task 8B: Interview Node Handlers
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Task 8A
 
