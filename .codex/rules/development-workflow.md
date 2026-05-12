@@ -19,10 +19,13 @@
 6. 审查失败时，由同一个 `implementer` 修复并重新审查。
 7. 审查通过后，在任务 worktree 运行最小必要测试。
 8. 合并任务分支到主分支。
-9. 主 agent 在主分支更新 `TODO.md` 任务状态并提交。
-10. 推送主分支到远端。
-11. 确认主分支包含任务提交和 TODO 状态更新。
-12. 删除任务 worktree。
+9. 主 agent 在主分支更新 `TODO.md` 任务状态。
+10. 新功能开发完成、测试通过、reviewer 通过后，主 agent 必须更新 `HISTORY.md` 功能变更历史。
+11. 若项目架构有变动，主 agent 必须同步更新 `docs/architecture.svg` 和 `docs/architecture.md`。
+12. 提交主分支上的 `TODO.md`、`HISTORY.md` 和架构图相关更新。
+13. 推送主分支到远端。
+14. 确认主分支包含任务提交、TODO 状态更新、HISTORY 记录和架构图更新。
+15. 删除任务 worktree。
 
 ## Worktree 规则
 
@@ -33,10 +36,36 @@
 - 合并前必须确认测试通过。
 - 合并前必须确认 `reviewer` 结论为可继续。
 - `TODO.md` 任务状态只由主 agent 更新。
-- `TODO.md` 最终状态更新必须发生在任务分支合并后、主分支推送前。
+- `HISTORY.md` 功能变更历史只由主 agent 更新。
+- `docs/architecture.svg` 和 `docs/architecture.md` 架构图只由主 agent 更新。
+- `TODO.md` 最终状态更新、`HISTORY.md` 记录和架构图更新必须发生在任务分支合并后、主分支推送前。
 - 推送远端前禁止删除 worktree。
-- 删除 worktree 前必须确认主分支包含任务提交。
+- 删除 worktree 前必须确认主分支包含任务提交、TODO 状态更新、HISTORY 记录和架构图更新。
 - 删除 worktree 前必须确认主分支已推送远端。
+
+## Commit 规则
+
+- 所有 `git commit` 提交信息必须使用中文。
+- 提交信息必须准确描述本次变更内容。
+- 禁止使用纯英文提交信息。
+
+## 功能变更历史
+
+- 历史文件固定为 `HISTORY.md`。
+- 每个完成的新功能必须新增一条记录。
+- 记录必须包含日期、任务编号、功能名称、测试命令、reviewer 结论和影响范围。
+- 只有满足以下条件后才能记录：
+  - 任务分支已合并到主分支。
+  - 最小必要测试已通过。
+  - `reviewer` 结论为可继续。
+- 推送主分支前必须验证 `HISTORY.md` 包含本次功能记录。
+
+## 架构图维护
+
+- 架构图文件固定为 `docs/architecture.svg`。
+- 架构说明文件固定为 `docs/architecture.md`。
+- 任一变更涉及运行时入口、节点编排、节点契约、存储结构、知识库构建、检索链路、配置边界或外部服务调用时，必须同步更新架构图。
+- 推送主分支前必须验证架构图与当前代码、配置边界和运行流程一致。
 
 ## Review 规则
 
