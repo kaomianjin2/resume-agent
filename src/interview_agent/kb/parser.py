@@ -12,7 +12,7 @@ PDF_STREAM_PATTERN = re.compile(
     rb"<<(?P<dictionary>.*?)>>\s*stream\r?\n(?P<stream>.*?)\r?\nendstream",
     re.DOTALL,
 )
-PDF_TJ_PATTERN = re.compile(rb"(?P<operand>\[(?:.|\s)*?\]|\((?:\\.|[^\\)])*\))\s*(?P<operator>TJ|Tj)")
+MAX_PDF_BYTES = 8_000_000
 
 
 def extract_text(file_path: Path | str) -> str:
@@ -22,6 +22,8 @@ def extract_text(file_path: Path | str) -> str:
     if suffix == ".md":
         return path.read_text(encoding="utf-8").strip()
     if suffix == ".pdf":
+        if path.stat().st_size > MAX_PDF_BYTES:
+            raise ValueError("PDF 文件过大，跳过本地解析")
         return _extract_pdf_text(path)
     if suffix == ".docx":
         return _extract_docx_text(path)
@@ -31,14 +33,23 @@ def extract_text(file_path: Path | str) -> str:
 
 def _extract_pdf_text(path: Path) -> str:
     extracted_segments: list[str] = []
+    failed_stream_count = 0
 
     for stream_match in PDF_STREAM_PATTERN.finditer(path.read_bytes()):
         stream_dictionary = stream_match.group("dictionary")
         stream_bytes = stream_match.group("stream")
-        decoded_stream = _decode_pdf_stream(stream_dictionary, stream_bytes)
+        try:
+            decoded_stream = _decode_pdf_stream(stream_dictionary, stream_bytes)
+        except ValueError:
+            failed_stream_count += 1
+            continue
         extracted_segments.extend(_extract_text_segments_from_pdf_stream(decoded_stream))
 
-    return "\n".join(segment for segment in extracted_segments if segment).strip()
+    extracted_text = "\n".join(segment for segment in extracted_segments if segment).strip()
+    if not extracted_text and failed_stream_count:
+        raise ValueError("PDF FlateDecode 解压失败")
+
+    return extracted_text
 
 
 def _decode_pdf_stream(stream_dictionary: bytes, stream_bytes: bytes) -> bytes:
@@ -54,18 +65,113 @@ def _decode_pdf_stream(stream_dictionary: bytes, stream_bytes: bytes) -> bytes:
 def _extract_text_segments_from_pdf_stream(stream_bytes: bytes) -> list[str]:
     segments: list[str] = []
 
-    for match in PDF_TJ_PATTERN.finditer(stream_bytes):
-        operator = match.group("operator")
-        operand = match.group("operand")
-        if operator == b"Tj":
-            if not operand.startswith(b"("):
+    for text_object in _iter_pdf_text_objects(stream_bytes):
+        for operand, operator in _iter_pdf_text_operations(text_object):
+            if operator == b"Tj":
+                segments.append(_decode_pdf_literal_text(operand[1:-1]))
                 continue
-            segments.append(_decode_pdf_literal_text(operand[1:-1]))
-            continue
 
-        segments.append(_decode_pdf_text_array(operand))
+            segments.append(_decode_pdf_text_array(operand))
 
     return [segment.strip() for segment in segments if segment.strip()]
+
+
+def _iter_pdf_text_objects(stream_bytes: bytes) -> list[bytes]:
+    text_objects: list[bytes] = []
+    current_index = 0
+
+    while current_index < len(stream_bytes):
+        begin_index = stream_bytes.find(b"BT", current_index)
+        if begin_index == -1:
+            break
+        end_index = stream_bytes.find(b"ET", begin_index + 2)
+        if end_index == -1:
+            break
+        text_objects.append(stream_bytes[begin_index + 2 : end_index])
+        current_index = end_index + 2
+
+    return text_objects
+
+
+def _iter_pdf_text_operations(stream_bytes: bytes) -> list[tuple[bytes, bytes]]:
+    operations: list[tuple[bytes, bytes]] = []
+    current_index = 0
+    stream_length = len(stream_bytes)
+
+    while current_index < stream_length:
+        current_byte = stream_bytes[current_index]
+        if current_byte == ord("("):
+            literal_end_index = _find_pdf_literal_end_or_none(stream_bytes, current_index)
+            if literal_end_index is None:
+                current_index += 1
+                continue
+            next_index = _skip_pdf_whitespace(stream_bytes, literal_end_index + 1)
+            if stream_bytes[next_index : next_index + 2] == b"Tj":
+                operations.append((stream_bytes[current_index : literal_end_index + 1], b"Tj"))
+                current_index = next_index + 2
+                continue
+            current_index = literal_end_index + 1
+            continue
+        if current_byte == ord("["):
+            array_end_index = _find_pdf_array_end_or_none(stream_bytes, current_index)
+            if array_end_index is None:
+                current_index += 1
+                continue
+            next_index = _skip_pdf_whitespace(stream_bytes, array_end_index + 1)
+            if stream_bytes[next_index : next_index + 2] == b"TJ":
+                operations.append((stream_bytes[current_index : array_end_index + 1], b"TJ"))
+                current_index = next_index + 2
+                continue
+            current_index = array_end_index + 1
+            continue
+
+        current_index += 1
+
+    return operations
+
+
+def _find_pdf_array_end_or_none(raw_bytes: bytes, start_index: int) -> int | None:
+    try:
+        return _find_pdf_array_end(raw_bytes, start_index)
+    except ValueError:
+        return None
+
+
+def _find_pdf_literal_end_or_none(raw_bytes: bytes, start_index: int) -> int | None:
+    try:
+        return _find_pdf_literal_end(raw_bytes, start_index)
+    except ValueError:
+        return None
+
+
+def _find_pdf_array_end(raw_bytes: bytes, start_index: int) -> int:
+    current_index = start_index + 1
+    nesting_depth = 1
+
+    while current_index < len(raw_bytes):
+        current_byte = raw_bytes[current_index]
+        if current_byte == ord("("):
+            literal_end_index = _find_pdf_literal_end_or_none(raw_bytes, current_index)
+            if literal_end_index is None:
+                raise ValueError("PDF 数组中的文本字符串未闭合")
+            current_index = literal_end_index + 1
+            continue
+        if current_byte == ord("["):
+            nesting_depth += 1
+        elif current_byte == ord("]"):
+            nesting_depth -= 1
+            if nesting_depth == 0:
+                return current_index
+        current_index += 1
+
+    return len(raw_bytes) - 1
+
+
+def _skip_pdf_whitespace(raw_bytes: bytes, start_index: int) -> int:
+    current_index = start_index
+    while current_index < len(raw_bytes) and raw_bytes[current_index] in b"\x00\t\n\f\r ":
+        current_index += 1
+    return current_index
 
 
 def _decode_pdf_text_array(array_bytes: bytes) -> str:

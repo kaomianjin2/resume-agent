@@ -19,6 +19,9 @@ from .parser import extract_text
 from .retrieval import clear_document_retrieval_entries, index_chunks
 
 
+CHUNK_INDEX_BATCH_SIZE = 64
+
+
 def build_knowledge_base(
     *,
     source: Path | str,
@@ -36,7 +39,12 @@ def build_knowledge_base(
     try:
         with get_connection(resolved_database_path) as connection:
             with transaction(connection):
-                for file_path in iter_source_files(source_root):
+                source_files = iter_source_files(source_root)
+                current_source_paths = {
+                    file_path.relative_to(source_root).as_posix() for file_path in source_files
+                }
+                _remove_stale_documents(connection, current_source_paths)
+                for file_path in source_files:
                     _upsert_document(
                         connection=connection,
                         source_root=source_root,
@@ -83,9 +91,15 @@ def _upsert_document(
     chunk_overlap: int,
     embedder: Embedder,
 ) -> None:
-    document_content = extract_text(file_path)
-    document_hash = content_hash(document_content)
     relative_path = file_path.relative_to(source_root).as_posix()
+    try:
+        document_content = extract_text(file_path)
+    except ValueError as error:
+        document_content = _fallback_document_content(relative_path, error)
+    if not document_content.strip():
+        document_content = _fallback_document_content(relative_path, None)
+
+    document_hash = content_hash(document_content)
     existing_row = connection.execute(
         """
         SELECT document_id, content_hash
@@ -142,11 +156,29 @@ def _upsert_document(
             (chunk_id, document_id, chunk_index, chunk_content, timestamp),
         )
 
-    index_chunks(connection, embedder=embedder, chunk_ids=chunk_ids)
+    for chunk_id_batch in _batched(chunk_ids, CHUNK_INDEX_BATCH_SIZE):
+        index_chunks(connection, embedder=embedder, chunk_ids=chunk_id_batch)
 
 
 def _document_id(relative_path: str) -> str:
     return content_hash(relative_path)
+
+
+def _remove_stale_documents(connection, current_source_paths: set[str]) -> None:
+    rows = connection.execute(
+        """
+        SELECT document_id, source_path
+        FROM knowledge_documents
+        """
+    ).fetchall()
+    for row in rows:
+        document_id = str(row[0])
+        source_path = str(row[1])
+        if source_path in current_source_paths:
+            continue
+        clear_document_retrieval_entries(connection, document_id=document_id)
+        connection.execute("DELETE FROM knowledge_chunks WHERE document_id = ?", (document_id,))
+        connection.execute("DELETE FROM knowledge_documents WHERE document_id = ?", (document_id,))
 
 
 def _chunk_id(document_id: str, chunk_index: int, chunk_content: str) -> str:
@@ -155,6 +187,21 @@ def _chunk_id(document_id: str, chunk_index: int, chunk_content: str) -> str:
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _fallback_document_content(relative_path: str, error: ValueError | None) -> str:
+    lines = [
+        f"文件路径: {relative_path}",
+        f"文件名: {Path(relative_path).name}",
+        "正文抽取状态: 未能从原文件抽取正文，已保留文件索引用于检索定位。",
+    ]
+    if error is not None:
+        lines.append(f"抽取失败原因: {error}")
+    return "\n".join(lines)
+
+
+def _batched(items: list[str], batch_size: int) -> list[list[str]]:
+    return [items[index : index + batch_size] for index in range(0, len(items), batch_size)]
 
 
 def _resolve_embedder(

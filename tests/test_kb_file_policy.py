@@ -14,6 +14,8 @@ def test_iter_source_files_includes_only_supported_documents_and_excludes_sensit
     excluded_resume = tmp_path / "简历" / "candidate.md"
     excluded_offboarding = tmp_path / "docs" / "离职证明.pdf"
     excluded_process_dir = tmp_path / "lyjs一起写文档" / "process.md"
+    excluded_java_pdf = tmp_path / "books" / "JVM tuning.pdf"
+    excluded_java_markdown = tmp_path / "notes" / "spring boot.md"
     excluded_png = tmp_path / "images" / "cover.png"
     excluded_excel = tmp_path / "sheets" / "matrix.xlsx"
 
@@ -24,6 +26,8 @@ def test_iter_source_files_includes_only_supported_documents_and_excludes_sensit
         excluded_resume,
         excluded_offboarding,
         excluded_process_dir,
+        excluded_java_pdf,
+        excluded_java_markdown,
         excluded_png,
         excluded_excel,
     ]:

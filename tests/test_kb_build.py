@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+import signal
 import sqlite3
 import subprocess
 import sys
+import time
 import zlib
 import zipfile
 
-import pytest
-
+from interview_agent.kb import build as kb_build
 from interview_agent.kb.build import build_knowledge_base
 from interview_agent.kb.embedding import FakeEmbedder
+from interview_agent.kb.parser import MAX_PDF_BYTES, _extract_text_segments_from_pdf_stream
 from interview_agent.storage import get_knowledge_base_status
 
 
@@ -95,7 +97,73 @@ def test_build_knowledge_base_skips_reinserting_chunks_when_document_is_unchange
     assert chunk_count[0] == distinct_chunk_count[0]
 
 
-def test_build_knowledge_base_records_failed_status_and_preserves_previous_ready_result(tmp_path: Path) -> None:
+def test_build_knowledge_base_indexes_chunks_in_bounded_batches(tmp_path: Path) -> None:
+    previous_batch_size = kb_build.CHUNK_INDEX_BATCH_SIZE
+    kb_build.CHUNK_INDEX_BATCH_SIZE = 3
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path, chunk_size=4, chunk_overlap=0)
+    markdown_path = source_dir / "notes.md"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text("abcdefghijklmnopqrst", encoding="utf-8")
+    embedder = RecordingEmbedder()
+
+    try:
+        build_knowledge_base(
+            source=source_dir,
+            config_path=config_path,
+            database_path=database_path,
+            embedder=embedder,
+        )
+    finally:
+        kb_build.CHUNK_INDEX_BATCH_SIZE = previous_batch_size
+
+    assert embedder.batch_sizes == [3, 2]
+
+
+def test_build_knowledge_base_removes_documents_excluded_by_current_policy(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path, chunk_size=128, chunk_overlap=16)
+    java_path = source_dir / "java guide.md"
+    notes_path = source_dir / "notes.md"
+    java_path.parent.mkdir(parents=True, exist_ok=True)
+    java_path.write_text("old java content", encoding="utf-8")
+    notes_path.write_text("stable ready content", encoding="utf-8")
+
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript((PROJECT_ROOT / "src/interview_agent/schema.sql").read_text())
+        connection.execute(
+            """
+            INSERT INTO knowledge_documents (
+                document_id,
+                source_path,
+                content_hash,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES ('legacy-java', 'java guide.md', 'old-hash', 'ready', 'now', 'now')
+            """
+        )
+
+    build_with_fake_embedder(source_dir, config_path, database_path)
+
+    with sqlite3.connect(database_path) as connection:
+        documents = connection.execute(
+            """
+            SELECT source_path
+            FROM knowledge_documents
+            ORDER BY source_path
+            """
+        ).fetchall()
+
+    assert documents == [("notes.md",)]
+
+
+def test_build_knowledge_base_indexes_unreadable_pdf_with_fallback_content(
+    tmp_path: Path,
+) -> None:
     source_dir = tmp_path / "source"
     database_path = tmp_path / "knowledge.sqlite3"
     config_path = write_config(tmp_path, source_dir, database_path, chunk_size=128, chunk_overlap=16)
@@ -109,19 +177,74 @@ def test_build_knowledge_base_records_failed_status_and_preserves_previous_ready
 
     write_pdf_fixture(pdf_path, "broken content", compressed=True, truncate_stream=True)
 
-    with pytest.raises(ValueError, match="PDF FlateDecode 解压失败"):
-        build_with_fake_embedder(source_dir, config_path, database_path)
+    build_with_fake_embedder(source_dir, config_path, database_path)
 
-    assert get_knowledge_base_status(database_path) == "failed"
+    assert get_knowledge_base_status(database_path) == "ready"
 
     with sqlite3.connect(database_path) as connection:
-        meta_row = connection.execute(
+        documents = connection.execute(
             """
-            SELECT status
-            FROM knowledge_base_meta
-            WHERE singleton_id = 1
+            SELECT source_path, status
+            FROM knowledge_documents
+            ORDER BY source_path
+            """
+        ).fetchall()
+        broken_chunk = connection.execute(
+            """
+            SELECT kc.content
+            FROM knowledge_chunks AS kc
+            JOIN knowledge_documents AS kd ON kd.document_id = kc.document_id
+            WHERE kd.source_path = 'broken.pdf'
             """
         ).fetchone()
+
+    assert documents == [("broken.pdf", "ready"), ("notes.md", "ready")]
+    assert broken_chunk is not None
+    assert "broken.pdf" in broken_chunk[0]
+
+
+def test_build_knowledge_base_skips_broken_pdf_stream_when_other_streams_have_text(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path, chunk_size=128, chunk_overlap=16)
+    pdf_path = source_dir / "partially-broken.pdf"
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
+    write_pdf_fixture(pdf_path, "usable content", compressed=True)
+    pdf_path.write_bytes(
+        pdf_path.read_bytes()
+        + build_pdf_stream("broken content", compressed=True, truncate_stream=True)
+    )
+
+    build_with_fake_embedder(source_dir, config_path, database_path)
+
+    assert get_knowledge_base_status(database_path) == "ready"
+
+    with sqlite3.connect(database_path) as connection:
+        chunk_row = connection.execute("SELECT content FROM knowledge_chunks").fetchone()
+
+    assert chunk_row is not None
+    assert "usable content" in chunk_row[0]
+
+
+def test_build_knowledge_base_indexes_unreadable_document_with_fallback_content(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path, chunk_size=128, chunk_overlap=16)
+    markdown_path = source_dir / "notes.md"
+    unreadable_pdf_path = source_dir / "unreadable.pdf"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text("stable ready content", encoding="utf-8")
+    write_pdf_fixture(unreadable_pdf_path, "broken content", compressed=True, truncate_stream=True)
+
+    build_with_fake_embedder(source_dir, config_path, database_path)
+
+    assert get_knowledge_base_status(database_path) == "ready"
+
+    with sqlite3.connect(database_path) as connection:
         documents = connection.execute(
             """
             SELECT source_path, status
@@ -130,8 +253,57 @@ def test_build_knowledge_base_records_failed_status_and_preserves_previous_ready
             """
         ).fetchall()
 
-    assert meta_row == ("failed",)
-    assert documents == [("notes.md", "ready")]
+        unreadable_chunk = connection.execute(
+            """
+            SELECT kc.content
+            FROM knowledge_chunks AS kc
+            JOIN knowledge_documents AS kd ON kd.document_id = kc.document_id
+            WHERE kd.source_path = 'unreadable.pdf'
+            """
+        ).fetchone()
+
+    assert documents == [("notes.md", "ready"), ("unreadable.pdf", "ready")]
+    assert unreadable_chunk is not None
+    assert "unreadable.pdf" in unreadable_chunk[0]
+
+
+def test_build_knowledge_base_indexes_large_pdf_with_fallback_content(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path, chunk_size=128, chunk_overlap=16)
+    markdown_path = source_dir / "notes.md"
+    large_pdf_path = source_dir / "large.pdf"
+    markdown_path.parent.mkdir(parents=True, exist_ok=True)
+    markdown_path.write_text("stable ready content", encoding="utf-8")
+    large_pdf_path.write_bytes(b"0" * (MAX_PDF_BYTES + 1))
+
+    build_with_fake_embedder(source_dir, config_path, database_path)
+
+    assert get_knowledge_base_status(database_path) == "ready"
+
+    with sqlite3.connect(database_path) as connection:
+        documents = connection.execute(
+            """
+            SELECT source_path, status
+            FROM knowledge_documents
+            ORDER BY source_path
+            """
+        ).fetchall()
+
+        large_chunk = connection.execute(
+            """
+            SELECT kc.content
+            FROM knowledge_chunks AS kc
+            JOIN knowledge_documents AS kd ON kd.document_id = kc.document_id
+            WHERE kd.source_path = 'large.pdf'
+            """
+        ).fetchone()
+
+    assert documents == [("large.pdf", "ready"), ("notes.md", "ready")]
+    assert large_chunk is not None
+    assert "large.pdf" in large_chunk[0]
 
 
 def test_build_knowledge_base_extracts_text_from_flate_pdf_tj_arrays(tmp_path: Path) -> None:
@@ -159,6 +331,43 @@ def test_build_knowledge_base_extracts_text_from_flate_pdf_tj_arrays(tmp_path: P
 
     assert chunk_row is not None
     assert "Alpha Beta Gamma" in chunk_row[0]
+
+
+def test_pdf_text_segment_extraction_ignores_large_non_text_arrays_quickly() -> None:
+    def raise_timeout(*_: object) -> None:
+        raise TimeoutError("PDF stream scan timed out")
+
+    previous_handler = signal.signal(signal.SIGALRM, raise_timeout)
+    signal.alarm(1)
+    try:
+        start_time = time.perf_counter()
+        segments = _extract_text_segments_from_pdf_stream(b"[" * 200_000 + b" ET")
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+    assert segments == []
+    assert time.perf_counter() - start_time < 1
+
+
+def test_pdf_text_segment_extraction_skips_unclosed_non_text_literals() -> None:
+    segments = _extract_text_segments_from_pdf_stream(b"BT q (unclosed graphics data\n(Useful text) Tj ET")
+
+    assert segments == ["Useful text"]
+
+
+def test_pdf_text_segment_extraction_skips_arrays_with_unclosed_literals() -> None:
+    segments = _extract_text_segments_from_pdf_stream(b"BT q [(unclosed graphics data]\n(Useful text) Tj ET")
+
+    assert segments == ["Useful text"]
+
+
+def test_pdf_text_segment_extraction_only_scans_text_objects() -> None:
+    segments = _extract_text_segments_from_pdf_stream(
+        b"q (ignored graphics data) Tj Q\nBT (Useful text) Tj ET"
+    )
+
+    assert segments == ["Useful text"]
 
 
 def test_build_module_help_does_not_emit_runtime_warning() -> None:
@@ -248,6 +457,15 @@ def build_with_fake_embedder(
     )
 
 
+class RecordingEmbedder:
+    def __init__(self) -> None:
+        self.batch_sizes: list[int] = []
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        self.batch_sizes.append(len(texts))
+        return [[] for _ in texts]
+
+
 def write_pdf_fixture(
     path: Path,
     text: str | list[str],
@@ -256,6 +474,31 @@ def write_pdf_fixture(
     use_tj_array: bool = False,
     truncate_stream: bool = False,
 ) -> None:
+    pdf_bytes = (
+        b"%PDF-1.4\n"
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n"
+        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R >> endobj\n"
+        + b"4 0 obj "
+        + build_pdf_stream(
+            text,
+            compressed=compressed,
+            use_tj_array=use_tj_array,
+            truncate_stream=truncate_stream,
+        )
+        + b" endobj\nxref\n0 5\n0000000000 65535 f \n"
+        + b"trailer << /Root 1 0 R /Size 5 >>\nstartxref\n0\n%%EOF\n"
+    )
+    path.write_bytes(pdf_bytes)
+
+
+def build_pdf_stream(
+    text: str | list[str],
+    *,
+    compressed: bool,
+    use_tj_array: bool = False,
+    truncate_stream: bool = False,
+) -> bytes:
     pdf_operation = build_pdf_text_operation(text, use_tj_array=use_tj_array)
     stream_bytes = f"BT {pdf_operation} ET".encode("latin-1")
     stream_dictionary = f"<< /Length {len(stream_bytes)}"
@@ -265,18 +508,7 @@ def write_pdf_fixture(
             stream_bytes = stream_bytes[:-4]
         stream_dictionary = f"<< /Length {len(stream_bytes)} /Filter /FlateDecode"
     stream_dictionary += " >>"
-
-    pdf_bytes = (
-        b"%PDF-1.4\n"
-        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n"
-        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n"
-        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R >> endobj\n"
-        + f"4 0 obj {stream_dictionary} stream\n".encode("latin-1")
-        + stream_bytes
-        + b"\nendstream endobj\nxref\n0 5\n0000000000 65535 f \n"
-        + b"trailer << /Root 1 0 R /Size 5 >>\nstartxref\n0\n%%EOF\n"
-    )
-    path.write_bytes(pdf_bytes)
+    return f"{stream_dictionary} stream\n".encode("latin-1") + stream_bytes + b"\nendstream"
 
 
 def build_pdf_text_operation(text: str | list[str], *, use_tj_array: bool) -> str:

@@ -7,6 +7,7 @@ INCLUDED_SUFFIXES = {".md", ".pdf", ".docx"}
 EXCLUDED_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".xlsx"}
 EXCLUDED_DIRECTORY_NAMES = {"简历", "lyjs一起写文档"}
 EXCLUDED_BASENAME_PREFIXES = {"离职证明"}
+EXCLUDED_TECH_KEYWORDS = {"java", "jvm", "spring"}
 
 
 def iter_source_files(source_root: Path | str) -> list[Path]:
@@ -36,5 +37,12 @@ def should_include_file(source_root: Path | str, file_path: Path | str) -> bool:
         return False
     if any(candidate_path.name.startswith(prefix) for prefix in EXCLUDED_BASENAME_PREFIXES):
         return False
+    if _has_excluded_tech_keyword(candidate_path.relative_to(root_path).as_posix()):
+        return False
 
     return True
+
+
+def _has_excluded_tech_keyword(relative_path: str) -> bool:
+    normalized_path = relative_path.lower()
+    return any(keyword in normalized_path for keyword in EXCLUDED_TECH_KEYWORDS)
