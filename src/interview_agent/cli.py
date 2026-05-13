@@ -13,6 +13,7 @@ from interview_agent.llm import FakeLLMClient, OpenAICompatibleClient
 from interview_agent.nodes.registry import NodeRegistry, UnknownNodeError, build_default_registry
 from interview_agent.planner import (
     ExecutionPlan,
+    PlanStep,
     PlanConfirmation,
     build_execution_plan,
     ensure_plan_confirmation,
@@ -146,6 +147,21 @@ def main(
             _write_line(output_stream, "已取消执行计划。")
             continue
 
+        if _is_mock_interview_request(normalized_message, direct_node_name, selected_node):
+            try:
+                _run_mock_interview(
+                    executor=executor,
+                    registry=registry,
+                    session_store=session_store,
+                    session_id=session_id,
+                    plan=plan,
+                    input_func=input_func,
+                    output=output_stream,
+                )
+            except InputCancelledError:
+                _write_line(output_stream, "输入结束，已取消当前执行。")
+            continue
+
         for step in plan.steps:
             try:
                 result = _execute_step_with_prompt(
@@ -236,6 +252,174 @@ def _execute_step_with_prompt(
         )
         result = executor.execute_node(session_id=session_id, node_name=node_name, inputs=provided_inputs)
     return result
+
+
+def _is_mock_interview_request(
+    normalized_message: str,
+    direct_node_name: str | None,
+    selected_node: str,
+) -> bool:
+    if direct_node_name is not None:
+        return False
+    if selected_node != "question_generate":
+        return False
+    return "模拟面试" in normalized_message
+
+
+def _run_mock_interview(
+    executor: ExecutorProtocol,
+    registry: NodeRegistry,
+    session_store: SessionStore,
+    session_id: str,
+    plan: ExecutionPlan,
+    input_func: InputFunc,
+    output: TextIO,
+) -> None:
+    for step in plan.steps:
+        result = _execute_step_with_prompt(
+            executor=executor,
+            session_store=session_store,
+            session_id=session_id,
+            node_name=step.node_name,
+            input_func=input_func,
+            output=output,
+        )
+        _write_result(output, result)
+        if result.status != "success":
+            return
+        if step.node_name == "question_generate" and _questions_are_empty(result.output):
+            _retry_mock_interview_question_generate(
+                executor=executor,
+                registry=registry,
+                session_store=session_store,
+                session_id=session_id,
+                input_func=input_func,
+                output=output,
+            )
+            return
+
+
+def _retry_mock_interview_question_generate(
+    executor: ExecutorProtocol,
+    registry: NodeRegistry,
+    session_store: SessionStore,
+    session_id: str,
+    input_func: InputFunc,
+    output: TextIO,
+) -> None:
+    supplement_node_names = _build_question_context_supplement_nodes(
+        registry=registry,
+        session_store=session_store,
+        session_id=session_id,
+    )
+    if not supplement_node_names:
+        return
+    retry_plan = _build_mock_interview_retry_plan(supplement_node_names)
+    _print_plan(output, retry_plan)
+    if not _confirm_plan_if_needed(retry_plan, input_func, output):
+        _write_line(output, "已取消执行计划。")
+        return
+    for supplement_node_name in supplement_node_names:
+        supplement_result = _execute_step_with_prompt(
+            executor=executor,
+            session_store=session_store,
+            session_id=session_id,
+            node_name=supplement_node_name,
+            input_func=input_func,
+            output=output,
+        )
+        _write_result(output, supplement_result)
+        if supplement_result.status != "success":
+            return
+
+    retry_result = _execute_step_with_prompt(
+        executor=executor,
+        session_store=session_store,
+        session_id=session_id,
+        node_name="question_generate",
+        input_func=input_func,
+        output=output,
+    )
+    _write_result(output, retry_result)
+
+
+def _questions_are_empty(output: dict[str, object]) -> bool:
+    questions = output.get("questions")
+    return isinstance(questions, list) and len(questions) == 0
+
+
+def _build_question_context_supplement_nodes(
+    registry: NodeRegistry,
+    session_store: SessionStore,
+    session_id: str,
+) -> list[str]:
+    session_inputs = session_store.get_all_state(session_id)
+    supplement_node_names: list[str] = []
+
+    if _supports_node(registry, "resume_parse"):
+        resume_text = session_inputs.get("resume_text")
+        candidate_profile = session_inputs.get("candidate_profile")
+        if isinstance(resume_text, str) or not _has_candidate_profile(candidate_profile):
+            supplement_node_names.append("resume_parse")
+
+    if _supports_node(registry, "jd_parse"):
+        jd_requirements = session_inputs.get("jd_requirements")
+        if not _has_jd_requirements(jd_requirements):
+            supplement_node_names.append("jd_parse")
+
+    return supplement_node_names
+
+
+def _build_mock_interview_retry_plan(supplement_node_names: list[str]) -> ExecutionPlan:
+    steps = [_build_step(node_name) for node_name in supplement_node_names]
+    steps.append(_build_step("question_generate"))
+    summary = " -> ".join(step.node_name for step in steps)
+    plan_id = _build_plan_id_for_steps(steps)
+    return ExecutionPlan(
+        plan_id=plan_id,
+        user_message="mock_interview_retry",
+        steps=steps,
+        requires_confirmation=len(steps) > 1,
+        missing_inputs=[],
+        summary=summary,
+    )
+
+
+def _build_step(node_name: str) -> PlanStep:
+    if node_name == "jd_parse":
+        return PlanStep(
+            node_name="jd_parse",
+            title="解析 JD",
+            description="先解析岗位描述，补齐题目生成依赖。",
+        )
+    if node_name == "resume_parse":
+        return PlanStep(
+            node_name="resume_parse",
+            title="解析简历",
+            description="先解析简历内容，补齐题目生成依赖。",
+        )
+    return PlanStep(
+        node_name=node_name,
+        title=node_name.replace("_", " ").title(),
+        description=f"执行节点 {node_name}。",
+    )
+
+
+def _build_plan_id_for_steps(steps: list[PlanStep]) -> str:
+    summary = "->".join(step.node_name for step in steps)
+    return summary[:16] if len(summary) <= 16 else summary[-16:]
+
+
+def _supports_node(registry: NodeRegistry, node_name: str) -> bool:
+    return node_name in registry.list_names()
+
+
+def _has_candidate_profile(candidate_profile: object) -> bool:
+    return isinstance(candidate_profile, dict) and len(candidate_profile) > 0
+
+
+def _has_jd_requirements(jd_requirements: object) -> bool:
+    return isinstance(jd_requirements, dict) and len(jd_requirements) > 0
 
 
 def _collect_missing_inputs(
