@@ -101,7 +101,7 @@ def test_build_execution_plan_includes_jd_parse_before_question_generation_when_
 
     assert isinstance(plan.steps[0], PlanStep)
     assert [step.node_name for step in plan.steps] == ["jd_parse", "question_generate"]
-    assert plan.requires_confirmation is False
+    assert plan.requires_confirmation is True
     assert plan.missing_inputs == ["jd_text"]
 
 
@@ -129,13 +129,13 @@ def test_build_execution_plan_includes_parse_steps_for_downstream_nodes() -> Non
 
     assert [step.node_name for step in jd_match_plan.steps] == ["resume_parse", "jd_parse", "jd_match"]
     assert jd_match_plan.missing_inputs == ["resume_text", "jd_text"]
-    assert jd_match_plan.requires_confirmation is False
+    assert jd_match_plan.requires_confirmation is True
     assert [step.node_name for step in project_plan.steps] == ["resume_parse", "project_extract"]
     assert project_plan.missing_inputs == ["resume_text"]
-    assert project_plan.requires_confirmation is False
+    assert project_plan.requires_confirmation is True
     assert [step.node_name for step in optimize_plan.steps] == ["resume_parse", "resume_optimize"]
     assert optimize_plan.missing_inputs == ["resume_text", "target_role"]
-    assert optimize_plan.requires_confirmation is False
+    assert optimize_plan.requires_confirmation is True
 
 
 def test_plan_dataclasses_support_multi_node_display() -> None:
@@ -188,11 +188,11 @@ def test_build_execution_plan_accepts_non_json_serializable_session_inputs() -> 
     assert plan.summary == "jd_parse -> question_generate"
 
 
-def test_multi_node_plan_does_not_require_confirmation() -> None:
+def test_multi_node_plan_requires_confirmation() -> None:
     plan = build_execution_plan(
         user_message="生成 Go 面试题",
         selected_node="question_generate",
         session_inputs={"candidate_profile": {"skills": ["Go"]}, "target_role": "Go工程师"},
         registry=build_default_registry(),
     )
-    assert plan.requires_confirmation is False
+    assert plan.requires_confirmation is True
