@@ -314,8 +314,7 @@ def _seed_mock_interview_inputs_from_request(
         return
 
     session_store.set_state(session_id, "resume_text", resume_text)
-    if session_store.get_state(session_id, "candidate_profile") is None:
-        session_store.set_state(session_id, "candidate_profile", resume_text)
+    session_store.set_state(session_id, "candidate_profile", resume_text)
 
 
 def _retry_mock_interview_questions(

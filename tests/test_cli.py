@@ -615,6 +615,39 @@ def test_mock_interview_uses_docx_path_from_initial_request_without_prompting_ca
     assert "模拟面试已完成。" in output.getvalue()
 
 
+def test_mock_interview_overrides_stale_candidate_profile_when_new_docx_is_provided(
+    tmp_path: Path,
+) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Bob"})
+    resume_file = tmp_path / "resume.docx"
+    write_docx_fixture(resume_file, "Alice，有 6 年 Go 后端经验")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
+                f"根据{resume_file}，帮我模拟面试",
+                "后端工程师",
+                "候选人回答",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_mock_interview_docx_resume_retry_registry,
+    )
+
+    assert exit_code == 0
+    assert "请输入候选人信息" not in output.getvalue()
+    assert "请输入简历内容" not in output.getvalue()
+    assert "第 1 题：Alice:后端工程师" in output.getvalue()
+    assert "第 1 题：Bob:后端工程师" not in output.getvalue()
+    assert session_store.get_state(DEFAULT_SESSION_ID, "resume_text") == "Alice，有 6 年 Go 后端经验"
+    assert "模拟面试已完成。" in output.getvalue()
+
+
 def test_default_registry_and_executor_execute_real_handler_with_fake_openai_transport(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
