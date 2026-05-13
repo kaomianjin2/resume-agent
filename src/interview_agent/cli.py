@@ -687,16 +687,22 @@ def _collect_missing_inputs(
         raw_value = _read_line(input_func, output, _input_prompt_for(input_name))
         if raw_value is None:
             raise InputCancelledError("缺少节点输入")
-        input_value = _resolve_input_value(raw_value)
+        input_value, source_path = _resolve_input_submission(raw_value)
+        if input_name == "candidate_profile" and source_path is not None:
+            session_store.set_state(session_id, "resume_text", input_value)
         session_store.set_state(session_id, input_name, input_value)
         collected_inputs[input_name] = input_value
     return collected_inputs
 
 
-def _resolve_input_value(raw_value: str) -> str:
+def _resolve_input_submission(raw_value: str) -> tuple[str, Path | None]:
     candidate_path = _extract_file_path(raw_value)
     if candidate_path is None:
-        return raw_value
+        return raw_value, None
+    return _read_input_file(candidate_path), candidate_path
+
+
+def _read_input_file(candidate_path: Path) -> str:
     if candidate_path.suffix.lower() in {".md", ".pdf", ".docx"}:
         return extract_text(candidate_path)
     return candidate_path.read_text(encoding="utf-8")
