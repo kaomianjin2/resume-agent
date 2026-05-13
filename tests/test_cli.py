@@ -582,6 +582,37 @@ def test_mock_interview_reuses_resume_text_from_docx_sentence_when_retrying_resu
     assert "模拟面试已完成。" in output.getvalue()
 
 
+def test_mock_interview_maps_runtime_resume_profile_to_candidate_profile_before_retry(
+    tmp_path: Path,
+) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    resume_file = tmp_path / "resume.docx"
+    write_docx_fixture(resume_file, "Alice，有 6 年 Go 后端经验")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
+                f"根据{resume_file}，帮我模拟面试",
+                "后端工程师",
+                "候选人回答",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_runtime_shape_resume_retry_registry,
+    )
+
+    assert exit_code == 0
+    assert "首轮未生成题目，我会先补齐候选人信息后再试一次。" in output.getvalue()
+    assert "还没有生成可用于模拟面试的问题。" not in output.getvalue()
+    assert "第 1 题：Alice:后端工程师" in output.getvalue()
+    assert session_store.get_state(DEFAULT_SESSION_ID, "candidate_profile") == {"name": "Alice"}
+    assert "模拟面试已完成。" in output.getvalue()
+
+
 def test_mock_interview_uses_docx_path_from_initial_request_without_prompting_candidate_profile(
     tmp_path: Path,
 ) -> None:
@@ -1140,6 +1171,37 @@ def build_mock_interview_docx_resume_retry_registry() -> NodeRegistry:
     )
 
 
+def build_runtime_shape_resume_retry_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="resume_parse",
+                description="parse resume with runtime output shape",
+                required_inputs=("resume_text",),
+                optional_inputs=(),
+                outputs=("resume_profile",),
+                handler=resume_parse_runtime_shape_handler,
+            ),
+            NodeSpec(
+                name="question_generate",
+                description="generate question after runtime shape resume retry",
+                required_inputs=("candidate_profile", "target_role"),
+                optional_inputs=(),
+                outputs=("questions",),
+                handler=question_generate_requires_alice_profile_handler,
+            ),
+            NodeSpec(
+                name="mock_followup",
+                description="follow up",
+                required_inputs=("question", "answer"),
+                optional_inputs=(),
+                outputs=("followup_questions",),
+                handler=mock_followup_handler,
+            ),
+        ]
+    )
+
+
 def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     del context, inputs
     return {"search_results": ["ok"]}
@@ -1155,6 +1217,13 @@ def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dic
     if "Alice" in inputs["resume_text"]:
         return {"candidate_profile": {"name": "Alice"}}
     return {"candidate_profile": {"name": "Unknown"}}
+
+
+def resume_parse_runtime_shape_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context
+    if "Alice" in inputs["resume_text"]:
+        return {"resume_profile": {"name": "Alice"}}
+    return {"resume_profile": {"name": "Unknown"}}
 
 
 def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
