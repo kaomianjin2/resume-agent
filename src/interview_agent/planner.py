@@ -42,19 +42,20 @@ def build_execution_plan(
     steps: list[PlanStep] = []
     missing_inputs: list[str] = []
 
+    if _requires_resume_parse(selected_node, session_inputs):
+        steps.append(_build_step("resume_parse"))
+        missing_inputs.append("resume_text")
+
     if _requires_jd_parse(selected_node, session_inputs):
-        steps.append(
-            PlanStep(
-                node_name="jd_parse",
-                title="解析 JD",
-                description="先解析岗位描述，补齐题目生成依赖。",
-            )
-        )
+        steps.append(_build_step("jd_parse"))
         missing_inputs.append("jd_text")
+
+    if _requires_target_role(selected_node, session_inputs):
+        missing_inputs.append("target_role")
 
     steps.append(_build_step(selected_node))
 
-    requires_confirmation = len(steps) > 1
+    requires_confirmation = False
     summary = " -> ".join(step.node_name for step in steps)
     plan_id = _build_plan_id(
         user_message=user_message,
@@ -78,23 +79,14 @@ def ensure_plan_confirmation(
     plan: ExecutionPlan,
     confirmation: PlanConfirmation | None,
 ) -> str | None:
+    del confirmation
     if not plan.requires_confirmation:
         return None
-
-    if confirmation is None:
-        return "该计划包含多个节点，执行前需要用户确认"
-
-    if confirmation.plan_id != plan.plan_id:
-        return "该计划包含多个节点，执行前需要用户确认"
-
-    if not confirmation.confirmed:
-        return "该计划包含多个节点，执行前需要用户确认"
-
     return None
 
 
 def _requires_jd_parse(selected_node: str, session_inputs: dict[str, object]) -> bool:
-    if selected_node != "question_generate":
+    if selected_node not in {"question_generate", "jd_match"}:
         return False
 
     if "jd_text" in session_inputs:
@@ -104,6 +96,26 @@ def _requires_jd_parse(selected_node: str, session_inputs: dict[str, object]) ->
         return False
 
     return True
+
+
+def _requires_resume_parse(selected_node: str, session_inputs: dict[str, object]) -> bool:
+    if selected_node not in {"jd_match", "project_extract", "resume_optimize"}:
+        return False
+
+    if "resume_text" in session_inputs:
+        return False
+
+    if selected_node == "jd_match" and "resume_profile" in session_inputs:
+        return False
+
+    return True
+
+
+def _requires_target_role(selected_node: str, session_inputs: dict[str, object]) -> bool:
+    if selected_node != "resume_optimize":
+        return False
+
+    return "target_role" not in session_inputs
 
 
 def _build_step(node_name: str) -> PlanStep:

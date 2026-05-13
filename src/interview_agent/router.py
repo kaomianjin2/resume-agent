@@ -94,7 +94,28 @@ def match_rule_based_nodes(user_message: str, registry: NodeRegistry) -> list[st
     normalized_message = user_message.lower()
     matched_nodes: list[str] = []
 
-    if _contains_any(normalized_message, ("面试题", "题目", "问题", "generate question")):
+    if _contains_any(normalized_message, ("打分", "评分", "评价回答", "回答评价")):
+        matched_nodes.append("answer_score")
+
+    if _contains_any(normalized_message, ("优化简历", "简历优化", "改简历", "润色简历")):
+        matched_nodes.append("resume_optimize")
+
+    if _contains_any(normalized_message, ("提炼", "项目经历", "项目亮点", "项目经验")):
+        matched_nodes.append("project_extract")
+
+    if _contains_any(normalized_message, ("薄弱点", "训练计划", "专项训练", "弱点训练")):
+        matched_nodes.append("weakness_train")
+
+    if _contains_any(normalized_message, ("总结", "复盘", "本轮准备", "准备内容")):
+        matched_nodes.append("session_summary")
+
+    if _contains_any(normalized_message, ("匹配", "契合", "差距分析", "匹配分析")):
+        matched_nodes.append("jd_match")
+
+    if _contains_any(normalized_message, ("模拟面试", "mock interview")):
+        matched_nodes.append("question_generate")
+
+    if _contains_any(normalized_message, ("面试题", "生成题", "生成问题", "出题", "generate question")):
         matched_nodes.append("question_generate")
 
     if _contains_any(normalized_message, ("jd", "岗位描述", "职位描述")):
