@@ -55,7 +55,7 @@ def build_execution_plan(
 
     steps.append(_build_step(selected_node))
 
-    requires_confirmation = len(steps) > 1
+    requires_confirmation = False
     summary = " -> ".join(step.node_name for step in steps)
     plan_id = _build_plan_id(
         user_message=user_message,
@@ -79,14 +79,9 @@ def ensure_plan_confirmation(
     plan: ExecutionPlan,
     confirmation: PlanConfirmation | None,
 ) -> str | None:
+    del confirmation
     if not plan.requires_confirmation:
         return None
-    if confirmation is None:
-        return "执行计划未确认。"
-    if confirmation.plan_id != plan.plan_id:
-        return "执行计划确认已失效。"
-    if not confirmation.confirmed:
-        return "执行计划未确认。"
     return None
 
 
