@@ -146,11 +146,25 @@ def main(
             _write_line(output_stream, "已取消执行计划。")
             continue
 
+        if _is_mock_interview_request(normalized_message, direct_node_name, selected_node):
+            try:
+                _run_mock_interview(
+                    executor=executor,
+                    registry=registry,
+                    session_store=session_store,
+                    session_id=session_id,
+                    plan=plan,
+                    input_func=input_func,
+                    output=output_stream,
+                )
+            except InputCancelledError:
+                _write_line(output_stream, "输入结束，已取消当前执行。")
+            continue
+
         for step in plan.steps:
             try:
                 result = _execute_step_with_prompt(
                     executor=executor,
-                    registry=registry,
                     session_store=session_store,
                     session_id=session_id,
                     node_name=step.node_name,
@@ -220,7 +234,6 @@ def _confirm_plan_if_needed(plan: ExecutionPlan, input_func: InputFunc, output: 
 
 def _execute_step_with_prompt(
     executor: ExecutorProtocol,
-    registry: NodeRegistry,
     session_store: SessionStore,
     session_id: str,
     node_name: str,
@@ -237,50 +250,91 @@ def _execute_step_with_prompt(
             output=output,
         )
         result = executor.execute_node(session_id=session_id, node_name=node_name, inputs=provided_inputs)
-    return _retry_question_generate_when_questions_empty(
-        executor=executor,
-        registry=registry,
-        session_store=session_store,
-        session_id=session_id,
-        node_name=node_name,
-        result=result,
-    )
+    return result
 
 
-def _retry_question_generate_when_questions_empty(
+def _is_mock_interview_request(
+    normalized_message: str,
+    direct_node_name: str | None,
+    selected_node: str,
+) -> bool:
+    if direct_node_name is not None:
+        return False
+    if selected_node != "question_generate":
+        return False
+    return "模拟面试" in normalized_message
+
+
+def _run_mock_interview(
     executor: ExecutorProtocol,
     registry: NodeRegistry,
     session_store: SessionStore,
     session_id: str,
-    node_name: str,
-    result: NodeExecutionResult,
-) -> NodeExecutionResult:
-    if node_name != "question_generate":
-        return result
-    if result.status != "success":
-        return result
-    if not _questions_are_empty(result.output):
-        return result
+    plan: ExecutionPlan,
+    input_func: InputFunc,
+    output: TextIO,
+) -> None:
+    for step in plan.steps:
+        result = _execute_step_with_prompt(
+            executor=executor,
+            session_store=session_store,
+            session_id=session_id,
+            node_name=step.node_name,
+            input_func=input_func,
+            output=output,
+        )
+        _write_result(output, result)
+        if result.status != "success":
+            return
+        if step.node_name == "question_generate" and _questions_are_empty(result.output):
+            _retry_mock_interview_question_generate(
+                executor=executor,
+                registry=registry,
+                session_store=session_store,
+                session_id=session_id,
+                input_func=input_func,
+                output=output,
+            )
+            return
 
-    supplement_node_names = _build_question_context_supplement_nodes(registry, session_store, session_id)
+
+def _retry_mock_interview_question_generate(
+    executor: ExecutorProtocol,
+    registry: NodeRegistry,
+    session_store: SessionStore,
+    session_id: str,
+    input_func: InputFunc,
+    output: TextIO,
+) -> None:
+    supplement_node_names = _build_question_context_supplement_nodes(
+        registry=registry,
+        session_store=session_store,
+        session_id=session_id,
+    )
     if not supplement_node_names:
-        return result
-
+        return
     for supplement_node_name in supplement_node_names:
-        supplement_result = executor.execute_node(
+        supplement_result = _execute_step_with_prompt(
+            executor=executor,
+            session_store=session_store,
             session_id=session_id,
             node_name=supplement_node_name,
-            inputs=None,
+            input_func=input_func,
+            output=output,
         )
+        _write_result(output, supplement_result)
         if supplement_result.status != "success":
-            return result
+            return
 
-    retry_result = executor.execute_node(
+    retry_result = _execute_step_with_prompt(
+        executor=executor,
+        session_store=session_store,
         session_id=session_id,
         node_name="question_generate",
-        inputs=None,
+        input_func=input_func,
+        output=output,
     )
-    return retry_result
+    _write_result(output, retry_result)
 
 
 def _questions_are_empty(output: dict[str, object]) -> bool:
@@ -299,13 +353,12 @@ def _build_question_context_supplement_nodes(
     if _supports_node(registry, "resume_parse"):
         resume_text = session_inputs.get("resume_text")
         candidate_profile = session_inputs.get("candidate_profile")
-        if isinstance(resume_text, str) and not _has_candidate_profile(candidate_profile):
+        if isinstance(resume_text, str) or not _has_candidate_profile(candidate_profile):
             supplement_node_names.append("resume_parse")
 
     if _supports_node(registry, "jd_parse"):
-        jd_text = session_inputs.get("jd_text")
         jd_requirements = session_inputs.get("jd_requirements")
-        if isinstance(jd_text, str) and not _has_jd_requirements(jd_requirements):
+        if not _has_jd_requirements(jd_requirements):
             supplement_node_names.append("jd_parse")
 
     return supplement_node_names
