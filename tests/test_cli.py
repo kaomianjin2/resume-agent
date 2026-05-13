@@ -244,6 +244,62 @@ def test_direct_node_command_executes_selected_node(tmp_path: Path) -> None:
     ]
 
 
+def test_mock_interview_retries_question_generate_once_after_supplementing_jd_context(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_text", "负责 Go 服务开发")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_retry_registry,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="question_generate",
+            candidate_nodes=["question_generate"],
+            via="rule",
+        ),
+    )
+
+    assert exit_code == 0
+    assert session_store.get_state(DEFAULT_SESSION_ID, "jd_requirements") == {
+        "role": "JD:负责 Go 服务开发"
+    }
+    assert session_store.get_state(DEFAULT_SESSION_ID, "questions") == [
+        "Alice:后端工程师:JD:负责 Go 服务开发"
+    ]
+    assert "执行结果: success" in output.getvalue()
+
+
+def test_mock_interview_keeps_original_behavior_when_registry_cannot_supplement_context(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_text", "负责 Go 服务开发")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry_without_supplement_nodes,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="question_generate",
+            candidate_nodes=["question_generate"],
+            via="rule",
+        ),
+    )
+
+    assert exit_code == 0
+    assert session_store.get_state(DEFAULT_SESSION_ID, "jd_requirements") is None
+    assert session_store.get_state(DEFAULT_SESSION_ID, "questions") == []
+    assert "执行结果: success" in output.getvalue()
+
+
 def test_default_registry_and_executor_execute_real_handler_with_fake_openai_transport(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
@@ -527,6 +583,44 @@ def build_cli_registry() -> NodeRegistry:
     )
 
 
+def build_mock_interview_retry_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="jd_parse",
+                description="parse jd",
+                required_inputs=("jd_text",),
+                optional_inputs=(),
+                outputs=("jd_requirements",),
+                handler=jd_parse_handler,
+            ),
+            NodeSpec(
+                name="question_generate",
+                description="generate question",
+                required_inputs=("candidate_profile", "target_role"),
+                optional_inputs=("jd_requirements",),
+                outputs=("questions",),
+                handler=question_generate_requires_jd_context_handler,
+            ),
+        ]
+    )
+
+
+def build_mock_interview_registry_without_supplement_nodes() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="question_generate",
+                description="generate question",
+                required_inputs=("candidate_profile", "target_role"),
+                optional_inputs=("jd_requirements",),
+                outputs=("questions",),
+                handler=question_generate_requires_jd_context_handler,
+            )
+        ]
+    )
+
+
 def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     del context, inputs
     return {"search_results": ["ok"]}
@@ -546,6 +640,23 @@ def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -
     return {
         "questions": [
             f"{profile['name']}:{inputs['target_role']}:{requirements.get('role', 'NO_JD')}"
+        ]
+    }
+
+
+def question_generate_requires_jd_context_handler(
+    context: NodeContext,
+    inputs: dict[str, object],
+) -> dict[str, object]:
+    del context
+    profile = inputs["candidate_profile"]
+    assert isinstance(profile, dict)
+    requirements = inputs.get("jd_requirements")
+    if not isinstance(requirements, dict) or "role" not in requirements:
+        return {"questions": []}
+    return {
+        "questions": [
+            f"{profile['name']}:{inputs['target_role']}:{requirements['role']}"
         ]
     }
 

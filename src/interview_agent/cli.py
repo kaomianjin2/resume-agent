@@ -150,6 +150,7 @@ def main(
             try:
                 result = _execute_step_with_prompt(
                     executor=executor,
+                    registry=registry,
                     session_store=session_store,
                     session_id=session_id,
                     node_name=step.node_name,
@@ -219,6 +220,7 @@ def _confirm_plan_if_needed(plan: ExecutionPlan, input_func: InputFunc, output: 
 
 def _execute_step_with_prompt(
     executor: ExecutorProtocol,
+    registry: NodeRegistry,
     session_store: SessionStore,
     session_id: str,
     node_name: str,
@@ -235,7 +237,90 @@ def _execute_step_with_prompt(
             output=output,
         )
         result = executor.execute_node(session_id=session_id, node_name=node_name, inputs=provided_inputs)
-    return result
+    return _retry_question_generate_when_questions_empty(
+        executor=executor,
+        registry=registry,
+        session_store=session_store,
+        session_id=session_id,
+        node_name=node_name,
+        result=result,
+    )
+
+
+def _retry_question_generate_when_questions_empty(
+    executor: ExecutorProtocol,
+    registry: NodeRegistry,
+    session_store: SessionStore,
+    session_id: str,
+    node_name: str,
+    result: NodeExecutionResult,
+) -> NodeExecutionResult:
+    if node_name != "question_generate":
+        return result
+    if result.status != "success":
+        return result
+    if not _questions_are_empty(result.output):
+        return result
+
+    supplement_node_names = _build_question_context_supplement_nodes(registry, session_store, session_id)
+    if not supplement_node_names:
+        return result
+
+    for supplement_node_name in supplement_node_names:
+        supplement_result = executor.execute_node(
+            session_id=session_id,
+            node_name=supplement_node_name,
+            inputs=None,
+        )
+        if supplement_result.status != "success":
+            return result
+
+    retry_result = executor.execute_node(
+        session_id=session_id,
+        node_name="question_generate",
+        inputs=None,
+    )
+    return retry_result
+
+
+def _questions_are_empty(output: dict[str, object]) -> bool:
+    questions = output.get("questions")
+    return isinstance(questions, list) and len(questions) == 0
+
+
+def _build_question_context_supplement_nodes(
+    registry: NodeRegistry,
+    session_store: SessionStore,
+    session_id: str,
+) -> list[str]:
+    session_inputs = session_store.get_all_state(session_id)
+    supplement_node_names: list[str] = []
+
+    if _supports_node(registry, "resume_parse"):
+        resume_text = session_inputs.get("resume_text")
+        candidate_profile = session_inputs.get("candidate_profile")
+        if isinstance(resume_text, str) and not _has_candidate_profile(candidate_profile):
+            supplement_node_names.append("resume_parse")
+
+    if _supports_node(registry, "jd_parse"):
+        jd_text = session_inputs.get("jd_text")
+        jd_requirements = session_inputs.get("jd_requirements")
+        if isinstance(jd_text, str) and not _has_jd_requirements(jd_requirements):
+            supplement_node_names.append("jd_parse")
+
+    return supplement_node_names
+
+
+def _supports_node(registry: NodeRegistry, node_name: str) -> bool:
+    return node_name in registry.list_names()
+
+
+def _has_candidate_profile(candidate_profile: object) -> bool:
+    return isinstance(candidate_profile, dict) and len(candidate_profile) > 0
+
+
+def _has_jd_requirements(jd_requirements: object) -> bool:
+    return isinstance(jd_requirements, dict) and len(jd_requirements) > 0
 
 
 def _collect_missing_inputs(
