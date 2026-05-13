@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+import re
 import sys
 from typing import Protocol, TextIO
 
@@ -300,9 +301,32 @@ def _retry_mock_interview_questions(
     available_node_names: set[str],
 ) -> list[str]:
     session_inputs = session_store.get_all_state(session_id)
+    if _needs_candidate_profile_backfill(session_inputs):
+        if "resume_parse" not in available_node_names:
+            return []
+        _write_line(output, "首轮未生成题目，我会先补齐候选人信息后再试一次。")
+        resume_parse_result = _execute_step_with_prompt(
+            executor=executor,
+            session_store=session_store,
+            session_id=session_id,
+            node_name="resume_parse",
+            input_func=input_func,
+            output=output,
+        )
+        if resume_parse_result.status != "success":
+            _write_result(output, resume_parse_result, "resume_parse")
+            return []
+        session_inputs = session_store.get_all_state(session_id)
+
     if "jd_requirements" not in session_inputs:
         if "jd_parse" not in available_node_names:
-            return []
+            return _retry_question_generate(
+                executor=executor,
+                session_store=session_store,
+                session_id=session_id,
+                input_func=input_func,
+                output=output,
+            )
         _write_line(output, "首轮未生成题目，我会先补齐岗位信息后再试一次。")
         jd_parse_result = _execute_step_with_prompt(
             executor=executor,
@@ -316,6 +340,22 @@ def _retry_mock_interview_questions(
             _write_result(output, jd_parse_result, "jd_parse")
             return []
 
+    return _retry_question_generate(
+        executor=executor,
+        session_store=session_store,
+        session_id=session_id,
+        input_func=input_func,
+        output=output,
+    )
+
+
+def _retry_question_generate(
+    executor: ExecutorProtocol,
+    session_store: SessionStore,
+    session_id: str,
+    input_func: InputFunc,
+    output: TextIO,
+) -> list[str]:
     retry_result = _execute_step_with_prompt(
         executor=executor,
         session_store=session_store,
@@ -328,6 +368,13 @@ def _retry_mock_interview_questions(
         _write_result(output, retry_result, "question_generate")
         return []
     return _read_text_list(retry_result.output.get("questions"))
+
+
+def _needs_candidate_profile_backfill(session_inputs: dict[str, object]) -> bool:
+    candidate_profile = session_inputs.get("candidate_profile")
+    if isinstance(candidate_profile, dict) and candidate_profile:
+        return False
+    return "resume_text" in session_inputs or "resume_profile" not in session_inputs
 
 
 def _ask_followup_questions(
@@ -647,12 +694,27 @@ def _collect_missing_inputs(
 
 
 def _resolve_input_value(raw_value: str) -> str:
-    candidate_path = Path(raw_value.strip())
-    if candidate_path.is_file():
-        if candidate_path.suffix.lower() in {".md", ".pdf", ".docx"}:
-            return extract_text(candidate_path)
-        return candidate_path.read_text(encoding="utf-8")
-    return raw_value
+    candidate_path = _extract_file_path(raw_value)
+    if candidate_path is None:
+        return raw_value
+    if candidate_path.suffix.lower() in {".md", ".pdf", ".docx"}:
+        return extract_text(candidate_path)
+    return candidate_path.read_text(encoding="utf-8")
+
+
+def _extract_file_path(raw_value: str) -> Path | None:
+    direct_path = Path(raw_value.strip())
+    if direct_path.is_file():
+        return direct_path
+
+    for segment in _PATH_PATTERN.findall(raw_value):
+        candidate_path = Path(segment.strip("\"'"))
+        if candidate_path.is_file():
+            return candidate_path
+    return None
+
+
+_PATH_PATTERN = re.compile(r"(/[^,\s，。；;:：\"'()]+)")
 
 
 def _input_prompt_for(input_name: str) -> str:

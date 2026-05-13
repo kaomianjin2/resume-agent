@@ -499,6 +499,58 @@ def test_mock_interview_retries_question_generate_after_jd_parse_when_first_try_
     assert session_store.get_state(DEFAULT_SESSION_ID, "jd_requirements") == {"role": "JD:负责 Go 服务开发"}
 
 
+def test_mock_interview_retries_question_generate_after_resume_parse_when_first_try_is_empty(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
+                "开始模拟面试",
+                "Alice 有 6 年 Go 后端经验",
+                "后端工程师",
+                "Alice 有 6 年 Go 后端经验",
+                "候选人回答",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_mock_interview_resume_retry_registry,
+    )
+
+    assert exit_code == 0
+    assert "首轮未生成题目，我会先补齐候选人信息后再试一次。" in output.getvalue()
+    assert "第 1 题：Alice:后端工程师" in output.getvalue()
+    assert "模拟面试已完成。" in output.getvalue()
+
+
+def test_mock_interview_reads_file_path_embedded_in_sentence_for_missing_profile(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    resume_file = tmp_path / "resume.txt"
+    resume_file.write_text("Alice，有 6 年 Go 后端经验", encoding="utf-8")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
+                "开始模拟面试",
+                f"根据{resume_file}，帮我模拟面试",
+                "后端工程师",
+                "候选人回答",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_mock_interview_profile_text_registry,
+    )
+
+    assert exit_code == 0
+    assert "第 1 题：请介绍你最近一次 Go 服务优化经验。" in output.getvalue()
+    assert "模拟面试已完成。" in output.getvalue()
+
+
 def test_default_registry_and_executor_execute_real_handler_with_fake_openai_transport(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
@@ -924,7 +976,38 @@ def build_mock_interview_resume_retry_registry() -> NodeRegistry:
                 optional_inputs=(),
                 outputs=("questions",),
                 handler=question_generate_requires_profile_handler,
-            )
+            ),
+            NodeSpec(
+                name="mock_followup",
+                description="follow up",
+                required_inputs=("question", "answer"),
+                optional_inputs=(),
+                outputs=("followup_questions",),
+                handler=mock_followup_handler,
+            ),
+        ]
+    )
+
+
+def build_mock_interview_profile_text_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="question_generate",
+                description="generate question from profile text",
+                required_inputs=("candidate_profile", "target_role"),
+                optional_inputs=(),
+                outputs=("questions",),
+                handler=question_generate_from_profile_text_handler,
+            ),
+            NodeSpec(
+                name="mock_followup",
+                description="follow up",
+                required_inputs=("question", "answer"),
+                optional_inputs=(),
+                outputs=("followup_questions",),
+                handler=mock_followup_handler,
+            ),
         ]
     )
 
@@ -982,11 +1065,23 @@ def question_generate_requires_profile_handler(
 ) -> dict[str, object]:
     del context
     profile = inputs["candidate_profile"]
-    assert isinstance(profile, dict)
+    if not isinstance(profile, dict):
+        return {"questions": []}
     name = profile.get("name")
     if not isinstance(name, str) or not name:
         return {"questions": []}
     return {"questions": [f"{name}:{inputs['target_role']}"]}
+
+
+def question_generate_from_profile_text_handler(
+    context: NodeContext,
+    inputs: dict[str, object],
+) -> dict[str, object]:
+    del context
+    profile = inputs["candidate_profile"]
+    if isinstance(profile, str) and "Alice" in profile:
+        return {"questions": ["请介绍你最近一次 Go 服务优化经验。"]}
+    return {"questions": []}
 
 
 def mock_interview_question_generate_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
