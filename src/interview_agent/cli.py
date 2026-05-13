@@ -120,6 +120,11 @@ def main(
         _write_line(output_stream, _build_processing_hint(normalized_message))
 
         if _is_mock_interview_request(normalized_message):
+            _seed_mock_interview_inputs_from_request(
+                session_store=session_store,
+                session_id=session_id,
+                user_message=normalized_message,
+            )
             mock_interview_plan = _build_mock_interview_plan(normalized_message)
             _print_plan(output_stream, mock_interview_plan)
             if not _confirm_ambiguous_route(
@@ -290,6 +295,27 @@ def _run_mock_interview(
         )
     _write_line(output, "模拟面试已完成。")
     _write_line(output, _build_next_need_prompt("mock_followup"))
+
+
+def _seed_mock_interview_inputs_from_request(
+    session_store: SessionStore,
+    session_id: str,
+    user_message: str,
+) -> None:
+    candidate_path = _extract_file_path(user_message)
+    if candidate_path is None:
+        return
+
+    try:
+        resume_text = _read_input_file(candidate_path)
+    except OSError:
+        return
+    if not resume_text.strip():
+        return
+
+    session_store.set_state(session_id, "resume_text", resume_text)
+    if session_store.get_state(session_id, "candidate_profile") is None:
+        session_store.set_state(session_id, "candidate_profile", resume_text)
 
 
 def _retry_mock_interview_questions(
