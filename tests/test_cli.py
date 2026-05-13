@@ -442,6 +442,26 @@ def test_mock_interview_generates_questions_then_asks_each_question_and_followup
     assert "模拟面试已完成。" in output.getvalue()
 
 
+def test_mock_interview_accepts_structured_question_items_from_llm(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "候选人回答", "exit"]),
+        output=output,
+        registry_builder=build_structured_question_item_registry,
+    )
+
+    assert exit_code == 0
+    assert "第 1 题：请结合项目说明 Go 服务性能优化过程。" in output.getvalue()
+    assert "还没有生成可用于模拟面试的问题。" not in output.getvalue()
+    assert "模拟面试已完成。" in output.getvalue()
+
+
 def test_mock_interview_executes_without_confirmation(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     session_store = SessionStore(database_path)
@@ -1021,6 +1041,29 @@ def build_mock_interview_registry() -> NodeRegistry:
     )
 
 
+def build_structured_question_item_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="question_generate",
+                description="generate structured question items",
+                required_inputs=("candidate_profile", "target_role"),
+                optional_inputs=(),
+                outputs=("questions",),
+                handler=structured_question_item_handler,
+            ),
+            NodeSpec(
+                name="mock_followup",
+                description="follow up",
+                required_inputs=("question", "answer"),
+                optional_inputs=(),
+                outputs=("followup_questions",),
+                handler=mock_followup_handler,
+            ),
+        ]
+    )
+
+
 def build_retry_mock_interview_registry() -> NodeRegistry:
     call_counts = {"question_generate": 0}
 
@@ -1300,6 +1343,18 @@ def mock_interview_question_generate_handler(context: NodeContext, inputs: dict[
         "questions": [
             "介绍你最近一次线上延迟排查。",
             "如果延迟再次出现，你会如何设计预防机制？",
+        ]
+    }
+
+
+def structured_question_item_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {
+        "questions": [
+            {
+                "category": "项目深挖",
+                "question": "请结合项目说明 Go 服务性能优化过程。",
+            }
         ]
     }
 

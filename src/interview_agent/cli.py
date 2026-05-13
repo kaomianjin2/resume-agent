@@ -450,7 +450,24 @@ def _ask_interview_question(output: TextIO, input_func: InputFunc, prompt: str) 
 def _read_text_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [item for item in value if isinstance(item, str) and item.strip()]
+    text_items: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            text_items.append(item)
+            continue
+        if isinstance(item, dict):
+            text_value = _read_first_text_field(item, ("question", "content", "text"))
+            if text_value:
+                text_items.append(text_value)
+    return text_items
+
+
+def _read_first_text_field(value: dict[object, object], field_names: tuple[str, ...]) -> str | None:
+    for field_name in field_names:
+        field_value = value.get(field_name)
+        if isinstance(field_value, str) and field_value.strip():
+            return field_value
+    return None
 
 
 def _answer_from_session_if_possible(
