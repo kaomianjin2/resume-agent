@@ -341,6 +341,11 @@ def _retry_mock_interview_questions(
         if resume_parse_result.status != "success":
             _write_result(output, resume_parse_result, "resume_parse")
             return []
+        _sync_candidate_profile_from_resume_parse_result(
+            session_store=session_store,
+            session_id=session_id,
+            resume_parse_result=resume_parse_result,
+        )
         session_inputs = session_store.get_all_state(session_id)
 
     if "jd_requirements" not in session_inputs:
@@ -393,6 +398,17 @@ def _retry_question_generate(
         _write_result(output, retry_result, "question_generate")
         return []
     return _read_text_list(retry_result.output.get("questions"))
+
+
+def _sync_candidate_profile_from_resume_parse_result(
+    session_store: SessionStore,
+    session_id: str,
+    resume_parse_result: NodeExecutionResult,
+) -> None:
+    resume_profile = resume_parse_result.output.get("resume_profile")
+    if not isinstance(resume_profile, dict) or not resume_profile:
+        return
+    session_store.set_state(session_id, "candidate_profile", resume_profile)
 
 
 def _needs_candidate_profile_backfill(session_inputs: dict[str, object]) -> bool:
