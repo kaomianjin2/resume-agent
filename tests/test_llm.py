@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import http.client
 import urllib.request
 
 import pytest
@@ -10,9 +11,10 @@ from interview_agent.llm import (
     FakeLLMClient,
     JSONParseError,
     OpenAICompatibleClient,
+    _default_transport,
     request_structured_output,
 )
-from interview_agent.prompts import PROMPT_TEMPLATES, get_prompt_template, render_prompt
+from interview_agent.prompts import PROMPT_OUTPUT_KEYS, PROMPT_TEMPLATES, get_prompt_template, render_prompt
 
 
 def test_fake_llm_fixed_json_response_is_parsed() -> None:
@@ -61,6 +63,71 @@ def test_openai_compatible_client_uses_config_values_not_environment(
     }
 
 
+def test_default_transport_retries_incomplete_read() -> None:
+    calls = 0
+    original_urlopen = urllib.request.urlopen
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"choices":[{"message":{"content":"{\\"ok\\":true}"}}]}'
+
+    def flaky_urlopen(request: urllib.request.Request, timeout: int) -> Response:
+        del request
+        assert timeout == 60
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise http.client.IncompleteRead(b"partial")
+        return Response()
+
+    urllib.request.urlopen = flaky_urlopen
+    try:
+        body = _default_transport(urllib.request.Request("https://example.test/v1/chat/completions"))
+    finally:
+        urllib.request.urlopen = original_urlopen
+
+    assert calls == 2
+    assert json.loads(body)["choices"]
+
+
+def test_default_transport_retries_timeout() -> None:
+    calls = 0
+    original_urlopen = urllib.request.urlopen
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"choices":[{"message":{"content":"{\\"ok\\":true}"}}]}'
+
+    def flaky_urlopen(request: urllib.request.Request, timeout: int) -> Response:
+        del request, timeout
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TimeoutError("read timed out")
+        return Response()
+
+    urllib.request.urlopen = flaky_urlopen
+    try:
+        body = _default_transport(urllib.request.Request("https://example.test/v1/chat/completions"))
+    finally:
+        urllib.request.urlopen = original_urlopen
+
+    assert calls == 2
+    assert json.loads(body)["choices"]
+
+
 def test_request_structured_output_rejects_non_json_response() -> None:
     client = FakeLLMClient(response_text="not json")
 
@@ -73,6 +140,24 @@ def test_request_structured_output_rejects_empty_response() -> None:
 
     with pytest.raises(JSONParseError, match="LLM 返回空响应"):
         request_structured_output(client, prompt="输出 JSON")
+
+
+def test_request_structured_output_retries_empty_response() -> None:
+    calls = 0
+
+    class FlakyClient:
+        def complete(self, prompt: str, system_prompt: str | None = None) -> str:
+            del prompt, system_prompt
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return ""
+            return '{"ok": true}'
+
+    result = request_structured_output(FlakyClient(), prompt="输出 JSON")
+
+    assert calls == 2
+    assert result == {"ok": True}
 
 
 def test_request_structured_output_rejects_json_that_is_not_object() -> None:
@@ -113,6 +198,17 @@ def test_render_prompt_formats_runtime_template() -> None:
 
     assert "请总结项目背景" in rendered_prompt
     assert "项目文档片段" in rendered_prompt
+
+
+def test_render_prompt_requires_contract_output_keys() -> None:
+    rendered_prompt = render_prompt(
+        "resume_parse",
+        resume_text="Alice built Python services.",
+    )
+
+    assert "只返回 JSON 对象" in rendered_prompt
+    assert "resume_profile" in rendered_prompt
+    assert set(PROMPT_OUTPUT_KEYS) == set(PROMPT_TEMPLATES)
 
 
 def test_get_prompt_template_rejects_unknown_name() -> None:

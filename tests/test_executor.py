@@ -211,6 +211,35 @@ def test_failed_node_records_error_without_writing_outputs(tmp_path: Path) -> No
     assert session_store.get_state("session-1", "failed_output") is None
 
 
+def test_node_output_must_include_declared_fields(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+
+    def incomplete_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+        del context, inputs
+        return {"other": "value"}
+
+    registry = NodeRegistry(
+        [
+            NodeSpec(
+                name="incomplete_node",
+                description="Return incomplete output.",
+                required_inputs=(),
+                optional_inputs=(),
+                outputs=("required_output",),
+                handler=incomplete_handler,
+            )
+        ]
+    )
+    executor = NodeExecutor(database_path, registry)
+
+    result = executor.execute_node(session_id="session-1", node_name="incomplete_node")
+
+    assert result.status == "failed"
+    assert result.error_message == "节点输出缺少字段: required_output"
+    assert SessionStore(database_path).get_state("session-1", "other") is None
+
+
 def test_failed_node_preserves_existing_successful_state(tmp_path: Path) -> None:
     database_path = tmp_path / "executor.sqlite3"
     initialize_database(database_path)

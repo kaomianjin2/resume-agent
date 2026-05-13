@@ -68,6 +68,21 @@ PROMPT_TEMPLATES: dict[str, str] = {
 }
 
 
+PROMPT_OUTPUT_KEYS: dict[str, tuple[str, ...]] = {
+    "knowledge_search": ("search_results",),
+    "resume_parse": ("resume_profile",),
+    "project_extract": ("project_experiences",),
+    "jd_parse": ("jd_requirements",),
+    "jd_match": ("match_report",),
+    "question_generate": ("questions",),
+    "mock_followup": ("followup_questions",),
+    "answer_score": ("score_report",),
+    "weakness_train": ("training_plan",),
+    "resume_optimize": ("optimization_advice",),
+    "session_summary": ("summary",),
+}
+
+
 def get_prompt_template(prompt_name: str) -> str:
     if prompt_name not in PROMPT_TEMPLATES:
         raise KeyError(f"未知 prompt 模板: {prompt_name}")
@@ -78,7 +93,15 @@ def get_prompt_template(prompt_name: str) -> str:
 def render_prompt(prompt_name: str, **variables: str) -> str:
     prompt_template = get_prompt_template(prompt_name)
     try:
-        return prompt_template.format(**variables)
+        rendered_prompt = prompt_template.format(**variables)
     except KeyError as error:
         missing_key = error.args[0]
         raise KeyError(f"prompt 模板缺少变量: {prompt_name}.{missing_key}") from error
+
+    output_keys = PROMPT_OUTPUT_KEYS[prompt_name]
+    output_key_list = ", ".join(output_keys)
+    return (
+        f"{rendered_prompt}\n"
+        "只返回 JSON 对象，不要输出 Markdown 或解释文字。\n"
+        f"JSON 顶层必须包含字段: {output_key_list}。"
+    )

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import http.client
 import json
+import socket
 from typing import Any, Callable
 import urllib.error
 import urllib.request
@@ -22,16 +24,26 @@ class OpenAICompatibleResponseError(LLMError):
 
 
 Transport = Callable[[urllib.request.Request], str]
+REQUEST_TIMEOUT_SECONDS = 60
 
 
 def _default_transport(request: urllib.request.Request) -> str:
-    try:
-        with urllib.request.urlopen(request) as response:
-            response_body = response.read()
-    except urllib.error.URLError as error:
-        raise LLMError(f"OpenAI-compatible 请求失败: {error.reason}") from error
+    last_error: Exception | None = None
+    for attempt_index in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+                response_body = response.read()
+            return response_body.decode("utf-8")
+        except urllib.error.HTTPError as error:
+            if error.code not in {408, 429, 500, 502, 503, 504} or attempt_index == 2:
+                raise LLMError(f"OpenAI-compatible 请求失败: {error.reason}") from error
+            last_error = error
+        except (urllib.error.URLError, http.client.IncompleteRead, TimeoutError, socket.timeout) as error:
+            if attempt_index == 2:
+                raise LLMError(f"OpenAI-compatible 请求失败: {type(error).__name__}") from error
+            last_error = error
 
-    return response_body.decode("utf-8")
+    raise LLMError("OpenAI-compatible 请求失败: retry exhausted") from last_error
 
 
 @dataclass(frozen=True)
@@ -59,8 +71,17 @@ def request_structured_output(
     prompt: str,
     system_prompt: str | None = None,
 ) -> dict[str, Any]:
-    response_text = client.complete(prompt=prompt, system_prompt=system_prompt)
-    return parse_json_object(response_text)
+    last_error: LLMError | None = None
+    for attempt_index in range(3):
+        try:
+            response_text = client.complete(prompt=prompt, system_prompt=system_prompt)
+            return parse_json_object(response_text)
+        except LLMError as error:
+            if attempt_index == 2:
+                raise
+            last_error = error
+
+    raise LLMError("LLM 结构化输出重试失败") from last_error
 
 
 def parse_json_object(response_text: str) -> dict[str, Any]:

@@ -48,8 +48,10 @@ class NodeExecutor:
 
         try:
             context = NodeContext(session_id=session_id, services=self.services)
+            output = spec.handler(context, dict(merged_inputs))
+            _validate_node_output(spec.outputs, output)
             result = NodeExecutionResult(
-                run_id, session_id, node_name, "success", spec.handler(context, dict(merged_inputs)), []
+                run_id, session_id, node_name, "success", output, []
             )
         except Exception as exc:
             result = NodeExecutionResult(run_id, session_id, node_name, "failed", {}, [], str(exc))
@@ -83,3 +85,9 @@ def _insert_node_run(connection: sqlite3.Connection, result: NodeExecutionResult
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _validate_node_output(expected_outputs: tuple[str, ...], output: dict[str, object]) -> None:
+    missing_outputs = [output_name for output_name in expected_outputs if output_name not in output]
+    if missing_outputs:
+        raise RuntimeError("节点输出缺少字段: " + ", ".join(missing_outputs))

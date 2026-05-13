@@ -280,3 +280,27 @@ def test_rag_nodes_read_retrieval_chunks_and_pass_them_into_llm_prompt(tmp_path:
     assert "RAG chunk content for interview preparation." in llm.prompts[0]
     assert "rag_context" in llm.prompts[1]
     assert "RAG chunk content for interview preparation." in llm.prompts[1]
+
+
+def test_knowledge_search_falls_back_to_empty_results_when_llm_response_is_invalid(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={
+            "llm": RecordingLLM({"你是知识库检索助手": ""}),
+            "retriever": RecordingRetriever([]),
+        },
+    )
+
+    result = executor.execute_node(
+        session_id="session-1",
+        node_name="knowledge_search",
+        inputs={"question": "How to explain retry?"},
+    )
+
+    assert result.status == "success"
+    assert result.output == {"search_results": []}

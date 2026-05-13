@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from interview_agent.llm import request_structured_output
+from interview_agent.llm import LLMError
 from interview_agent.prompts import render_prompt
 
 
@@ -21,7 +22,12 @@ def run_structured_node(
 
     rag_results = resolve_rag_results(services=services, query=rag_query, limit=rag_limit)
     prompt = build_prompt(node_name=node_name, prompt_inputs=prompt_inputs, rag_results=rag_results)
-    structured_output = request_structured_output(llm, prompt=prompt)
+    try:
+        structured_output = request_structured_output(llm, prompt=prompt)
+    except LLMError:
+        if fallback_output is not None:
+            return fallback_output
+        raise
     if fallback_output is None:
         return structured_output
 
