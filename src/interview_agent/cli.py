@@ -13,6 +13,7 @@ from interview_agent.llm import FakeLLMClient, OpenAICompatibleClient
 from interview_agent.nodes.registry import NodeRegistry, UnknownNodeError, build_default_registry
 from interview_agent.planner import (
     ExecutionPlan,
+    PlanStep,
     PlanConfirmation,
     build_execution_plan,
     ensure_plan_confirmation,
@@ -313,6 +314,11 @@ def _retry_mock_interview_question_generate(
     )
     if not supplement_node_names:
         return
+    retry_plan = _build_mock_interview_retry_plan(supplement_node_names)
+    _print_plan(output, retry_plan)
+    if not _confirm_plan_if_needed(retry_plan, input_func, output):
+        _write_line(output, "已取消执行计划。")
+        return
     for supplement_node_name in supplement_node_names:
         supplement_result = _execute_step_with_prompt(
             executor=executor,
@@ -362,6 +368,46 @@ def _build_question_context_supplement_nodes(
             supplement_node_names.append("jd_parse")
 
     return supplement_node_names
+
+
+def _build_mock_interview_retry_plan(supplement_node_names: list[str]) -> ExecutionPlan:
+    steps = [_build_step(node_name) for node_name in supplement_node_names]
+    steps.append(_build_step("question_generate"))
+    summary = " -> ".join(step.node_name for step in steps)
+    plan_id = _build_plan_id_for_steps(steps)
+    return ExecutionPlan(
+        plan_id=plan_id,
+        user_message="mock_interview_retry",
+        steps=steps,
+        requires_confirmation=len(steps) > 1,
+        missing_inputs=[],
+        summary=summary,
+    )
+
+
+def _build_step(node_name: str) -> PlanStep:
+    if node_name == "jd_parse":
+        return PlanStep(
+            node_name="jd_parse",
+            title="解析 JD",
+            description="先解析岗位描述，补齐题目生成依赖。",
+        )
+    if node_name == "resume_parse":
+        return PlanStep(
+            node_name="resume_parse",
+            title="解析简历",
+            description="先解析简历内容，补齐题目生成依赖。",
+        )
+    return PlanStep(
+        node_name=node_name,
+        title=node_name.replace("_", " ").title(),
+        description=f"执行节点 {node_name}。",
+    )
+
+
+def _build_plan_id_for_steps(steps: list[PlanStep]) -> str:
+    summary = "->".join(step.node_name for step in steps)
+    return summary[:16] if len(summary) <= 16 else summary[-16:]
 
 
 def _supports_node(registry: NodeRegistry, node_name: str) -> bool:

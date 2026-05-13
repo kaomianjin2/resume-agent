@@ -254,7 +254,7 @@ def test_mock_interview_retries_question_generate_once_after_supplementing_jd_co
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始模拟面试", "exit"]),
+        input_func=build_input(["开始模拟面试", "y", "exit"]),
         output=output,
         registry_builder=build_mock_interview_retry_registry,
         route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
@@ -272,6 +272,34 @@ def test_mock_interview_retries_question_generate_once_after_supplementing_jd_co
         "Alice:后端工程师:JD:负责 Go 服务开发"
     ]
     assert "执行结果: success" in output.getvalue()
+    assert "执行计划: jd_parse -> question_generate" in output.getvalue()
+
+
+def test_mock_interview_declines_retry_plan_before_supplement_nodes(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_text", "负责 Go 服务开发")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "n", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_retry_registry,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="question_generate",
+            candidate_nodes=["question_generate"],
+            via="rule",
+        ),
+    )
+
+    assert exit_code == 0
+    assert session_store.get_state(DEFAULT_SESSION_ID, "jd_requirements") is None
+    assert session_store.get_state(DEFAULT_SESSION_ID, "questions") == []
+    assert "执行计划: jd_parse -> question_generate" in output.getvalue()
+    assert "已取消执行计划。" in output.getvalue()
 
 
 def test_plain_question_generate_does_not_auto_retry_when_questions_are_empty(tmp_path: Path) -> None:
@@ -310,7 +338,7 @@ def test_mock_interview_retry_supplement_node_uses_missing_input_prompt(tmp_path
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始模拟面试", "我的名字是 Alice，做过 Go 服务开发", "exit"]),
+        input_func=build_input(["开始模拟面试", "y", "我的名字是 Alice，做过 Go 服务开发", "exit"]),
         output=output,
         registry_builder=build_mock_interview_resume_retry_registry,
         route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
@@ -325,6 +353,7 @@ def test_mock_interview_retry_supplement_node_uses_missing_input_prompt(tmp_path
     assert session_store.get_state(DEFAULT_SESSION_ID, "resume_text") == "我的名字是 Alice，做过 Go 服务开发"
     assert session_store.get_state(DEFAULT_SESSION_ID, "candidate_profile") == {"name": "Alice"}
     assert session_store.get_state(DEFAULT_SESSION_ID, "questions") == ["Alice:后端工程师"]
+    assert "执行计划: resume_parse -> question_generate" in output.getvalue()
     assert output.getvalue().count("执行结果: success") == 3
 
 
