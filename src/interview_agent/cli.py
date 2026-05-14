@@ -101,7 +101,11 @@ def main(
     llm_client = llm_factory(config.llm)
     services = {
         "llm": llm_client,
-        "retriever": SQLiteHybridRetriever(database_path, config.embedding),
+        "retriever": SQLiteHybridRetriever(
+            database_path,
+            config.embedding,
+            default_limit=config.knowledge_base.top_k,
+        ),
     }
     executor = (executor_factory or _default_executor_factory)(database_path, registry, services)
 
@@ -1031,6 +1035,9 @@ def _write_success_output(output: TextIO, node_name: str, result_output: dict[st
         if isinstance(search_results, list) and search_results:
             _write_line(output, "我找到这些准备资料：")
             _write_list(output, search_results[:3])
+            return
+        if isinstance(search_results, list):
+            _write_line(output, "未检索到相关知识片段。")
         return
 
     if node_name == "jd_parse":

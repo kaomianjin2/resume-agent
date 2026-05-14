@@ -5,7 +5,7 @@ from pathlib import Path
 
 INCLUDED_SUFFIXES = {".md", ".pdf", ".docx"}
 EXCLUDED_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".xlsx"}
-EXCLUDED_DIRECTORY_NAMES = {"简历", "lyjs一起写文档"}
+EXCLUDED_DIRECTORY_NAMES = {"简历", "lyjs一起写文档", "公司流程"}
 EXCLUDED_BASENAME_PREFIXES = {"离职证明"}
 EXCLUDED_TECH_KEYWORDS = {"java", "jvm", "spring"}
 

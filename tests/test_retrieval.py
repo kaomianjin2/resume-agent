@@ -9,6 +9,7 @@ from interview_agent.config import EmbeddingConfig
 from interview_agent.kb.build import build_knowledge_base
 from interview_agent.kb.embedding import FakeEmbedder, LocalBGEEmbedder, build_embedder
 from interview_agent.kb.retrieval import (
+    SQLiteHybridRetriever,
     get_chunk_embedding,
     hybrid_search,
     index_chunks,
@@ -393,6 +394,97 @@ def test_build_knowledge_base_fails_when_default_local_model_path_is_missing(tmp
     assert chunk_count == (0,)
     assert embedding_count == 0
     assert fts_count == 0
+
+
+def test_sqlite_retriever_uses_default_limit_when_search_limit_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "knowledge.sqlite3"
+    retriever = SQLiteHybridRetriever(
+        database_path,
+        EmbeddingConfig(
+            provider="local",
+            model_name="BAAI/bge-m3",
+            model_path="./models/bge-m3",
+        ),
+        default_limit=6,
+    )
+
+    def fake_get_embedder() -> FakeEmbedder:
+        return FakeEmbedder(vocabulary=("python",))
+
+    def fake_hybrid_search(
+        connection: sqlite3.Connection,
+        *,
+        query: str,
+        embedder: FakeEmbedder,
+        limit: int,
+    ) -> list[dict[str, str | float]]:
+        del connection, embedder
+        return [{"chunk_id": f"limit-{limit}", "source_path": query, "content": query, "score": 1.0}]
+
+    monkeypatch.setattr(retriever, "_get_embedder", fake_get_embedder)
+    monkeypatch.setattr("interview_agent.kb.retrieval.hybrid_search", fake_hybrid_search)
+
+    with get_connection(database_path) as connection:
+        connection.execute("SELECT 1")
+
+    matches = retriever.search("python", None)
+
+    assert matches[0]["chunk_id"] == "limit-6"
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_chunk_ids"),
+    [
+        ("中文 检索", ["chunk-1", "chunk-3", "chunk-2"]),
+        ("english retrieval", ["chunk-2", "chunk-1", "chunk-3"]),
+        ("中文 retrieval", ["chunk-1", "chunk-2", "chunk-3"]),
+    ],
+)
+def test_hybrid_search_keeps_stable_order_for_chinese_english_and_mixed_queries(
+    tmp_path: Path,
+    query: str,
+    expected_chunk_ids: list[str],
+) -> None:
+    database_path = tmp_path / "knowledge.sqlite3"
+    initialize_database(database_path)
+
+    with get_connection(database_path) as connection:
+        insert_chunk(
+            connection,
+            document_id="doc-1",
+            chunk_id="chunk-1",
+            source_path="notes/chinese.md",
+            content="中文 检索 指南 retrieval guide",
+        )
+        insert_chunk(
+            connection,
+            document_id="doc-2",
+            chunk_id="chunk-2",
+            source_path="notes/english.md",
+            content="english retrieval guide",
+        )
+        insert_chunk(
+            connection,
+            document_id="doc-3",
+            chunk_id="chunk-3",
+            source_path="notes/mixed.md",
+            content="中文 mixed guide",
+        )
+        embedder = FakeEmbedder(vocabulary=("中文", "检索", "english", "retrieval", "guide", "mixed"))
+
+        index_chunks(connection, embedder=embedder, chunk_ids=["chunk-1", "chunk-2", "chunk-3"])
+
+        matches = hybrid_search(
+            connection,
+            query=query,
+            embedder=embedder,
+            limit=3,
+        )
+
+    assert [match["chunk_id"] for match in matches] == expected_chunk_ids
 
 
 def insert_chunk(
