@@ -25,14 +25,12 @@ flowchart TD
     Router --> RuleRoute[规则路由]
     Router --> LLMRoute[LLM 分类兜底]
     Router --> DefaultRoute[默认 knowledge_search]
-    Router --> RouteContract[输出 RouteResult<br/>selected_node / candidate_nodes / via / needs_user_choice]
     Router --> DirectionChoice{处理方向不确定}
     DirectionChoice -->|是| UserChoice[用户选择处理方向]
     DirectionChoice -->|否| Planner
 
     UserChoice --> Planner
     Planner[Node Planner<br/>src/interview_agent/planner.py]
-    Planner --> PlanContract[输出内部步骤<br/>requires_confirmation 恒为 False]
     Planner --> Executor[Node Executor<br/>src/interview_agent/executor.py]
 
     Executor --> Registry[Node Registry<br/>src/interview_agent/nodes/registry.py]
@@ -76,7 +74,7 @@ sequenceDiagram
     else ready
         CLI->>S: create_session()
         CLI->>R: route_conversation()
-        R-->>CLI: selected_node / candidate_nodes / via / needs_user_choice
+        R-->>CLI: selected_node / candidate_nodes
         opt 处理方向不确定
             CLI-->>U: 询问处理方向
             U-->>CLI: 选择方向
@@ -189,8 +187,6 @@ erDiagram
 - 知识库通过离线命令构建到 SQLite。
 - 节点之间只通过 SQLite `session_state` 共享数据。
 - 节点执行结果统一记录到 `node_runs`。
-- Router 负责决定 `needs_user_choice`，CLI 只消费该契约，不再基于候选数量自行推断。
-- Planner 只生成内部执行步骤；`ExecutionPlan.requires_confirmation` 仅为兼容字段，固定为 `False`。
 - 路由明确时直接执行内部步骤。
 - 处理方向不确定时询问用户选择，不展示内部节点名。
 - 知识库检索使用 SQLite FTS5 和本地 bge-m3 embedding 混合排序。
