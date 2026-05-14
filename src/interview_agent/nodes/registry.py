@@ -52,7 +52,7 @@ DEFAULT_NODE_CONTRACTS = {
     "jd_match": (("resume_profile", "jd_requirements"), (), ("match_report",)),
     "question_generate": (
         ("candidate_profile", "target_role"),
-        ("jd_requirements", "difficulty"),
+        ("jd_requirements", "difficulty", "question_count"),
         ("questions",),
     ),
     "mock_followup": (("question", "answer"), ("rubric",), ("followup_questions",)),

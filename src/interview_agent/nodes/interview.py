@@ -72,7 +72,8 @@ def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -
             "target_role": _require_text(inputs, "target_role"),
         }
         | _optional_prompt_input(inputs, "jd_requirements")
-        | _optional_prompt_input(inputs, "difficulty"),
+        | _optional_prompt_input(inputs, "difficulty")
+        | _optional_prompt_input(inputs, "question_count"),
         rag_query=_join_query_parts(
             _require_text(inputs, "target_role"),
             _read_profile_name(inputs.get("candidate_profile")),

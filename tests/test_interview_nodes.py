@@ -212,6 +212,7 @@ def test_prompt_includes_node_inputs_for_fields_not_declared_in_template(tmp_pat
             "candidate_profile": {"name": "Alice", "highlight": "SLA ownership"},
             "target_role": "Backend",
             "difficulty": "staff",
+            "question_count": 6,
             "jd_requirements": {"must_have": ["Python", "SLA"]},
         },
     )
@@ -230,6 +231,7 @@ def test_prompt_includes_node_inputs_for_fields_not_declared_in_template(tmp_pat
     assert 'node_inputs:\n{"candidate_profile":{"highlight":"SLA ownership","name":"Alice"}' in llm.prompts[0]
     assert '"jd_requirements":{"must_have":["Python","SLA"]}' in llm.prompts[0]
     assert '"difficulty":"staff"' in llm.prompts[0]
+    assert '"question_count":6' in llm.prompts[0]
     assert '"target_role":"Backend"' in llm.prompts[0]
     assert 'node_inputs:\n{"answer":"我会建立告警与容量预案。"' in llm.prompts[1]
     assert '"rubric":"请按 SLA、告警、容量三个维度评分"' in llm.prompts[1]
