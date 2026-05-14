@@ -39,7 +39,7 @@
 | -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续                                                                                                              |
 | Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续                                                                                                                           |
-| Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405` 已完成；Phase 2B 模拟面试入口拆分阻塞                                                                                                              |
+| Phase 2 交互编排层拆分            | `[x]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405` 已完成；Phase 2B 模拟面试入口拆分取消为必做项，改为延期技术债                                                                                                  |
 | Phase 3 Session State 契约固化 | `[x]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | `a4d4a5b`；最小测试通过；reviewer 可继续                                                                                                                           |
 | Phase 4 知识检索链路增强           | `[x]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | `dd0bf67`；`rtk uv run pytest` 167 passed；reviewer 可继续                                                                                                   |
 | Phase 5 节点输出质量增强           | `[x]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | `rtk uv run pytest`：171 passed                                                                                                                          |
@@ -162,17 +162,18 @@
 
 ## Phase 2：交互编排层拆分
 
-**Status:** `[!]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Phase 1  
 **Parallel:** 可与 Phase 4 并行  
 **Tracking ID:** `evolution-phase-2-orchestration-split`  
-**完成证据:** Phase 2A 提交 `c4b9405`；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"` 4 passed；`rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"` 3 passed；`rtk uv run pytest tests/test_cli.py` 48 passed；reviewer 结论：可继续  
-**阻塞原因:** Phase 2B 三次未完成：`task/phase-2b-mock-interview-entry` 迁移后 `mock_interview.py` 501 行，超过 450 行上限；`task/phase-2b-mock-interview-entry-v2` 长时间未完成且只产生测试改动；`task/phase-2b-mock-interview-entry-v3` 未落盘实现。失败 worktree 与分支均已清理。后续需重新评估是否继续拆模拟面试，或先推进 Phase 3/Phase 4。
+**完成证据:** Phase 2A 提交 `c4b9405`；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"` 4 passed；`rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"` 3 passed；`rtk uv run pytest tests/test_cli.py` 48 passed；reviewer 结论：可继续；Phase 2B 模拟面试入口拆分取消为 Phase 2 必做项  
+**延期原因:** Phase 2B 三次未完成：`task/phase-2b-mock-interview-entry` 迁移后 `mock_interview.py` 501 行，超过 450 行上限；`task/phase-2b-mock-interview-entry-v2` 长时间未完成且只产生测试改动；`task/phase-2b-mock-interview-entry-v3` 未落盘实现。失败 worktree 与分支均已清理。模拟面试流程当前仍保留在 `src/interview_agent/cli.py`，不阻塞后续演进。  
+**后续触发条件:** 需要新增模拟面试能力、修改模拟面试交互流程，或 `cli.py` 维护成本再次成为明确阻塞时，再单独重启模拟面试拆分。
 
 ### 目标
 
-将 `src/interview_agent/cli.py` 中的普通请求执行、缺输入补齐、结果展示、模拟面试流程拆到清晰的函数模块，降低入口文件复杂度，同时保持 CLI 行为不变。
+将 `src/interview_agent/cli.py` 中的普通请求执行、缺输入补齐、结果展示拆到清晰的函数模块，降低入口文件复杂度，同时保持 CLI 行为不变。模拟面试流程仍保留在 CLI 模块内，拆分工作作为延期技术债记录。
 
 ### 前置依赖
 
@@ -184,21 +185,21 @@
 1. [x] 新增 `src/interview_agent/orchestrator.py`，迁移普通请求执行流程，保留 `main()` 负责参数解析、配置加载、服务装配、输入循环 → verify: `rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"`
 2. [x] 新增 `run_user_request()` 函数，输入 `user_message/session_id/session_store/registry/executor/llm_client`，输出面向 CLI 的结果 → verify: `rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"`
 3. [x] 将缺输入补齐函数保留为函数式接口，确保节点 handler 不读取用户输入 → verify: `rtk rg "input_func" src/interview_agent/nodes src/interview_agent/agents.py`
-4. [操作] 新增 `src/interview_agent/mock_interview.py`，迁移模拟面试流程，CLI 只调用入口函数 → verify: `uv run pytest tests/test_cli.py -k "mock"`
+4. [取消] 不新增 `src/interview_agent/mock_interview.py`，不迁移模拟面试流程；后续触发条件满足时单独处理 → verify: `rg "模拟面试流程仍保留在 CLI|run_user_request" docs/architecture.md src/interview_agent`
 5. [x] 保持 CLI 输出文本兼容现有断言，不输出内部节点名和执行计划 → verify: `rtk uv run pytest tests/test_cli.py`
-6. [操作] 运行全量测试确认拆分无行为回归 → verify: `uv run pytest`
+6. [取消] Phase 2 不再以模拟面试拆分或全量拆分测试作为验收条件；全量回归由 Phase 6 覆盖 → verify: `rtk uv run pytest`：175 passed
 
 ### 影响范围
 
 - `src/interview_agent/cli.py`
 - `src/interview_agent/orchestrator.py`
-- `src/interview_agent/mock_interview.py`
 - `tests/test_cli.py`
 
 ### 验收标准
 
 - `cli.py` 保留入口装配和输入循环主干。
-- 普通请求和模拟面试具备独立函数级测试。
+- 普通请求委派给 `run_user_request()`。
+- 模拟面试流程仍保留在 CLI 模块内，后续按触发条件单独拆分。
 - 明确路由直接执行。
 - 缺输入继续通过 CLI 提示补齐。
 - 节点之间仍只通过 SQLite `session_state` 共享数据。
