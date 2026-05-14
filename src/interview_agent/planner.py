@@ -48,6 +48,7 @@ def build_execution_plan(
 
     steps.append(_build_step(selected_node))
 
+    # Planner 保留兼容字段，但运行时不再承担用户确认职责。
     requires_confirmation = False
     summary = " -> ".join(step.node_name for step in steps)
     plan_id = _build_plan_id(
