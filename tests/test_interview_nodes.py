@@ -34,6 +34,30 @@ class RecordingRetriever:
 
 
 NODE_CASES = {
+    "algorithm_practice": (
+        {"practice_topic": "链表", "difficulty": "medium", "question_count": 2},
+        "practice_set",
+        (
+            '{"practice_set":{"topic":"链表","difficulty":"medium",'
+            '"exercises":[{"title":"反转链表","prompt":"实现单链表反转",'
+            '"hints":["使用三个指针"],"solution_outline":["迭代移动指针"]}]}}'
+        ),
+        '{"practice_set":{"topic":"链表","difficulty":"medium","exercises":"bad"}}',
+    ),
+    "practice_answer_review": (
+        {
+            "practice_question": "反转链表",
+            "reference_answer": "使用三个指针迭代反转链表。",
+            "answer": "用排序解决",
+        },
+        "practice_answer_feedback",
+        (
+            '{"practice_answer_feedback":{"is_correct":false,'
+            '"feedback":"没有说明指针反转过程",'
+            '"correct_answer":"使用三个指针迭代反转链表。"}}'
+        ),
+        '{"practice_answer_feedback":{"is_correct":"bad","feedback":"x","correct_answer":"y"}}',
+    ),
     "knowledge_search": (
         {"question": "How to explain retry?", "top_k": 1},
         "search_results",
@@ -111,6 +135,8 @@ NODE_CASES = {
 
 
 PROMPT_MARKERS = {
+    "algorithm_practice": "你是算法和数据结构练习教练",
+    "practice_answer_review": "你是算法练习答案评审助手",
     "knowledge_search": "你是知识库检索助手",
     "resume_parse": "你是简历解析助手",
     "project_extract": "你是项目经历提炼助手",
@@ -132,6 +158,16 @@ def test_interview_runtime_nodes_return_structured_outputs_and_write_session_sta
     initialize_database(database_path)
     llm = RecordingLLM(
         responses={
+            "你是算法和数据结构练习教练": (
+                '{"practice_set":{"topic":"链表","difficulty":"medium",'
+                '"exercises":[{"title":"反转链表","prompt":"实现单链表反转",'
+                '"hints":["使用三个指针"],"solution_outline":["迭代移动指针"]}]}}'
+            ),
+            "你是算法练习答案评审助手": (
+                '{"practice_answer_feedback":{"is_correct":false,'
+                '"feedback":"没有说明指针反转过程",'
+                '"correct_answer":"使用三个指针迭代反转链表。"}}'
+            ),
             "你是简历解析助手": '{"resume_profile":{"name":"Alice","skills":["Python"]}}',
             "你是项目经历提炼助手": '{"project_experiences":[{"name":"Agent","impact":"improved throughput"}]}',
             "你是 JD 解析助手": '{"jd_requirements":{"role":"Backend","skills":["Python","SQL"]}}',
@@ -172,6 +208,20 @@ def test_interview_runtime_nodes_return_structured_outputs_and_write_session_sta
     session_id = "session-1"
 
     executed_nodes = [
+        (
+            "algorithm_practice",
+            {"practice_topic": "链表", "difficulty": "medium", "question_count": 2},
+            "practice_set",
+        ),
+        (
+            "practice_answer_review",
+            {
+                "practice_question": "反转链表",
+                "reference_answer": "使用三个指针迭代反转链表。",
+                "answer": "用排序解决",
+            },
+            "practice_answer_feedback",
+        ),
         ("resume_parse", {"resume_text": "Alice built Python services."}, "resume_profile"),
         (
             "project_extract",
@@ -253,6 +303,8 @@ def test_interview_runtime_nodes_return_structured_outputs_and_write_session_sta
         "optimization_advice",
         "summary",
         "search_results",
+        "practice_set",
+        "practice_answer_feedback",
     }
     assert document_count == (0,)
     assert chunk_count == (0,)

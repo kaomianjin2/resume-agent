@@ -2,6 +2,20 @@ from __future__ import annotations
 
 
 PROMPT_TEMPLATES: dict[str, str] = {
+    "algorithm_practice": (
+        "你是算法和数据结构练习教练。\n"
+        "练习主题：{practice_topic}\n"
+        "难度：{difficulty}\n"
+        "题目数量：{question_count}\n"
+        "请输出算法和数据结构练习 JSON。"
+    ),
+    "practice_answer_review": (
+        "你是算法练习答案评审助手。\n"
+        "题目：{practice_question}\n"
+        "参考答案：{reference_answer}\n"
+        "用户回答：{answer}\n"
+        "请判断用户回答是否正确，并输出 JSON。"
+    ),
     "knowledge_search": (
         "你是知识库检索助手。\n"
         "问题：{question}\n"
@@ -69,6 +83,8 @@ PROMPT_TEMPLATES: dict[str, str] = {
 
 
 PROMPT_OUTPUT_KEYS: dict[str, tuple[str, ...]] = {
+    "algorithm_practice": ("practice_set",),
+    "practice_answer_review": ("practice_answer_feedback",),
     "knowledge_search": ("search_results",),
     "resume_parse": ("resume_profile",),
     "project_extract": ("project_experiences",),
@@ -83,6 +99,8 @@ PROMPT_OUTPUT_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 PROMPT_OUTPUT_SCHEMA_HINTS: dict[str, str] = {
+    "algorithm_practice": "practice_set 必须是对象，且包含 topic、difficulty、exercises；exercises 必须是数组。",
+    "practice_answer_review": "practice_answer_feedback 必须是对象，且包含 is_correct、feedback、correct_answer。",
     "knowledge_search": "search_results 必须是数组。",
     "resume_parse": "resume_profile 必须是对象。",
     "project_extract": "project_experiences 必须是数组。",

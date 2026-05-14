@@ -451,6 +451,57 @@ def test_existing_questions_are_shown_when_user_asks_where_they_are(tmp_path: Pa
     assert calls == []
 
 
+def test_algorithm_practice_shows_correct_answer_when_answer_is_empty(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始算法练习", "", "exit"]),
+        output=output,
+        registry_builder=build_algorithm_practice_registry,
+    )
+
+    assert exit_code == 0
+    assert "我会先生成一组算法和数据结构练习，然后逐题检查回答。" in output.getvalue()
+    assert "第 1 题：反转链表" in output.getvalue()
+    assert "你还没有回答，这道题的参考答案：" in output.getvalue()
+    assert "使用 prev、current、next 三个指针迭代反转链表。" in output.getvalue()
+
+
+def test_algorithm_practice_shows_correct_answer_when_answer_is_wrong(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始算法练习", "用排序解决", "exit"]),
+        output=output,
+        registry_builder=build_algorithm_practice_registry,
+    )
+
+    assert exit_code == 0
+    assert "回答不正确。" in output.getvalue()
+    assert "原因：没有说明链表指针反转过程。" in output.getvalue()
+    assert "正确答案：使用 prev、current、next 三个指针迭代反转链表。" in output.getvalue()
+
+
+def test_algorithm_practice_accepts_correct_answer_without_showing_correct_answer(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始算法练习", "用三个指针反转链表", "exit"]),
+        output=output,
+        registry_builder=build_algorithm_practice_registry,
+    )
+
+    assert exit_code == 0
+    assert "回答正确。" in output.getvalue()
+    assert "正确答案：" not in output.getvalue()
+
+
 def test_existing_jd_summary_is_shown_when_user_asks_for_previous_result(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     session_store = SessionStore(database_path)
@@ -1855,6 +1906,29 @@ def build_cli_registry() -> NodeRegistry:
     )
 
 
+def build_algorithm_practice_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="algorithm_practice",
+                description="algorithm practice",
+                required_inputs=(),
+                optional_inputs=("practice_topic", "difficulty", "question_count"),
+                outputs=("practice_set",),
+                handler=algorithm_practice_handler,
+            ),
+            NodeSpec(
+                name="practice_answer_review",
+                description="review algorithm practice answer",
+                required_inputs=("practice_question", "reference_answer", "answer"),
+                optional_inputs=(),
+                outputs=("practice_answer_feedback",),
+                handler=practice_answer_review_handler,
+            ),
+        ]
+    )
+
+
 def build_empty_question_registry() -> NodeRegistry:
     return NodeRegistry(
         [
@@ -2147,6 +2221,37 @@ def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -
         "questions": [
             f"{profile['name']}:{inputs['target_role']}:{requirements.get('role', 'NO_JD')}",
         ]
+    }
+
+
+def algorithm_practice_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {
+        "practice_set": {
+            "topic": "链表",
+            "difficulty": "medium",
+            "exercises": [
+                {
+                    "title": "反转链表",
+                    "prompt": "请实现单链表反转。",
+                    "hints": ["维护 prev、current、next 三个指针。"],
+                    "solution_outline": ["使用 prev、current、next 三个指针迭代反转链表。"],
+                }
+            ],
+        }
+    }
+
+
+def practice_answer_review_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context
+    answer = str(inputs["answer"])
+    is_correct = "三个指针" in answer
+    return {
+        "practice_answer_feedback": {
+            "is_correct": is_correct,
+            "feedback": "回答抓住了指针反转核心。" if is_correct else "没有说明链表指针反转过程。",
+            "correct_answer": "使用 prev、current、next 三个指针迭代反转链表。",
+        }
     }
 
 

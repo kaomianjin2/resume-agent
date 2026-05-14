@@ -22,6 +22,8 @@ from interview_agent.state_contracts import (
 
 
 EXPECTED_NODE_NAMES = {
+    "algorithm_practice",
+    "practice_answer_review",
     "knowledge_search",
     "resume_parse",
     "project_extract",
@@ -58,6 +60,16 @@ def test_default_registry_lists_all_runtime_nodes_with_io_contracts() -> None:
 
 
 def test_default_node_contracts_use_shared_state_contracts() -> None:
+    assert get_node_state_contract("algorithm_practice") == (
+        (),
+        ("practice_topic", "difficulty", "question_count"),
+        ("practice_set",),
+    )
+    assert get_node_state_contract("practice_answer_review") == (
+        ("practice_question", "reference_answer", "answer"),
+        (),
+        ("practice_answer_feedback",),
+    )
     assert get_node_state_contract("resume_parse") == ((RESUME_TEXT,), (), (RESUME_PROFILE, CANDIDATE_PROFILE))
     assert get_node_state_contract("question_generate") == (
         (CANDIDATE_PROFILE, TARGET_ROLE),

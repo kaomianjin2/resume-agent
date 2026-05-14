@@ -161,6 +161,19 @@ def main(
                     _write_line(output_stream, "已中断当前模拟面试。你可以继续输入新的需求，或输入 exit 退出。")
                 continue
 
+            if _is_algorithm_practice_request(normalized_message):
+                _write_line(output_stream, _build_processing_hint(normalized_message))
+                try:
+                    _run_algorithm_practice(
+                        executor=executor,
+                        session_id=session_id,
+                        input_func=input_func,
+                        output=output_stream,
+                    )
+                except InputCancelledError:
+                    _write_line(output_stream, "输入结束，已取消当前执行。")
+                continue
+
             try:
                 run_user_request(
                     normalized_message=normalized_message,
@@ -308,12 +321,26 @@ def _answer_from_session_if_possible(
         _write_line(output, "我还没有查找资料。你可以告诉我想准备的岗位、技术点或面试问题。")
         return True
 
+    if requested_content == "practice":
+        if _write_existing_mapping(
+            output=output,
+            session_inputs=session_inputs,
+            key="practice_set",
+            title="刚才生成的练习内容在这里：",
+            next_prompt=_build_next_need_prompt("algorithm_practice"),
+        ):
+            return True
+        _write_line(output, "我还没有生成算法和数据结构练习。你可以告诉我想练习的主题、难度或题目数量。")
+        return True
+
     return False
 
 
 def _requested_existing_content(user_message: str) -> str | None:
     if not _asks_to_review_existing_content(user_message):
         return None
+    if _contains_any(user_message, ("算法", "数据结构", "刷题", "练习")):
+        return "practice"
     if _contains_any(user_message, ("面试题", "题目", "问题")):
         return "questions"
     if _contains_any(user_message, ("jd", "岗位", "职位", "招聘")):
@@ -351,6 +378,118 @@ def _asks_to_review_existing_content(user_message: str) -> bool:
 
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
     return any(marker in text for marker in markers)
+
+
+def _is_algorithm_practice_request(user_message: str) -> bool:
+    normalized_message = user_message.lower()
+    return _contains_any(
+        normalized_message,
+        ("算法练习", "数据结构练习", "开始算法", "开始刷题", "刷题", "链表练习", "动态规划练习"),
+    )
+
+
+def _run_algorithm_practice(
+    *,
+    executor: ExecutorProtocol,
+    session_id: str,
+    input_func: InputFunc,
+    output: TextIO,
+) -> None:
+    _write_line(output, "我会先生成一组算法和数据结构练习，然后逐题检查回答。")
+    practice_result = executor.execute_node(session_id=session_id, node_name="algorithm_practice", inputs=None)
+    if practice_result.status != "success":
+        _write_result(output, practice_result, "algorithm_practice")
+        return
+
+    exercises = _read_practice_exercises(practice_result.output.get("practice_set"))
+    if not exercises:
+        _write_line(output, "还没有生成可用于练习的题目。")
+        return
+
+    for exercise_index, exercise in enumerate(exercises, start=1):
+        title = _read_practice_text(exercise, "title", f"练习题 {exercise_index}")
+        prompt = _read_practice_text(exercise, "prompt", "")
+        reference_answer = _build_reference_answer(exercise)
+        _write_line(output, f"第 {exercise_index} 题：{title}")
+        if prompt:
+            _write_line(output, prompt)
+        answer = _read_line(input_func, output, "你的回答（直接回车查看答案）: ")
+        if answer is None:
+            raise InputCancelledError("缺少练习回答")
+        if not answer.strip():
+            _write_line(output, "你还没有回答，这道题的参考答案：")
+            _write_line(output, reference_answer)
+            continue
+        review_result = executor.execute_node(
+            session_id=session_id,
+            node_name="practice_answer_review",
+            inputs={
+                "practice_question": _join_query_parts(title, prompt),
+                "reference_answer": reference_answer,
+                "answer": answer,
+            },
+        )
+        _write_practice_answer_feedback(output, review_result, reference_answer)
+    _write_line(output, "算法和数据结构练习已完成。")
+    _write_line(output, _build_next_need_prompt("algorithm_practice"))
+
+
+def _read_practice_exercises(practice_set: object) -> list[dict[str, object]]:
+    if not isinstance(practice_set, dict):
+        return []
+    exercises = practice_set.get("exercises")
+    if not isinstance(exercises, list):
+        return []
+    return [dict(exercise) for exercise in exercises if isinstance(exercise, dict)]
+
+
+def _read_practice_text(exercise: dict[str, object], key: str, default_value: str) -> str:
+    value = exercise.get(key)
+    if isinstance(value, str) and value.strip():
+        return value
+    return default_value
+
+
+def _build_reference_answer(exercise: dict[str, object]) -> str:
+    solution_outline = exercise.get("solution_outline")
+    if isinstance(solution_outline, list):
+        outline_parts = [str(item).strip() for item in solution_outline if str(item).strip()]
+        if outline_parts:
+            return " ".join(outline_parts)
+    return "这道题暂未生成参考答案。"
+
+
+def _join_query_parts(*parts: str) -> str:
+    return " ".join(part.strip() for part in parts if part.strip())
+
+
+def _write_practice_answer_feedback(
+    output: TextIO,
+    review_result: NodeExecutionResult,
+    fallback_answer: str,
+) -> None:
+    if review_result.status != "success":
+        _write_result(output, review_result, "practice_answer_review")
+        return
+    feedback = review_result.output.get("practice_answer_feedback")
+    if not isinstance(feedback, dict):
+        _write_line(output, "回答评审失败。")
+        return
+    if feedback.get("is_correct") is True:
+        _write_line(output, "回答正确。")
+        feedback_text = feedback.get("feedback")
+        if isinstance(feedback_text, str) and feedback_text.strip():
+            _write_line(output, f"反馈：{feedback_text}")
+        return
+
+    correct_answer = feedback.get("correct_answer")
+    if not isinstance(correct_answer, str) or not correct_answer.strip():
+        correct_answer = fallback_answer
+    _write_line(output, "回答不正确。")
+    feedback_text = feedback.get("feedback")
+    if isinstance(feedback_text, str) and feedback_text.strip():
+        _write_line(output, f"原因：{feedback_text}")
+    _write_line(output, f"正确答案：{correct_answer}")
 
 
 def _read_line(input_func: InputFunc, output: TextIO, prompt: str) -> str | None:
@@ -444,6 +583,7 @@ def _build_next_need_prompt(completed_node_name: str) -> str:
 
 def _action_statement_for_node(node_name: str) -> str:
     action_statements = {
+        "algorithm_practice": "我会继续生成算法和数据结构练习。",
         "resume_parse": "我会先读取简历内容，整理候选人画像。",
         "jd_parse": "我会先读取招聘 JD，整理岗位要求。",
         "jd_match": "我会继续把简历和招聘 JD 做匹配分析。",
@@ -461,6 +601,7 @@ def _action_statement_for_node(node_name: str) -> str:
 
 def _action_label_for_node(node_name: str) -> str:
     action_labels = {
+        "algorithm_practice": "生成算法和数据结构练习",
         "resume_parse": "整理简历信息",
         "jd_parse": "整理岗位要求",
         "jd_match": "分析简历和岗位匹配度",
@@ -478,6 +619,7 @@ def _action_label_for_node(node_name: str) -> str:
 
 def _action_question_for_node(node_name: str, *, prefix: str) -> str:
     action_questions = {
+        "algorithm_practice": "帮你继续出下一组练习、模拟讲解解法，或者整理薄弱点训练计划",
         "resume_parse": "帮你继续匹配招聘 JD、生成面试题，或者模拟面试",
         "jd_parse": "帮你继续匹配简历、生成针对这份 JD 的面试题，或者规划准备重点",
         "jd_match": "帮你继续生成面试题、优化简历，或者模拟面试追问",
@@ -565,6 +707,9 @@ _PATH_PATTERN = re.compile(r"(/[^,\s，。；;:：\"'()]+)")
 
 def _input_prompt_for(input_name: str) -> str:
     labels = {
+        "practice_topic": "练习主题",
+        "practice_question": "练习题目",
+        "reference_answer": "参考答案",
         "resume_text": "简历内容",
         "jd_text": "招聘 JD 内容",
         "candidate_profile": "候选人信息",
@@ -591,6 +736,13 @@ def _write_result(output: TextIO, result: NodeExecutionResult, node_name: str) -
 
 
 def _write_success_output(output: TextIO, node_name: str, result_output: dict[str, object]) -> None:
+    if node_name == "algorithm_practice":
+        practice_set = result_output.get("practice_set")
+        if isinstance(practice_set, dict):
+            _write_line(output, _format_title(output, "我生成了这些算法和数据结构练习："))
+            _write_mapping_summary(output, practice_set)
+        return
+
     if node_name == "question_generate":
         questions = result_output.get("questions")
         if isinstance(questions, list) and questions:

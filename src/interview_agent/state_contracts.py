@@ -18,6 +18,11 @@ MATCH_REPORT = "match_report"
 DIFFICULTY = "difficulty"
 QUESTION_COUNT = "question_count"
 QUESTIONS = "questions"
+PRACTICE_TOPIC = "practice_topic"
+PRACTICE_SET = "practice_set"
+PRACTICE_QUESTION = "practice_question"
+REFERENCE_ANSWER = "reference_answer"
+PRACTICE_ANSWER_FEEDBACK = "practice_answer_feedback"
 FOLLOWUP_QUESTIONS = "followup_questions"
 SCORE_REPORT = "score_report"
 WEAKNESSES = "weaknesses"
@@ -34,6 +39,12 @@ NodeStateContract: TypeAlias = tuple[tuple[str, ...], tuple[str, ...], tuple[str
 
 
 DEFAULT_NODE_STATE_CONTRACTS: dict[str, NodeStateContract] = {
+    "algorithm_practice": ((), (PRACTICE_TOPIC, DIFFICULTY, QUESTION_COUNT), (PRACTICE_SET,)),
+    "practice_answer_review": (
+        (PRACTICE_QUESTION, REFERENCE_ANSWER, ANSWER),
+        (),
+        (PRACTICE_ANSWER_FEEDBACK,),
+    ),
     "knowledge_search": ((QUESTION,), (TOP_K,), (SEARCH_RESULTS,)),
     "resume_parse": ((RESUME_TEXT,), (), (RESUME_PROFILE, CANDIDATE_PROFILE)),
     "project_extract": ((RESUME_TEXT,), (RESUME_PROFILE,), (PROJECT_EXPERIENCES,)),

@@ -175,6 +175,8 @@ def test_request_structured_output_rejects_json_that_is_not_object() -> None:
 
 def test_prompt_templates_cover_all_runtime_nodes() -> None:
     expected_prompt_names = {
+        "algorithm_practice",
+        "practice_answer_review",
         "knowledge_search",
         "resume_parse",
         "project_extract",

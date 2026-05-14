@@ -125,6 +125,8 @@ def _resolve_selected_node(
 
 def _node_display_name(node_name: str) -> str:
     display_names = {
+        "algorithm_practice": "算法和数据结构练习",
+        "practice_answer_review": "练习答案评审",
         "resume_parse": "简历解析",
         "jd_parse": "JD 解析",
         "jd_match": "JD 匹配",

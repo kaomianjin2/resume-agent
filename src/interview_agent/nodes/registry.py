@@ -5,11 +5,13 @@ from collections.abc import Iterable
 from interview_agent.state_contracts import DEFAULT_NODE_STATE_CONTRACTS
 
 from .interview import (
+    algorithm_practice_handler,
     answer_score_handler,
     jd_match_handler,
     jd_parse_handler,
     knowledge_search_handler,
     mock_followup_handler,
+    practice_answer_review_handler,
     project_extract_handler,
     question_generate_handler,
     resume_optimize_handler,
@@ -76,6 +78,8 @@ def _runtime_spec(
 
 
 _RUNTIME_HANDLERS = {
+    "algorithm_practice": algorithm_practice_handler,
+    "practice_answer_review": practice_answer_review_handler,
     "knowledge_search": knowledge_search_handler,
     "resume_parse": resume_parse_handler,
     "project_extract": project_extract_handler,

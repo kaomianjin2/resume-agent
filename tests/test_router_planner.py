@@ -36,6 +36,8 @@ def test_route_conversation_matches_core_nodes_by_rules() -> None:
     registry = build_default_registry()
 
     examples = {
+        "给我算法和数据结构练习": "algorithm_practice",
+        "出几道链表练习题": "algorithm_practice",
         "帮我优化简历": "resume_optimize",
         "提炼我的项目经历": "project_extract",
         "请给这道问题打分": "answer_score",
@@ -61,6 +63,21 @@ def test_route_conversation_uses_rule_fallback_without_llm() -> None:
     assert "jd_parse" in result.candidate_nodes
     assert result.via == "rule"
     assert result.needs_user_choice is False
+
+
+def test_build_execution_plan_runs_algorithm_practice_without_required_inputs() -> None:
+    registry = build_default_registry()
+
+    plan = build_execution_plan(
+        user_message="给我算法和数据结构练习",
+        selected_node="algorithm_practice",
+        session_inputs={},
+        registry=registry,
+    )
+
+    assert [step.node_name for step in plan.steps] == ["algorithm_practice"]
+    assert plan.missing_inputs == []
+    assert plan.requires_confirmation is False
 
 
 def test_classify_with_llm_returns_candidate_nodes_from_fake_llm() -> None:

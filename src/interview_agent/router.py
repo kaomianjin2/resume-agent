@@ -99,6 +99,9 @@ def match_rule_based_nodes(user_message: str, registry: NodeRegistry) -> list[st
     normalized_message = user_message.lower()
     matched_nodes: list[str] = []
 
+    if _contains_any(normalized_message, ("算法", "数据结构", "链表", "二叉树", "动态规划", "刷题", "练习题")):
+        matched_nodes.append("algorithm_practice")
+
     if _contains_any(normalized_message, ("打分", "评分", "评价回答", "回答评价")):
         matched_nodes.append("answer_score")
 

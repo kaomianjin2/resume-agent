@@ -4,6 +4,50 @@ from interview_agent.agents import run_structured_node
 from interview_agent.nodes.spec import NodeContext
 
 
+def algorithm_practice_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    practice_topic = _optional_text(inputs, "practice_topic", "算法和数据结构")
+    difficulty = _optional_text(inputs, "difficulty", "medium")
+    question_count = _optional_positive_int(inputs, "question_count", 5)
+    result = run_structured_node(
+        "algorithm_practice",
+        services=_mutable_services(context),
+        prompt_inputs={
+            "practice_topic": practice_topic,
+            "difficulty": difficulty,
+            "question_count": question_count,
+        },
+        rag_query=_join_query_parts(practice_topic, "算法 数据结构 练习"),
+    )
+    output = _normalize_node_output(result, {"practice_set": dict})
+    _require_object_fields(
+        output["practice_set"],
+        "practice_set",
+        {"topic": str, "difficulty": str, "exercises": list},
+    )
+    _require_practice_exercises(output["practice_set"]["exercises"])
+    return output
+
+
+def practice_answer_review_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    result = run_structured_node(
+        "practice_answer_review",
+        services=_mutable_services(context),
+        prompt_inputs={
+            "practice_question": _require_text(inputs, "practice_question"),
+            "reference_answer": _require_text(inputs, "reference_answer"),
+            "answer": _require_text(inputs, "answer"),
+        },
+        rag_query=_require_text(inputs, "practice_question"),
+    )
+    output = _normalize_node_output(result, {"practice_answer_feedback": dict})
+    _require_object_fields(
+        output["practice_answer_feedback"],
+        "practice_answer_feedback",
+        {"is_correct": bool, "feedback": str, "correct_answer": str},
+    )
+    return output
+
+
 def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     question = _require_text(inputs, "question")
     limit = _read_limit(inputs["top_k"]) if "top_k" in inputs else None
@@ -197,6 +241,19 @@ def _require_object_fields(
             raise RuntimeError(f"节点输出字段类型错误: {object_name}.{field_name}")
 
 
+def _require_practice_exercises(exercises: object) -> None:
+    if not isinstance(exercises, list):
+        raise RuntimeError("节点输出字段类型错误: practice_set.exercises")
+    for exercise_index, exercise in enumerate(exercises, start=1):
+        if not isinstance(exercise, dict):
+            raise RuntimeError(f"节点输出字段类型错误: practice_set.exercises[{exercise_index}]")
+        _require_object_fields(
+            exercise,
+            f"practice_set.exercises[{exercise_index}]",
+            {"title": str, "prompt": str, "hints": list, "solution_outline": list},
+        )
+
+
 def _optional_prompt_input(inputs: dict[str, object], key: str) -> dict[str, object]:
     if key not in inputs:
         return {}
@@ -208,6 +265,21 @@ def _require_text(inputs: dict[str, object], key: str) -> str:
     if isinstance(value, str):
         return value
     raise RuntimeError(f"{key} 必须是字符串")
+
+
+def _optional_text(inputs: dict[str, object], key: str, default_value: str) -> str:
+    if key not in inputs:
+        return default_value
+    return _require_text(inputs, key)
+
+
+def _optional_positive_int(inputs: dict[str, object], key: str, default_value: int) -> int:
+    if key not in inputs:
+        return default_value
+    value = inputs[key]
+    if isinstance(value, int) and value > 0:
+        return value
+    raise RuntimeError(f"{key} 必须是正整数")
 
 
 def _read_limit(value: object) -> int:
