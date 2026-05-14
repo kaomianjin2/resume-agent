@@ -12,11 +12,11 @@ from interview_agent.executor import NodeExecutionResult, NodeExecutor
 from interview_agent.kb.retrieval import SQLiteHybridRetriever
 from interview_agent.kb.parser import extract_text
 from interview_agent.llm import FakeLLMClient, OpenAICompatibleClient
-from interview_agent.nodes.registry import NodeRegistry, UnknownNodeError, build_default_registry
+from interview_agent.nodes.registry import NodeRegistry, build_default_registry
+from interview_agent.orchestrator import run_user_request
 from interview_agent.planner import (
     ExecutionPlan,
     PlanStep,
-    build_execution_plan,
 )
 from interview_agent.router import RouteResult, route_conversation
 from interview_agent.session import SessionStore
@@ -119,13 +119,11 @@ def main(
             _write_line(output_stream, "已退出。")
             return 0
 
-        session_inputs = session_store.get_all_state(session_id)
-        if _answer_from_session_if_possible(normalized_message, session_inputs, output_stream):
-            continue
-
-        _write_line(output_stream, _build_processing_hint(normalized_message))
-
         if _is_mock_interview_request(normalized_message):
+            session_inputs = session_store.get_all_state(session_id)
+            if _answer_from_session_if_possible(normalized_message, session_inputs, output_stream):
+                continue
+            _write_line(output_stream, _build_processing_hint(normalized_message))
             _seed_mock_interview_inputs_from_request(
                 session_store=session_store,
                 session_id=session_id,
@@ -148,65 +146,30 @@ def main(
                 _write_line(output_stream, "已中断当前模拟面试。你可以继续输入新的需求，或输入 exit 退出。")
             continue
 
-        direct_node_name = _parse_direct_node_name(normalized_message)
-        if direct_node_name is not None:
-            if not direct_node_name:
-                _write_line(output_stream, "处理方式不能为空，请输入具体需求。")
-                continue
-            if direct_node_name not in registry.list_names():
-                _write_line(output_stream, "暂不支持这个处理方式，请换一种说法描述你的需求。")
-                continue
-            selected_node = direct_node_name
-        else:
-            route_result = route_func(normalized_message, registry, llm_client)
-            try:
-                selected_node = _select_node_for_route(
-                    route_result=route_result,
-                    registry=registry,
-                    input_func=input_func,
-                    output=output_stream,
-                )
-            except InputCancelledError:
-                _write_line(output_stream, "输入结束，已取消当前执行。")
-                continue
-
         try:
-            plan = build_execution_plan(
-                user_message=normalized_message,
-                selected_node=selected_node,
-                session_inputs=session_inputs,
+            run_user_request(
+                normalized_message=normalized_message,
+                executor=executor,
+                session_store=session_store,
+                session_id=session_id,
                 registry=registry,
+                llm_client=llm_client,
+                route_func=route_func,
+                input_func=input_func,
+                output=output_stream,
+                answer_from_session_if_possible=_answer_from_session_if_possible,
+                build_processing_hint=_build_processing_hint,
+                parse_direct_node_name=_parse_direct_node_name,
+                select_node_for_route=_select_node_for_route,
+                print_plan=_print_plan,
+                execute_step_with_prompt=_execute_step_with_prompt,
+                write_result=_write_result,
+                build_step_transition_prompt=_build_step_transition_prompt,
+                build_next_need_prompt=_build_next_need_prompt,
+                write_line=_write_line,
             )
-        except UnknownNodeError:
-            _write_line(output_stream, "暂不支持这个处理方式，请换一种说法描述你的需求。")
-            continue
-        _print_plan(output_stream, plan)
-
-        for step_index, step in enumerate(plan.steps):
-            _write_line(
-                output_stream,
-                f"当前进度 {step_index + 1}/{len(plan.steps)}：正在执行{_node_display_name(step.node_name)}。",
-            )
-            try:
-                result = _execute_step_with_prompt(
-                    executor=executor,
-                    session_store=session_store,
-                    session_id=session_id,
-                    node_name=step.node_name,
-                    input_func=input_func,
-                    output=output_stream,
-                )
-            except InputCancelledError:
-                _write_line(output_stream, "输入结束，已取消当前执行。")
-                break
-            _write_result(output_stream, result, step.node_name)
-            if result.status != "success":
-                _write_line(output_stream, "请根据错误信息调整输入后继续输入下一步需求，或输入 exit 退出。")
-                break
-            if step_index < len(plan.steps) - 1:
-                _write_line(output_stream, _build_step_transition_prompt(plan.steps[step_index + 1].node_name))
-                continue
-            _write_line(output_stream, _build_next_need_prompt(step.node_name))
+        except InputCancelledError:
+            _write_line(output_stream, "输入结束，已取消当前执行。")
 
 
 def _default_executor_factory(
@@ -901,23 +864,6 @@ def _build_processing_hint(user_message: str) -> str:
     if _is_mock_interview_request(user_message):
         return "已收到模拟面试需求，我来处理。"
     return "已收到需求，我来处理。"
-
-
-def _node_display_name(node_name: str) -> str:
-    display_names = {
-        "resume_parse": "简历解析",
-        "jd_parse": "JD 解析",
-        "jd_match": "JD 匹配",
-        "question_generate": "面试题生成",
-        "mock_followup": "模拟追问",
-        "answer_score": "回答评分",
-        "weakness_train": "薄弱点训练",
-        "resume_optimize": "简历优化",
-        "project_extract": "项目提炼",
-        "knowledge_search": "知识检索",
-        "session_summary": "会话总结",
-    }
-    return display_names.get(node_name, node_name)
 
 
 def _build_next_need_prompt(completed_node_name: str) -> str:
