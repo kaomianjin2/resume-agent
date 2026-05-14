@@ -844,7 +844,7 @@ def _select_node_for_route(
     output: TextIO,
 ) -> str:
     candidate_nodes = _filter_available_candidates(route_result.candidate_nodes, registry)
-    if route_result.via != "llm" or len(candidate_nodes) <= 1:
+    if len(candidate_nodes) <= 1:
         return route_result.selected_node
 
     _write_line(output, "我识别到几种处理方向，请选择一个继续：")
