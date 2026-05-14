@@ -144,6 +144,29 @@ def test_natural_language_request_shows_matched_node(tmp_path: Path) -> None:
     assert "执行结果: success" not in output.getvalue()
 
 
+def test_natural_language_request_delegates_to_orchestrator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+    recorded_messages: list[str] = []
+
+    def fake_run_user_request(**kwargs: object) -> None:
+        recorded_messages.append(str(kwargs["normalized_message"]))
+        kwargs["output"].write("由编排入口处理\n")
+
+    monkeypatch.setattr(cli, "run_user_request", fake_run_user_request)
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["帮我找资料", "exit"]),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    assert recorded_messages == ["帮我找资料"]
+    assert "由编排入口处理" in output.getvalue()
+
+
 def test_missing_jd_input_accepts_file_path_and_executes_plan(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     session_store = SessionStore(database_path)
