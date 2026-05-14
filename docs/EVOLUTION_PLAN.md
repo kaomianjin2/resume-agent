@@ -38,7 +38,7 @@
 | Phase                      | 状态    | Owner          | 依赖                              | 可并行             | 完成证据                                       |
 | -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------ |
 | Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
-| Phase 1 运行时契约硬化            | `[~]` | implementer    | Phase 0                         | 否               | 待补充                                        |
+| Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
 | Phase 2 交互编排层拆分            | `[ ]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 待补充                                        |
 | Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                        |
 | Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
@@ -112,12 +112,12 @@
 
 ## Phase 1：运行时契约硬化
 
-**Status:** `[~]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Phase 0  
 **Parallel:** no  
 **Tracking ID:** `evolution-phase-1-runtime-contract`  
-**完成证据:** 待补充提交记录、测试命令、reviewer 结论  
+**完成证据:** 提交 `8803c28`；`rtk uv run pytest tests/test_router_planner.py tests/test_cli.py` 63 passed；`rtk uv run pytest` 135 passed；reviewer 结论：可继续  
 **阻塞原因:** none
 
 ### 目标

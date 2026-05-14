@@ -25,7 +25,7 @@ flowchart TD
     Router --> RuleRoute[规则路由]
     Router --> LLMRoute[LLM 分类兜底]
     Router --> DefaultRoute[默认 knowledge_search]
-    Router --> DirectionChoice{处理方向不确定}
+    Router --> DirectionChoice{needs_user_choice}
     DirectionChoice -->|是| UserChoice[用户选择处理方向]
     DirectionChoice -->|否| Planner
 
@@ -74,8 +74,8 @@ sequenceDiagram
     else ready
         CLI->>S: create_session()
         CLI->>R: route_conversation()
-        R-->>CLI: selected_node / candidate_nodes
-        opt 处理方向不确定
+        R-->>CLI: selected_node / candidate_nodes / needs_user_choice
+        opt needs_user_choice == true
             CLI-->>U: 询问处理方向
             U-->>CLI: 选择方向
         end
@@ -188,5 +188,7 @@ erDiagram
 - 节点之间只通过 SQLite `session_state` 共享数据。
 - 节点执行结果统一记录到 `node_runs`。
 - 路由明确时直接执行内部步骤。
-- 处理方向不确定时询问用户选择，不展示内部节点名。
+- Router 通过 `needs_user_choice` 显式告诉 CLI 是否询问用户。
+- CLI 只展示能力方向，不展示 `candidate_nodes` 内部节点名。
+- Planner 只生成内部执行步骤，`requires_confirmation` 保留为兼容字段且固定为 `False`。
 - 知识库检索使用 SQLite FTS5 和本地 bge-m3 embedding 混合排序。

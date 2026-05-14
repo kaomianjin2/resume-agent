@@ -23,6 +23,17 @@
 
 ## 历史记录
 
+## 2026-05-14 - Phase 1: 运行时契约硬化
+
+- 测试命令：`rtk uv run pytest tests/test_router_planner.py tests/test_cli.py`；`rtk uv run pytest`
+- reviewer 结论：可继续
+- 影响范围：`src/interview_agent/router.py` / `RouteResult`、`route_conversation()`；`src/interview_agent/cli.py` / `_select_node_for_route()`；`src/interview_agent/planner.py` / `ExecutionPlan`；`docs/architecture.md`；`docs/architecture.svg`
+- 变更摘要：
+  - `RouteResult` 新增 `needs_user_choice`，Router 统一输出是否需要用户选择。
+  - CLI 改为读取 Router 显式契约，不再根据来源或候选数量自行推断。
+  - `ExecutionPlan.requires_confirmation` 保持兼容字段并固定为 `False`。
+  - 架构文档同步 Router/Planner 职责边界。
+
 ## 2026-05-14 - Phase 0: 当前主线收口
 
 - 测试命令：`rtk uv run pytest tests/test_router_planner.py tests/test_cli.py`；`rtk uv run pytest`
