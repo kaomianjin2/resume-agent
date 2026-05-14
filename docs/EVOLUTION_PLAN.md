@@ -39,7 +39,7 @@
 | -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------ |
 | Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
 | Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
-| Phase 2 交互编排层拆分            | `[~]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405`；普通请求编排入口已拆分；模拟面试入口待拆分   |
+| Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405` 已完成；Phase 2B 模拟面试入口拆分阻塞 |
 | Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                        |
 | Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
 | Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                        |
@@ -162,13 +162,13 @@
 
 ## Phase 2：交互编排层拆分
 
-**Status:** `[~]`  
+**Status:** `[!]`  
 **Owner:** implementer  
 **Dependencies:** Phase 1  
 **Parallel:** 可与 Phase 4 并行  
 **Tracking ID:** `evolution-phase-2-orchestration-split`  
 **完成证据:** Phase 2A 提交 `c4b9405`；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"` 4 passed；`rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"` 3 passed；`rtk uv run pytest tests/test_cli.py` 48 passed；reviewer 结论：可继续  
-**阻塞原因:** none；历史失败分支已清理，后续只按小任务推进模拟面试入口拆分。
+**阻塞原因:** Phase 2B 三次未完成：`task/phase-2b-mock-interview-entry` 迁移后 `mock_interview.py` 501 行，超过 450 行上限；`task/phase-2b-mock-interview-entry-v2` 长时间未完成且只产生测试改动；`task/phase-2b-mock-interview-entry-v3` 未落盘实现。失败 worktree 与分支均已清理。后续需重新评估是否继续拆模拟面试，或先推进 Phase 3/Phase 4。
 
 ### 目标
 
