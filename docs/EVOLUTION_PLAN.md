@@ -41,7 +41,7 @@
 | Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
 | Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405` 已完成；Phase 2B 模拟面试入口拆分阻塞 |
 | Phase 3 Session State 契约固化 | `[x]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | `a4d4a5b`；最小测试通过；reviewer 可继续            |
-| Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
+| Phase 4 知识检索链路增强           | `[x]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | `dd0bf67`；`rtk uv run pytest` 167 passed；reviewer 可继续 |
 | Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                        |
 | Phase 6 端到端验收场景固化          | `[ ]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | 待补充                                        |
 
@@ -61,7 +61,7 @@
 
 ## Phase 0：当前主线收口
 
-**Status:** `[x]`  
+**Status:** `[x]`
 **Owner:** main agent  
 **Dependencies:** none  
 **Parallel:** no  
@@ -112,7 +112,7 @@
 
 ## Phase 1：运行时契约硬化
 
-**Status:** `[x]`  
+**Status:** `[x]`
 **Owner:** implementer  
 **Dependencies:** Phase 0  
 **Parallel:** no  
@@ -263,12 +263,12 @@
 
 ## Phase 4：知识检索链路增强
 
-**Status:** `[ ]`  
-**Owner:** implementer  
-**Dependencies:** Phase 1  
-**Parallel:** 可与 Phase 2 并行  
-**Tracking ID:** `evolution-phase-4-retrieval-evidence`  
-**完成证据:** 待补充提交记录、测试命令、reviewer 结论  
+**Status:** `[x]`
+**Owner:** implementer
+**Dependencies:** Phase 1
+**Parallel:** 可与 Phase 2 并行
+**Tracking ID:** `evolution-phase-4-retrieval-evidence`
+**完成证据:** 提交 `dd0bf67`；`rtk uv run pytest` 167 passed；reviewer 结论：可继续
 **阻塞原因:** none
 
 ### 目标

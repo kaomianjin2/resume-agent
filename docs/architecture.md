@@ -96,10 +96,10 @@ sequenceDiagram
         E->>N: 调用节点 handler
         N->>A: run_structured_node()
         A->>K: search(query, limit)
-        K-->>A: rag_context
+        K-->>A: rag_context + source metadata
         A->>L: request_structured_output()
         L-->>A: JSON object
-        A-->>N: 结构化输出
+        A-->>N: 保护来源字段后的结构化输出
         N-->>E: 节点输出
         E->>S: 写入 node_runs
         E->>S: 校验后写入 session_state
@@ -207,3 +207,6 @@ erDiagram
 - CLI 只展示能力方向，不展示 `candidate_nodes` 内部节点名。
 - Planner 只生成内部执行步骤，`requires_confirmation` 保留为兼容字段且固定为 `False`。
 - 知识库检索使用 SQLite FTS5 和本地 bge-m3 embedding 混合排序。
+- CLI 将 `config.knowledge_base.top_k` 装配为检索默认 limit；节点显式 `top_k` 输入优先。
+- `knowledge_search` 的 `search_results` 以 retriever chunk 为来源基底，`chunk_id`、`source_path`、`score`、`content` 不由 LLM 覆盖。
+- 空检索结果仍只写入契约字段 `search_results = []`；用户可读提示留在 CLI 展示层，不进入 `session_state`。

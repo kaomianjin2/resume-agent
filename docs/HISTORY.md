@@ -23,6 +23,18 @@
 
 ## 历史记录
 
+## 2026-05-14 - Phase 4: 知识检索链路增强
+
+- 测试命令：`rtk uv run pytest tests/test_interview_nodes.py -k "knowledge_search or rag or empty_results"`；`rtk uv run pytest tests/test_cli.py -k "retriever or knowledge_search"`；`rtk uv run pytest tests/test_kb_file_policy.py tests/test_kb_build.py`；`rtk uv run pytest tests/test_retrieval.py`；`rtk uv run pytest`
+- reviewer 结论：可继续
+- 影响范围：`src/interview_agent/agents.py` / `run_structured_node()`、`_preserve_rag_source_metadata()`；`src/interview_agent/nodes/interview.py` / `knowledge_search_handler()`；`src/interview_agent/kb/retrieval.py` / `SQLiteHybridRetriever.search()`、`hybrid_search()`；`src/interview_agent/cli.py` / 服务装配与知识检索结果展示；`src/interview_agent/kb/file_policy.py`
+- 变更摘要：
+  - `knowledge_search` 以 retriever chunk 为 `search_results` 基底，保留 `chunk_id`、`source_path`、`score`、`content`，LLM 只补充非来源字段。
+  - RAG 输出合并时保护 source metadata，避免 LLM 覆盖真实 chunk 来源。
+  - CLI 装配层将 `config.knowledge_base.top_k` 传给默认检索 limit，显式 `top_k` 输入仍优先。
+  - 空检索结果保持 `search_results = []` 的节点契约，用户提示留在 CLI 展示层。
+  - 离线构建边界新增公司流程资料排除，并补齐中文、英文、混合 query 的混合检索排序回归。
+
 ## 2026-05-14 - Phase 3: Session State 契约固化
 
 - 测试命令：`uv run pytest tests/test_node_registry.py tests/test_executor.py tests/test_router_planner.py tests/test_interview_nodes.py`

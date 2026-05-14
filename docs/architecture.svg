@@ -82,7 +82,7 @@
   <rect class="logic" x="960" y="500" width="240" height="112"/>
   <text class="label" x="1004" y="535">结构化运行时</text>
   <text class="small" x="1032" y="562">agents.py</text>
-  <text class="tiny" x="987" y="586">渲染 prompt、注入 RAG、解析 JSON</text>
+  <text class="tiny" x="987" y="586">渲染 prompt、注入 RAG、保护来源字段</text>
 
   <rect class="external" x="1280" y="535" width="220" height="96"/>
   <text class="label" x="1314" y="572">大模型客户端</text>
@@ -130,7 +130,7 @@
   <text class="note" x="1216" y="382">调用处理函数</text>
   <text class="note" x="1217" y="572">结构化 JSON</text>
   <text class="note" x="810" y="580">校验后读写状态</text>
-  <text class="note" x="675" y="526">检索上下文</text>
+  <text class="note" x="675" y="526">检索上下文 + source metadata</text>
 
   <rect class="boundary" x="50" y="780" width="1500" height="280"/>
   <text class="section-title" x="74" y="812">离线知识库构建路径</text>
@@ -182,6 +182,6 @@
   <text class="note" x="1195" y="786">运行时只读检索</text>
 
   <rect class="panel" x="70" y="1040" width="1460" height="46"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；Router 输出 needs_user_choice；Planner/Registry 复用 state_contracts.py；节点之间只通过 SQLite session_state 共享数据。</text>
+  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；检索默认 top_k 来自配置；RAG 来源字段不由 LLM 覆盖；节点之间只通过 SQLite session_state 共享数据。</text>
   <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
 </svg>
