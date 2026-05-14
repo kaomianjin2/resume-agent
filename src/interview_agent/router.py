@@ -19,6 +19,7 @@ class RouteResult:
     selected_node: str
     candidate_nodes: list[str]
     via: str
+    needs_user_choice: bool
 
 
 def route_conversation(
@@ -32,6 +33,7 @@ def route_conversation(
             selected_node=candidate_nodes[0],
             candidate_nodes=candidate_nodes,
             via="rule",
+            needs_user_choice=len(candidate_nodes) > 1,
         )
 
     if llm_client is None:
@@ -39,6 +41,7 @@ def route_conversation(
             selected_node="knowledge_search",
             candidate_nodes=["knowledge_search"],
             via="default",
+            needs_user_choice=False,
         )
 
     try:
@@ -54,12 +57,14 @@ def route_conversation(
             selected_node=llm_candidates[0],
             candidate_nodes=llm_candidates,
             via="llm",
+            needs_user_choice=len(llm_candidates) > 1,
         )
 
     return RouteResult(
         selected_node="knowledge_search",
         candidate_nodes=["knowledge_search"],
         via="default",
+        needs_user_choice=False,
     )
 
 

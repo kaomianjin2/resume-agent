@@ -17,9 +17,10 @@ def test_route_conversation_matches_question_generate_for_go_request() -> None:
     assert result.selected_node == "question_generate"
     assert result.candidate_nodes == ["question_generate"]
     assert result.via == "rule"
+    assert result.needs_user_choice is False
 
 
-def test_route_conversation_matches_question_generate_for_mock_interview() -> None:
+def test_route_conversation_marks_single_rule_candidate_as_not_needing_user_choice() -> None:
     registry = build_default_registry()
 
     result = route_conversation("开始模拟面试", registry=registry)
@@ -27,6 +28,7 @@ def test_route_conversation_matches_question_generate_for_mock_interview() -> No
     assert result.selected_node == "question_generate"
     assert result.candidate_nodes == ["question_generate"]
     assert result.via == "rule"
+    assert result.needs_user_choice is False
 
 
 def test_route_conversation_matches_core_nodes_by_rules() -> None:
@@ -57,6 +59,7 @@ def test_route_conversation_uses_rule_fallback_without_llm() -> None:
     assert result.selected_node == "jd_parse"
     assert "jd_parse" in result.candidate_nodes
     assert result.via == "rule"
+    assert result.needs_user_choice is False
 
 
 def test_classify_with_llm_returns_candidate_nodes_from_fake_llm() -> None:
@@ -87,6 +90,52 @@ def test_route_conversation_falls_back_to_knowledge_search_when_llm_returns_non_
     assert result.selected_node == "knowledge_search"
     assert result.candidate_nodes == ["knowledge_search"]
     assert result.via == "default"
+    assert result.needs_user_choice is False
+
+
+def test_route_conversation_marks_single_llm_candidate_as_not_needing_user_choice() -> None:
+    registry = build_default_registry()
+    llm_client = FakeLLMClient(response_text='{"candidate_nodes":["knowledge_search"]}')
+
+    result = route_conversation(
+        "想系统了解一下面试准备方法",
+        registry=registry,
+        llm_client=llm_client,
+    )
+
+    assert result.selected_node == "knowledge_search"
+    assert result.candidate_nodes == ["knowledge_search"]
+    assert result.via == "llm"
+    assert result.needs_user_choice is False
+
+
+def test_route_conversation_marks_multi_llm_candidates_as_needing_user_choice() -> None:
+    registry = build_default_registry()
+    llm_client = FakeLLMClient(
+        response_text='{"candidate_nodes":["resume_optimize","session_summary"]}'
+    )
+
+    result = route_conversation(
+        "帮我梳理下简历还有整体准备情况",
+        registry=registry,
+        llm_client=llm_client,
+    )
+
+    assert result.selected_node == "resume_optimize"
+    assert result.candidate_nodes == ["resume_optimize", "session_summary"]
+    assert result.via == "llm"
+    assert result.needs_user_choice is True
+
+
+def test_route_conversation_marks_default_path_as_not_needing_user_choice() -> None:
+    registry = build_default_registry()
+
+    result = route_conversation("我想随便聊聊今天该怎么准备", registry=registry)
+
+    assert result.selected_node == "knowledge_search"
+    assert result.candidate_nodes == ["knowledge_search"]
+    assert result.via == "default"
+    assert result.needs_user_choice is False
 
 
 def test_build_execution_plan_includes_jd_parse_before_question_generation_when_jd_missing() -> None:
@@ -195,4 +244,17 @@ def test_multi_node_plan_does_not_require_confirmation() -> None:
         session_inputs={"candidate_profile": {"skills": ["Go"]}, "target_role": "Go工程师"},
         registry=build_default_registry(),
     )
+    assert plan.requires_confirmation is False
+
+
+def test_execution_plan_requires_confirmation_stays_false_for_compatibility() -> None:
+    registry = build_default_registry()
+
+    plan = build_execution_plan(
+        user_message="总结本轮准备内容",
+        selected_node="session_summary",
+        session_inputs={"questions": ["解释 Go GC"]},
+        registry=registry,
+    )
+
     assert plan.requires_confirmation is False

@@ -129,6 +129,7 @@ def test_natural_language_request_shows_matched_node(tmp_path: Path) -> None:
             selected_node="knowledge_search",
             candidate_nodes=["knowledge_search"],
             via="rule",
+            needs_user_choice=False,
         ),
     )
 
@@ -161,6 +162,7 @@ def test_missing_jd_input_accepts_file_path_and_executes_plan(tmp_path: Path) ->
             selected_node="question_generate",
             candidate_nodes=["question_generate"],
             via="rule",
+            needs_user_choice=False,
         ),
     )
 
@@ -331,6 +333,7 @@ def test_missing_jd_input_accepts_docx_file_path(tmp_path: Path) -> None:
             selected_node="question_generate",
             candidate_nodes=["question_generate"],
             via="rule",
+            needs_user_choice=False,
         ),
     )
 
@@ -384,6 +387,7 @@ def test_multi_node_plan_executes_without_confirmation(tmp_path: Path) -> None:
             selected_node="question_generate",
             candidate_nodes=["question_generate"],
             via="rule",
+            needs_user_choice=False,
         ),
     )
 
@@ -1031,6 +1035,7 @@ def test_llm_route_receives_client_on_default_cli_path(
             selected_node="knowledge_search",
             candidate_nodes=["knowledge_search"],
             via="llm",
+            needs_user_choice=False,
         )
 
     exit_code = cli.main(
@@ -1110,6 +1115,7 @@ def test_ambiguous_route_asks_user_to_choose_direction(tmp_path: Path) -> None:
             selected_node="resume_optimize",
             candidate_nodes=["resume_optimize", "session_summary"],
             via="llm",
+            needs_user_choice=True,
         ),
     )
 
@@ -1142,6 +1148,62 @@ def test_ambiguous_route_asks_user_to_choose_direction(tmp_path: Path) -> None:
     assert "检测到多个可能处理方式" not in output.getvalue()
     assert "正在分析并整理处理步骤" not in output.getvalue()
     assert "执行计划" not in output.getvalue()
+
+
+def test_multi_candidate_route_without_user_choice_flag_executes_selected_node_directly(
+    tmp_path: Path,
+) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+    executed_nodes: list[str] = []
+
+    def executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry, services
+
+        class SuccessExecutor:
+            def execute_node(
+                self,
+                session_id: str,
+                node_name: str,
+                inputs: dict[str, object] | None = None,
+            ) -> cli.NodeExecutionResult:
+                del session_id, inputs
+                executed_nodes.append(node_name)
+                return cli.NodeExecutionResult(
+                    run_id="run-id",
+                    session_id=DEFAULT_SESSION_ID,
+                    node_name=node_name,
+                    status="success",
+                    output={"summary": "已整理"},
+                    missing_inputs=[],
+                )
+
+        return SuccessExecutor()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["帮我梳理准备情况", "exit"]),
+        output=output,
+        executor_factory=executor_factory,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="session_summary",
+            candidate_nodes=["session_summary", "knowledge_search"],
+            via="llm",
+            needs_user_choice=False,
+        ),
+    )
+
+    assert exit_code == 0
+    output_text = output.getvalue()
+    assert "我识别到几种处理方向，请选择一个继续：" not in output_text
+    assert "请输入序号: " not in output_text
+    assert "session_summary" not in output_text
+    assert "knowledge_search" not in output_text
+    assert executed_nodes == ["session_summary"]
 
 
 def test_rule_based_ambiguous_route_asks_user_to_choose_direction_without_node_names(
@@ -1187,6 +1249,7 @@ def test_rule_based_ambiguous_route_asks_user_to_choose_direction_without_node_n
             selected_node="resume_optimize",
             candidate_nodes=["resume_optimize", "session_summary"],
             via="rule",
+            needs_user_choice=True,
         ),
     )
 
@@ -1240,6 +1303,7 @@ def test_default_route_executes_without_asking_user_to_choose_plan(tmp_path: Pat
             selected_node="knowledge_search",
             candidate_nodes=["knowledge_search"],
             via="default",
+            needs_user_choice=False,
         ),
     )
 
@@ -1290,6 +1354,7 @@ def test_default_cli_services_include_retriever_for_executor(tmp_path: Path) -> 
             selected_node="knowledge_search",
             candidate_nodes=["knowledge_search"],
             via="rule",
+            needs_user_choice=False,
         ),
     )
 
@@ -1370,6 +1435,7 @@ def test_missing_input_eof_cancels_current_execution_without_traceback(tmp_path:
             selected_node="question_generate",
             candidate_nodes=["question_generate"],
             via="rule",
+            needs_user_choice=False,
         ),
     )
 
