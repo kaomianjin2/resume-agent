@@ -223,6 +223,22 @@
 7. [操作] 实现直接节点命令 → verify: `/node question_generate` 可触发指定节点
 8. [操作] 合并审查 → verify: reviewer 同时确认规格符合性和代码质量通过
 
+## Evolution Phase 2A: 普通请求编排入口拆分
+
+**Status:** `[x]`  
+**Owner:** implementer  
+**Dependencies:** Phase 1
+
+**Files:**
+
+- Create: `src/interview_agent/orchestrator.py`
+- Modify: `src/interview_agent/cli.py`
+- Test: `tests/test_cli.py`
+1. [操作] 新增 `run_user_request()` 承接普通请求编排 → verify: `rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"`
+2. [操作] `cli.main()` 将非模拟面试请求委派给 `run_user_request()` → verify: `rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"`
+3. [操作] 确认节点 handler 不读取用户输入 → verify: `rtk rg "input_func" src/interview_agent/nodes src/interview_agent/agents.py`
+4. [操作] 合并审查 → verify: reviewer 同时确认规格符合性和代码质量通过
+
 ## Final Review
 
 **Status:** `[ ]`  

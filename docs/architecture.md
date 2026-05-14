@@ -21,7 +21,9 @@ flowchart TD
     KBReady -->|not_ready| OfflineHint[输出离线构建命令并退出]
     KBReady -->|ready| Session[创建/读取会话<br/>SessionStore]
 
-    CLI --> Router[Conversation Router<br/>src/interview_agent/router.py]
+    CLI --> Orchestrator[普通请求编排<br/>src/interview_agent/orchestrator.py<br/>run_user_request]
+    CLI --> MockFlow[模拟面试流程<br/>src/interview_agent/cli.py]
+    Orchestrator --> Router[Conversation Router<br/>src/interview_agent/router.py]
     Router --> RuleRoute[规则路由]
     Router --> LLMRoute[LLM 分类兜底]
     Router --> DefaultRoute[默认 knowledge_search]
@@ -32,6 +34,7 @@ flowchart TD
     UserChoice --> Planner
     Planner[Node Planner<br/>src/interview_agent/planner.py]
     Planner --> Executor[Node Executor<br/>src/interview_agent/executor.py]
+    MockFlow --> Executor
 
     Executor --> Registry[Node Registry<br/>src/interview_agent/nodes/registry.py]
     Registry --> Handlers[Interview Node Handlers<br/>src/interview_agent/nodes/interview.py]
@@ -56,6 +59,7 @@ flowchart TD
 sequenceDiagram
     participant U as 用户
     participant CLI as CLI
+    participant O as Orchestrator
     participant C as Config
     participant S as SQLite Session
     participant R as Router
@@ -73,14 +77,15 @@ sequenceDiagram
         CLI-->>U: 输出离线构建命令并退出
     else ready
         CLI->>S: create_session()
-        CLI->>R: route_conversation()
-        R-->>CLI: selected_node / candidate_nodes / needs_user_choice
+        CLI->>O: run_user_request()
+        O->>R: route_conversation()
+        R-->>O: selected_node / candidate_nodes / needs_user_choice
         opt needs_user_choice == true
-            CLI-->>U: 询问处理方向
-            U-->>CLI: 选择方向
+            O-->>U: 询问处理方向
+            U-->>O: 选择方向
         end
-        CLI->>P: build_execution_plan()
-        CLI->>E: execute_node(session_id, node_name)
+        O->>P: build_execution_plan()
+        O->>E: execute_node(session_id, node_name)
         E->>S: 合并 session_state 与本次输入
         E->>N: 调用节点 handler
         N->>A: run_structured_node()
@@ -92,7 +97,7 @@ sequenceDiagram
         N-->>E: 节点输出
         E->>S: 写入 node_runs
         E->>S: 成功时写入 session_state
-        CLI-->>U: 输出执行结果
+        O-->>U: 输出执行结果
     end
 ```
 
@@ -182,6 +187,7 @@ erDiagram
 ## 架构约束
 
 - 入口是交互式 CLI，不是固定流水线。
+- CLI 的普通请求路径委派给 `run_user_request()`；模拟面试流程仍保留在 CLI 模块内。
 - 配置固定读取 `config/interview-agent.toml`。
 - 运行时只检查知识库 ready 状态，不构建知识库。
 - 知识库通过离线命令构建到 SQLite。

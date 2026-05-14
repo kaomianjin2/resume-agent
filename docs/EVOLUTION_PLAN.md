@@ -39,7 +39,7 @@
 | -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------ |
 | Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
 | Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
-| Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 阻塞：三次拆分实现未达最小搬移要求                         |
+| Phase 2 交互编排层拆分            | `[~]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405`；普通请求编排入口已拆分；模拟面试入口待拆分 |
 | Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                        |
 | Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
 | Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                        |
@@ -162,13 +162,13 @@
 
 ## Phase 2：交互编排层拆分
 
-**Status:** `[!]`  
+**Status:** `[~]`  
 **Owner:** implementer  
 **Dependencies:** Phase 1  
 **Parallel:** 可与 Phase 4 并行  
 **Tracking ID:** `evolution-phase-2-orchestration-split`  
-**完成证据:** 待补充提交记录、测试命令、reviewer 结论  
-**阻塞原因:** `task/evolution-phase-2-orchestration-split` 复制重写 CLI 且删除 `cli.py`；`task/evolution-phase-2-orchestration-split-v2` subagent 因 401 Unauthorized 退出且未提交；`task/evolution-phase-2-orchestration-split-v3` 超过 450 行阈值并出现大量删除。下一步必须拆成更小任务：先做 `run_user_request()` 薄包装/搬移，再单独迁移模拟面试入口。
+**完成证据:** Phase 2A 提交 `c4b9405`；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"` 4 passed；`rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"` 3 passed；`rtk uv run pytest tests/test_cli.py` 48 passed；reviewer 结论：可继续  
+**阻塞原因:** none；历史失败分支已清理，后续只按小任务推进模拟面试入口拆分。
 
 ### 目标
 
@@ -181,11 +181,11 @@
 
 ### 任务清单
 
-1. [操作] 新增 `src/interview_agent/orchestrator.py`，迁移普通请求执行流程，保留 `main()` 负责参数解析、配置加载、服务装配、输入循环 → verify: `uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"`
-2. [操作] 新增 `run_user_request()` 函数，输入 `user_message/session_id/session_store/registry/executor/llm_client`，输出面向 CLI 的文本事件或结果对象 → verify: `uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"`
-3. [操作] 将缺输入补齐函数保留为函数式接口，确保节点 handler 不读取用户输入 → verify: `rg "input_func" src/interview_agent/nodes src/interview_agent/agents.py`
+1. [x] 新增 `src/interview_agent/orchestrator.py`，迁移普通请求执行流程，保留 `main()` 负责参数解析、配置加载、服务装配、输入循环 → verify: `rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"`
+2. [x] 新增 `run_user_request()` 函数，输入 `user_message/session_id/session_store/registry/executor/llm_client`，输出面向 CLI 的结果 → verify: `rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"`
+3. [x] 将缺输入补齐函数保留为函数式接口，确保节点 handler 不读取用户输入 → verify: `rtk rg "input_func" src/interview_agent/nodes src/interview_agent/agents.py`
 4. [操作] 新增 `src/interview_agent/mock_interview.py`，迁移模拟面试流程，CLI 只调用入口函数 → verify: `uv run pytest tests/test_cli.py -k "mock"`
-5. [操作] 保持 CLI 输出文本兼容现有断言，不输出内部节点名和执行计划 → verify: `uv run pytest tests/test_cli.py`
+5. [x] 保持 CLI 输出文本兼容现有断言，不输出内部节点名和执行计划 → verify: `rtk uv run pytest tests/test_cli.py`
 6. [操作] 运行全量测试确认拆分无行为回归 → verify: `uv run pytest`
 
 ### 影响范围

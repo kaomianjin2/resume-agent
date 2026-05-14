@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-05-14 - Phase 2A: 普通请求编排入口拆分
+
+- 测试命令：`rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"`；`rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"`；`rtk uv run pytest tests/test_cli.py`
+- reviewer 结论：可继续
+- 影响范围：`src/interview_agent/cli.py` / `main()`；`src/interview_agent/orchestrator.py` / `run_user_request()`；`tests/test_cli.py`
+- 变更摘要：
+  - 新增 `run_user_request()` 承接普通请求编排路径。
+  - `cli.main()` 保留启动、输入循环和模拟面试分支，普通请求委派到编排模块。
+  - 保持 CLI 参数、节点 handler 接口、SQLite schema、配置和用户可见输出不变。
+
 ## 2026-05-14 - Phase 1: 运行时契约硬化
 
 - 测试命令：`rtk uv run pytest tests/test_router_planner.py tests/test_cli.py`；`rtk uv run pytest`

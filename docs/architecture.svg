@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
   <title id="title">技术面试 Agent 项目架构图</title>
-  <desc id="desc">展示交互式 CLI、对话路由、节点规划、节点执行、大模型调用、混合检索、SQLite 状态库和离线知识库构建之间的关系。</desc>
+  <desc id="desc">展示交互式 CLI、普通请求编排、对话路由、节点规划、节点执行、大模型调用、混合检索、SQLite 状态库和离线知识库构建之间的关系。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
@@ -47,6 +47,7 @@
   <text class="label" x="384" y="225">交互式 CLI</text>
   <text class="small" x="375" y="252">cli.py</text>
   <text class="tiny" x="370" y="276">加载配置、检查 KB、循环输入</text>
+  <text class="tiny" x="370" y="294">普通请求委派 orchestrator.py</text>
 
   <rect class="data" x="340" y="350" width="230" height="112"/>
   <text class="label" x="390" y="385">项目配置</text>
