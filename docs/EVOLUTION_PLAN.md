@@ -35,15 +35,15 @@
 
 ### 阶段总览
 
-| Phase                      | 状态    | Owner          | 依赖                              | 可并行             | 完成证据                                       |
-| -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------ |
-| Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
-| Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
-| Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405` 已完成；Phase 2B 模拟面试入口拆分阻塞 |
-| Phase 3 Session State 契约固化 | `[x]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | `a4d4a5b`；最小测试通过；reviewer 可继续            |
-| Phase 4 知识检索链路增强           | `[x]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | `dd0bf67`；`rtk uv run pytest` 167 passed；reviewer 可继续 |
-| Phase 5 节点输出质量增强           | `[x]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | `rtk uv run pytest`：171 passed                 |
-| Phase 6 端到端验收场景固化          | `[ ]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | 待补充                                        |
+| Phase                      | 状态    | Owner          | 依赖                              | 可并行             | 完成证据                                                                                                                                                    |
+| -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续                                                                                                              |
+| Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续                                                                                                                           |
+| Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405` 已完成；Phase 2B 模拟面试入口拆分阻塞                                                                                                              |
+| Phase 3 Session State 契约固化 | `[x]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | `a4d4a5b`；最小测试通过；reviewer 可继续                                                                                                                           |
+| Phase 4 知识检索链路增强           | `[x]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | `dd0bf67`；`rtk uv run pytest` 167 passed；reviewer 可继续                                                                                                   |
+| Phase 5 节点输出质量增强           | `[x]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | `rtk uv run pytest`：171 passed                                                                                                                          |
+| Phase 6 端到端验收场景固化          | `[x]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | `rtk uv run pytest tests/test_e2e_cli_flow.py` 4 passed；`rtk uv run pytest tests/test_cli.py -k "mock"` 23 passed；`rtk uv run pytest` 175 passed；验收自检通过 |
 
 ## 推荐顺序与并行关系
 
@@ -363,12 +363,12 @@
 
 ## Phase 6：端到端验收场景固化
 
-**Status:** `[ ]`  
-**Owner:** final_reviewer  
-**Dependencies:** Phase 2、Phase 3、Phase 4、Phase 5  
-**Parallel:** no  
-**Tracking ID:** `evolution-phase-6-e2e-acceptance`  
-**完成证据:** 待补充测试命令、final_reviewer 结论  
+**Status:** `[x]`
+**Owner:** final_reviewer
+**Dependencies:** Phase 2、Phase 3、Phase 4、Phase 5
+**Parallel:** no
+**Tracking ID:** `evolution-phase-6-e2e-acceptance`
+**完成证据:** `rtk uv run pytest tests/test_e2e_cli_flow.py`：4 passed；`rtk uv run pytest tests/test_cli.py -k "mock"`：23 passed；`rtk uv run pytest`：175 passed；验收自检结论：端到端 CLI 流、模拟面试、KB 未 ready、失败恢复和文档验收清单通过
 **阻塞原因:** none
 
 ### 目标

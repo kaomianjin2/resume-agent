@@ -253,3 +253,16 @@
 6. [操作] 手工验证不确定路由 → verify: 询问用户处理方向后再执行
 7. [操作] 手工验证 KB 未 ready → verify: 只提示离线构建命令
 8. [操作] 最终验收审查 → verify: final_reviewer 同时确认需求、架构、测试、流程合规且无阻塞问题
+
+## Evolution Phase 6: 端到端验收场景固化
+
+**Status:** `[x]`
+**Owner:** final_reviewer
+**Dependencies:** Phase 2、Phase 3、Phase 4、Phase 5
+
+1. [x] [操作] 运行端到端 CLI 流测试 → verify: `rtk uv run pytest tests/test_e2e_cli_flow.py`：4 passed
+2. [x] [操作] 运行模拟面试验收测试 → verify: `rtk uv run pytest tests/test_cli.py -k "mock"`：23 passed
+3. [x] [操作] 运行全量测试 → verify: `rtk uv run pytest`：175 passed
+4. [ ] [操作] 手工构建知识库 → verify: `rtk uv run python -m interview_agent.kb.build --source /Users/cynicism/Desktop/面试 --config config/interview-agent.toml --db data/interview_agent.sqlite`
+5. [ ] [操作] 手工启动交互式 Agent → verify: `rtk uv run interview-agent --config config/interview-agent.toml`
+6. [x] [操作] 固化手工验证清单，覆盖明确路由、缺输入补齐、不确定路由、模拟面试和失败恢复 → verify: CLI 不展示内部节点名，不访问网络，不修改 `/Users/cynicism/Desktop/面试`
