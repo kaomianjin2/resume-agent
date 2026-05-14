@@ -6,8 +6,8 @@ from interview_agent.nodes.spec import NodeContext
 
 def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     question = _require_text(inputs, "question")
-    limit = _read_limit(inputs.get("top_k"))
-    search_results = run_structured_node(
+    limit = _read_limit(inputs["top_k"]) if "top_k" in inputs else None
+    search_result = run_structured_node(
         "knowledge_search",
         services=_mutable_services(context),
         prompt_inputs={"question": question, "context": question},
@@ -15,9 +15,13 @@ def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) ->
         rag_limit=limit,
         fallback_output={"search_results": []},
     )
-    if "search_results" in search_results:
-        return search_results
-    return {"search_results": []}
+    search_results = search_result.get("search_results")
+    if isinstance(search_results, list) and search_results:
+        return {**search_result, "search_results": search_results}
+    return {
+        "search_results": [],
+        "message": "未检索到相关知识片段。",
+    }
 
 
 def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
@@ -162,7 +166,7 @@ def _require_text(inputs: dict[str, object], key: str) -> str:
 def _read_limit(value: object) -> int:
     if isinstance(value, int) and value > 0:
         return value
-    return 3
+    raise RuntimeError("top_k 必须是正整数")
 
 
 def _read_profile_name(profile: object) -> str:

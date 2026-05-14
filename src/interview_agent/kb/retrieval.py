@@ -16,18 +16,21 @@ class SQLiteHybridRetriever:
         self,
         database_path: Path | str,
         embedding_config: EmbeddingConfig,
+        default_limit: int = 3,
     ) -> None:
         self.database_path = Path(database_path)
         self.embedding_config = embedding_config
+        self.default_limit = default_limit
         self._embedder: Embedder | None = None
 
-    def search(self, query: str, limit: int) -> list[dict[str, str | float]]:
+    def search(self, query: str, limit: int | None = None) -> list[dict[str, str | float]]:
+        resolved_limit = limit if isinstance(limit, int) and limit > 0 else self.default_limit
         with get_connection(self.database_path) as connection:
             return hybrid_search(
                 connection,
                 query=query,
                 embedder=self._get_embedder(),
-                limit=limit,
+                limit=resolved_limit,
             )
 
     def _get_embedder(self) -> Embedder:

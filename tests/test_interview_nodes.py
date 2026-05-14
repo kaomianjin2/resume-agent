@@ -383,7 +383,127 @@ def test_knowledge_search_falls_back_to_empty_results_when_llm_response_is_inval
         ).fetchone()
 
     assert result.status == "success"
-    assert result.output == {"search_results": []}
+    assert result.output == {"search_results": [], "message": "未检索到相关知识片段。"}
     assert result.error_message is None
     assert session_store.get_state("session-1", "search_results") == []
-    assert run_row == ("success", '{"search_results":[]}', None)
+    assert run_row == ("success", '{"message":"未检索到相关知识片段。","search_results":[]}', None)
+
+
+def test_knowledge_search_uses_retriever_chunks_as_base_and_llm_only_adds_non_source_fields(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    llm = RecordingLLM(
+        responses={
+            "你是知识库检索助手": (
+                '{"search_results":[{"chunk_id":"tampered","source_path":"tampered.md",'
+                '"score":0.01,"content":"tampered","summary":"保留重点","advice":"先讲结论"}]}'
+            )
+        }
+    )
+    retriever = RecordingRetriever(
+        [
+            {
+                "chunk_id": "chunk-1",
+                "content": "Retry guidance for Python services.",
+                "source_path": "kb/retry.md",
+                "score": 0.9,
+            }
+        ]
+    )
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={"llm": llm, "retriever": retriever},
+    )
+
+    result = executor.execute_node(
+        session_id="session-1",
+        node_name="knowledge_search",
+        inputs={"question": "How to explain retry?", "top_k": 1},
+    )
+
+    assert result.status == "success"
+    assert result.output == {
+        "search_results": [
+            {
+                "chunk_id": "chunk-1",
+                "source_path": "kb/retry.md",
+                "score": 0.9,
+                "content": "Retry guidance for Python services.",
+                "summary": "保留重点",
+                "advice": "先讲结论",
+            }
+        ]
+    }
+
+
+def test_run_structured_node_preserves_rag_source_metadata_from_retriever(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    llm = RecordingLLM(
+        responses={
+            "你是知识库检索助手": (
+                '{"search_results":[{"chunk_id":"llm-overwrite","source_path":"llm.md",'
+                '"score":0.2,"content":"llm content","summary":"RAG summary"}]}'
+            )
+        }
+    )
+    retriever = RecordingRetriever(
+        [
+            {
+                "chunk_id": "chunk-1",
+                "content": "RAG chunk content for interview preparation.",
+                "source_path": "kb/rag.md",
+                "score": 0.8,
+            }
+        ]
+    )
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={"llm": llm, "retriever": retriever},
+    )
+
+    result = executor.execute_node(
+        session_id="session-1",
+        node_name="knowledge_search",
+        inputs={"question": "什么是 RAG？", "top_k": 1},
+    )
+
+    assert result.status == "success"
+    assert result.output["search_results"][0]["chunk_id"] == "chunk-1"
+    assert result.output["search_results"][0]["source_path"] == "kb/rag.md"
+    assert result.output["search_results"][0]["score"] == 0.8
+    assert result.output["search_results"][0]["content"] == "RAG chunk content for interview preparation."
+    assert result.output["search_results"][0]["summary"] == "RAG summary"
+
+
+def test_knowledge_search_returns_empty_results_with_message_when_retriever_has_no_hits(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={
+            "llm": RecordingLLM({"你是知识库检索助手": '{"summary":"unused"}'}),
+            "retriever": RecordingRetriever([]),
+        },
+    )
+
+    result = executor.execute_node(
+        session_id="session-1",
+        node_name="knowledge_search",
+        inputs={"question": "没有命中的问题"},
+    )
+
+    assert result.status == "success"
+    assert result.output == {
+        "search_results": [],
+        "message": "未检索到相关知识片段。",
+    }

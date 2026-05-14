@@ -13,7 +13,7 @@ def run_structured_node(
     services: dict[str, object],
     prompt_inputs: dict[str, object],
     rag_query: str | None = None,
-    rag_limit: int = 3,
+    rag_limit: int | None = 3,
     fallback_output: dict[str, object] | None = None,
 ) -> dict[str, object]:
     llm = services.get("llm")
@@ -28,6 +28,7 @@ def run_structured_node(
         if fallback_output is not None:
             return fallback_output
         raise
+    structured_output = _preserve_rag_source_metadata(structured_output, rag_results)
     if fallback_output is None:
         return structured_output
 
@@ -54,7 +55,7 @@ def resolve_rag_results(
     *,
     services: dict[str, object],
     query: str | None,
-    limit: int,
+    limit: int | None,
 ) -> list[dict[str, object]]:
     if not query:
         return []
@@ -95,3 +96,25 @@ def _format_rag_context(rag_results: list[dict[str, object]]) -> str:
             }
         )
     return json.dumps(context_items, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _preserve_rag_source_metadata(
+    structured_output: dict[str, object],
+    rag_results: list[dict[str, object]],
+) -> dict[str, object]:
+    search_results = structured_output.get("search_results")
+    if not isinstance(search_results, list) or not rag_results:
+        return structured_output
+
+    merged_results: list[dict[str, object]] = []
+    for index, rag_result in enumerate(rag_results):
+        merged_result = dict(rag_result)
+        llm_result = search_results[index] if index < len(search_results) else None
+        if isinstance(llm_result, dict):
+            for key, value in llm_result.items():
+                if key in {"chunk_id", "source_path", "score", "content"}:
+                    continue
+                merged_result[key] = value
+        merged_results.append(merged_result)
+
+    return {**structured_output, "search_results": merged_results}

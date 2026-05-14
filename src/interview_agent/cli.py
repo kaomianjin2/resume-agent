@@ -101,7 +101,11 @@ def main(
     llm_client = llm_factory(config.llm)
     services = {
         "llm": llm_client,
-        "retriever": SQLiteHybridRetriever(database_path, config.embedding),
+        "retriever": SQLiteHybridRetriever(
+            database_path,
+            config.embedding,
+            default_limit=config.knowledge_base.top_k,
+        ),
     }
     executor = (executor_factory or _default_executor_factory)(database_path, registry, services)
 

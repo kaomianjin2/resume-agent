@@ -161,6 +161,46 @@ def test_build_knowledge_base_removes_documents_excluded_by_current_policy(tmp_p
     assert documents == [("notes.md",)]
 
 
+def test_build_knowledge_base_excludes_resume_offboarding_images_excel_and_process_docs(
+    tmp_path: Path,
+) -> None:
+    source_dir = tmp_path / "source"
+    database_path = tmp_path / "knowledge.sqlite3"
+    config_path = write_config(tmp_path, source_dir, database_path, chunk_size=128, chunk_overlap=16)
+    included_markdown = source_dir / "notes.md"
+    excluded_resume = source_dir / "简历" / "candidate.md"
+    excluded_offboarding = source_dir / "证明" / "离职证明.pdf"
+    excluded_image = source_dir / "images" / "cover.png"
+    excluded_excel = source_dir / "sheets" / "matrix.xlsx"
+    excluded_process = source_dir / "公司流程" / "oncall.docx"
+
+    included_markdown.parent.mkdir(parents=True, exist_ok=True)
+    included_markdown.write_text("stable ready content", encoding="utf-8")
+    excluded_resume.parent.mkdir(parents=True, exist_ok=True)
+    excluded_resume.write_text("resume", encoding="utf-8")
+    excluded_offboarding.parent.mkdir(parents=True, exist_ok=True)
+    write_pdf_fixture(excluded_offboarding, "offboarding proof", compressed=True)
+    excluded_image.parent.mkdir(parents=True, exist_ok=True)
+    excluded_image.write_bytes(b"png fixture")
+    excluded_excel.parent.mkdir(parents=True, exist_ok=True)
+    excluded_excel.write_bytes(b"xlsx fixture")
+    excluded_process.parent.mkdir(parents=True, exist_ok=True)
+    write_docx_fixture(excluded_process, "company process")
+
+    build_with_fake_embedder(source_dir, config_path, database_path)
+
+    with sqlite3.connect(database_path) as connection:
+        documents = connection.execute(
+            """
+            SELECT source_path
+            FROM knowledge_documents
+            ORDER BY source_path
+            """
+        ).fetchall()
+
+    assert documents == [("notes.md",)]
+
+
 def test_build_knowledge_base_indexes_unreadable_pdf_with_fallback_content(
     tmp_path: Path,
 ) -> None:

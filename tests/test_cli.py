@@ -1385,6 +1385,57 @@ def test_default_cli_services_include_retriever_for_executor(tmp_path: Path) -> 
     assert "llm" in captured_services
     assert "retriever" in captured_services
     assert isinstance(captured_services["retriever"], SQLiteHybridRetriever)
+    assert getattr(captured_services["retriever"], "default_limit") == 8
+
+
+def test_cli_retriever_uses_configured_top_k_as_default_limit(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+    captured_services: dict[str, object] = {}
+
+    def executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry
+        captured_services.update(services)
+
+        class ExitExecutor:
+            def execute_node(
+                self,
+                session_id: str,
+                node_name: str,
+                inputs: dict[str, object] | None = None,
+            ) -> cli.NodeExecutionResult:
+                del node_name, inputs
+                return cli.NodeExecutionResult(
+                    run_id="run-id",
+                    session_id=session_id,
+                    node_name="knowledge_search",
+                    status="success",
+                    output={"search_results": [], "message": "未检索到相关知识片段。"},
+                    missing_inputs=[],
+                )
+
+        return ExitExecutor()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["帮我找资料", "exit"]),
+        output=output,
+        executor_factory=executor_factory,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="knowledge_search",
+            candidate_nodes=["knowledge_search"],
+            via="rule",
+            needs_user_choice=False,
+        ),
+    )
+
+    assert exit_code == 0
+    assert isinstance(captured_services["retriever"], SQLiteHybridRetriever)
+    assert captured_services["retriever"].default_limit == 8
 
 
 def test_default_cli_does_not_build_embedder_on_startup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
