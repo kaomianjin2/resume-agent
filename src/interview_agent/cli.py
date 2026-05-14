@@ -112,77 +112,82 @@ def main(
     }
     executor = (executor_factory or _default_executor_factory)(database_path, registry, services)
 
+    _enable_terminal_line_editing(input_func, output_stream)
     _write_line(output_stream, "请输入需求，输入 exit 退出。")
-    while True:
-        user_message = _read_line(input_func, output_stream, "> ")
-        if user_message is None:
-            _write_line(output_stream, "输入结束，已退出。")
-            return 0
+    try:
+        while True:
+            user_message = _read_line(input_func, output_stream, "> ")
+            if user_message is None:
+                _write_line(output_stream, "输入结束，已退出。")
+                return 0
 
-        normalized_message = user_message.strip()
-        if not normalized_message:
-            continue
-        if normalized_message in {"exit", "quit", "/exit"}:
-            _write_line(output_stream, "已退出。")
-            return 0
-
-        if is_mock_interview_request(normalized_message):
-            session_inputs = session_store.get_all_state(session_id)
-            if _answer_from_session_if_possible(normalized_message, session_inputs, output_stream):
+            normalized_message = user_message.strip()
+            if not normalized_message:
                 continue
-            _write_line(output_stream, _build_processing_hint(normalized_message))
-            seed_mock_interview_inputs_from_request(
-                session_store=session_store,
-                session_id=session_id,
-                user_message=normalized_message,
-            )
-            mock_interview_plan = build_mock_interview_plan(normalized_message)
-            _print_plan(output_stream, mock_interview_plan)
+            if normalized_message in {"exit", "quit", "/exit"}:
+                _write_line(output_stream, "已退出。")
+                return 0
+
+            if is_mock_interview_request(normalized_message):
+                session_inputs = session_store.get_all_state(session_id)
+                if _answer_from_session_if_possible(normalized_message, session_inputs, output_stream):
+                    continue
+                _write_line(output_stream, _build_processing_hint(normalized_message))
+                seed_mock_interview_inputs_from_request(
+                    session_store=session_store,
+                    session_id=session_id,
+                    user_message=normalized_message,
+                )
+                mock_interview_plan = build_mock_interview_plan(normalized_message)
+                _print_plan(output_stream, mock_interview_plan)
+                try:
+                    run_mock_interview(
+                        executor=executor,
+                        session_store=session_store,
+                        session_id=session_id,
+                        input_func=input_func,
+                        output=output_stream,
+                        available_node_names=set(registry.list_names()),
+                        execute_step_with_prompt=_execute_step_with_prompt,
+                        write_result=_write_result,
+                        read_line=_read_line,
+                        write_line=_write_line,
+                        build_next_need_prompt=_build_next_need_prompt,
+                        raise_input_cancelled=_raise_input_cancelled,
+                    )
+                except InputCancelledError:
+                    _write_line(output_stream, "输入结束，已取消当前模拟面试。")
+                except MockInterviewInterruptedError:
+                    _write_line(output_stream, "已中断当前模拟面试。你可以继续输入新的需求，或输入 exit 退出。")
+                continue
+
             try:
-                run_mock_interview(
+                run_user_request(
+                    normalized_message=normalized_message,
                     executor=executor,
                     session_store=session_store,
                     session_id=session_id,
+                    registry=registry,
+                    llm_client=llm_client,
+                    route_func=route_func,
                     input_func=input_func,
                     output=output_stream,
-                    available_node_names=set(registry.list_names()),
+                    answer_from_session_if_possible=_answer_from_session_if_possible,
+                    build_processing_hint=_build_processing_hint,
+                    parse_direct_node_name=_parse_direct_node_name,
+                    select_node_for_route=_select_node_for_route,
+                    print_plan=_print_plan,
                     execute_step_with_prompt=_execute_step_with_prompt,
                     write_result=_write_result,
-                    read_line=_read_line,
-                    write_line=_write_line,
+                    build_step_transition_prompt=_build_step_transition_prompt,
                     build_next_need_prompt=_build_next_need_prompt,
-                    raise_input_cancelled=_raise_input_cancelled,
+                    write_line=_write_line,
                 )
             except InputCancelledError:
-                _write_line(output_stream, "输入结束，已取消当前模拟面试。")
-            except MockInterviewInterruptedError:
-                _write_line(output_stream, "已中断当前模拟面试。你可以继续输入新的需求，或输入 exit 退出。")
-            continue
-
-        try:
-            run_user_request(
-                normalized_message=normalized_message,
-                executor=executor,
-                session_store=session_store,
-                session_id=session_id,
-                registry=registry,
-                llm_client=llm_client,
-                route_func=route_func,
-                input_func=input_func,
-                output=output_stream,
-                answer_from_session_if_possible=_answer_from_session_if_possible,
-                build_processing_hint=_build_processing_hint,
-                parse_direct_node_name=_parse_direct_node_name,
-                select_node_for_route=_select_node_for_route,
-                print_plan=_print_plan,
-                execute_step_with_prompt=_execute_step_with_prompt,
-                write_result=_write_result,
-                build_step_transition_prompt=_build_step_transition_prompt,
-                build_next_need_prompt=_build_next_need_prompt,
-                write_line=_write_line,
-            )
-        except InputCancelledError:
-            _write_line(output_stream, "输入结束，已取消当前执行。")
+                _write_line(output_stream, "输入结束，已取消当前执行。")
+    except KeyboardInterrupt:
+        _write_line(output_stream, "\n已退出。")
+        return 0
 
 
 def _default_executor_factory(
@@ -191,6 +196,19 @@ def _default_executor_factory(
     services: ServiceMap,
 ) -> NodeExecutor:
     return NodeExecutor(database_path, registry, services=dict(services))
+
+
+def _enable_terminal_line_editing(input_func: InputFunc, output: TextIO) -> None:
+    if input_func is not input:
+        return
+    if not sys.stdin.isatty():
+        return
+    if not getattr(output, "isatty", lambda: False)():
+        return
+    try:
+        import readline  # noqa: F401
+    except ImportError:
+        return
 
 
 def _build_offline_command(config_path: Path, database_path: Path, source_path: Path) -> str:
@@ -336,7 +354,7 @@ def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
 
 
 def _read_line(input_func: InputFunc, output: TextIO, prompt: str) -> str | None:
-    output.write(prompt)
+    output.write(_format_status(output, prompt))
     output.flush()
     try:
         return input_func("")
@@ -364,9 +382,9 @@ def _select_node_for_route(
     if not route_result.needs_user_choice or len(candidate_nodes) <= 1:
         return route_result.selected_node
 
-    _write_line(output, "我识别到几种处理方向，请选择一个继续：")
+    _write_line(output, _format_title(output, "我识别到几种处理方向，请选择一个继续："))
     for index, candidate_node in enumerate(candidate_nodes, start=1):
-        _write_line(output, f"{index}. {_action_label_for_node(candidate_node)}")
+        _write_line(output, f"{_format_index(output, f'{index}.')} {_action_label_for_node(candidate_node)}")
 
     while True:
         selection = _read_line(input_func, output, "请输入序号: ")
@@ -567,23 +585,23 @@ def _write_result(output: TextIO, result: NodeExecutionResult, node_name: str) -
     if result.status == "success":
         _write_success_output(output, node_name, result.output)
         return
-    _write_line(output, "处理失败。")
+    _write_line(output, _format_error(output, "处理失败。"))
     if result.error_message:
-        _write_line(output, f"错误信息: {result.error_message}")
+        _write_line(output, f"{_format_error(output, '错误信息')}: {result.error_message}")
 
 
 def _write_success_output(output: TextIO, node_name: str, result_output: dict[str, object]) -> None:
     if node_name == "question_generate":
         questions = result_output.get("questions")
         if isinstance(questions, list) and questions:
-            _write_line(output, "我生成了这些面试题：")
+            _write_line(output, _format_title(output, "我生成了这些面试题："))
             _write_list(output, questions)
         return
 
     if node_name == "knowledge_search":
         search_results = result_output.get("search_results")
         if isinstance(search_results, list) and search_results:
-            _write_line(output, "我找到这些准备资料：")
+            _write_line(output, _format_title(output, "我找到这些准备资料："))
             _write_list(output, search_results[:3])
             return
         if isinstance(search_results, list):
@@ -593,63 +611,63 @@ def _write_success_output(output: TextIO, node_name: str, result_output: dict[st
     if node_name == "jd_parse":
         requirements = result_output.get("jd_requirements")
         if isinstance(requirements, dict):
-            _write_line(output, "我整理出的岗位要求：")
+            _write_line(output, _format_title(output, "我整理出的岗位要求："))
             _write_mapping_summary(output, requirements)
         return
 
     if node_name == "resume_parse":
         profile = result_output.get("resume_profile")
         if isinstance(profile, dict):
-            _write_line(output, "我整理出的简历信息：")
+            _write_line(output, _format_title(output, "我整理出的简历信息："))
             _write_mapping_summary(output, profile)
         return
 
     if node_name == "jd_match":
         match_report = result_output.get("match_report")
         if isinstance(match_report, dict):
-            _write_line(output, "我整理出的匹配分析：")
+            _write_line(output, _format_title(output, "我整理出的匹配分析："))
             _write_mapping_summary(output, match_report)
         return
 
     if node_name == "mock_followup":
         followups = result_output.get("followup_questions")
         if isinstance(followups, list) and followups:
-            _write_line(output, "我建议继续追问：")
+            _write_line(output, _format_title(output, "我建议继续追问："))
             _write_list(output, followups)
         return
 
     if node_name == "answer_score":
         score_report = result_output.get("score_report")
         if isinstance(score_report, dict):
-            _write_line(output, "我对回答的评分反馈：")
+            _write_line(output, _format_title(output, "我对回答的评分反馈："))
             _write_mapping_summary(output, score_report)
         return
 
     if node_name == "weakness_train":
         training_plan = result_output.get("training_plan")
         if isinstance(training_plan, dict):
-            _write_line(output, "我整理出的薄弱点训练计划：")
+            _write_line(output, _format_title(output, "我整理出的薄弱点训练计划："))
             _write_mapping_summary(output, training_plan)
         return
 
     if node_name == "resume_optimize":
         optimization_advice = result_output.get("optimization_advice")
         if isinstance(optimization_advice, dict):
-            _write_line(output, "我给出的简历优化建议：")
+            _write_line(output, _format_title(output, "我给出的简历优化建议："))
             _write_resume_optimization_advice(output, optimization_advice)
         return
 
     if node_name == "project_extract":
         project_experiences = result_output.get("project_experiences")
         if isinstance(project_experiences, list) and project_experiences:
-            _write_line(output, "我提取出的项目经历重点：")
+            _write_line(output, _format_title(output, "我提取出的项目经历重点："))
             _write_list(output, project_experiences)
         return
 
     if node_name == "session_summary":
         summary = result_output.get("summary")
         if isinstance(summary, dict):
-            _write_line(output, "我整理出的本轮总结：")
+            _write_line(output, _format_title(output, "我整理出的本轮总结："))
             _write_mapping_summary(output, summary)
 
 
@@ -664,7 +682,7 @@ def _write_existing_list(
     values = session_inputs.get(key)
     if not isinstance(values, list) or not values:
         return False
-    _write_line(output, title)
+    _write_line(output, _format_title(output, title))
     _write_list(output, values)
     _write_line(output, next_prompt)
     return True
@@ -681,7 +699,7 @@ def _write_existing_mapping(
     values = session_inputs.get(key)
     if not isinstance(values, dict) or not values:
         return False
-    _write_line(output, title)
+    _write_line(output, _format_title(output, title))
     _write_mapping_summary(output, values)
     _write_line(output, next_prompt)
     return True
@@ -698,7 +716,7 @@ def _write_existing_text(
     value = session_inputs.get(key)
     if not isinstance(value, str) or not value.strip():
         return False
-    _write_line(output, title)
+    _write_line(output, _format_title(output, title))
     _write_line(output, _format_output_value(value))
     _write_line(output, next_prompt)
     return True
@@ -706,12 +724,13 @@ def _write_existing_text(
 
 def _write_list(output: TextIO, items: list[object]) -> None:
     for index, item in enumerate(items, start=1):
-        _write_line(output, f"{index}. {_format_output_value(item)}")
+        _write_line(output, f"{_format_index(output, f'{index}.')} {_format_output_value(item)}")
 
 
 def _write_mapping_summary(output: TextIO, values: dict[str, object]) -> None:
     for key, value in list(values.items())[:6]:
-        _write_line(output, f"- {_format_output_key(key)}: {_format_output_value(value)}")
+        formatted_key = _format_key(output, _format_output_key(key))
+        _write_line(output, f"- {formatted_key}: {_format_output_value(value)}")
 
 
 def _write_resume_optimization_advice(output: TextIO, values: dict[str, object]) -> None:
@@ -758,8 +777,9 @@ def _write_structured_output_item(
     indent_level: int,
 ) -> None:
     indent = "  " * indent_level
+    formatted_label = _format_key(output, label)
     if isinstance(value, dict):
-        _write_line(output, f"{indent}- {label}：")
+        _write_line(output, f"{indent}- {formatted_label}：")
         for child_key, child_value in value.items():
             _write_structured_output_item(
                 output,
@@ -769,14 +789,14 @@ def _write_structured_output_item(
             )
         return
     if isinstance(value, list):
-        _write_line(output, f"{indent}- {label}：")
+        _write_line(output, f"{indent}- {formatted_label}：")
         for item in value:
             if isinstance(item, dict):
                 _write_structured_output_item(output, "明细", item, indent_level=indent_level + 1)
                 continue
             _write_line(output, f"{'  ' * (indent_level + 1)}- {_format_output_value(item)}")
         return
-    _write_line(output, f"{indent}- {label}：{_format_output_value(value)}")
+    _write_line(output, f"{indent}- {formatted_label}：{_format_output_value(value)}")
 
 
 def _format_resume_optimization_key(key: str) -> str:
@@ -842,6 +862,32 @@ def _format_output_value(value: object) -> str:
             for key, item in list(value.items())[:4]
         )
     return str(value)
+
+
+def _format_title(output: TextIO, text: str) -> str:
+    return _style_terminal_text(output, text, "1;95")
+
+
+def _format_status(output: TextIO, text: str) -> str:
+    return _style_terminal_text(output, text, "1;96")
+
+
+def _format_key(output: TextIO, text: str) -> str:
+    return _style_terminal_text(output, text, "1;94")
+
+
+def _format_index(output: TextIO, text: str) -> str:
+    return _style_terminal_text(output, text, "1;33")
+
+
+def _format_error(output: TextIO, text: str) -> str:
+    return _style_terminal_text(output, text, "1;91")
+
+
+def _style_terminal_text(output: TextIO, text: str, style_code: str) -> str:
+    if not getattr(output, "isatty", lambda: False)():
+        return text
+    return f"\033[{style_code}m{text}\033[0m"
 
 
 def _write_line(output: TextIO, message: str) -> None:

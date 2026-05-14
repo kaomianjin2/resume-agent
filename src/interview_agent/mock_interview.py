@@ -178,8 +178,8 @@ def run_mock_interview(
 
 
 def build_interview_prompt(output: TextIO, prompt: str) -> str:
-    interviewer_label = _style_terminal_text(output, "[面试官]", "1;36")
-    candidate_label = _style_terminal_text(output, "[候选人]", "1;32")
+    interviewer_label = _style_terminal_text(output, "[面试官]", "1;95")
+    candidate_label = _style_terminal_text(output, "[候选人]", "1;96")
     return f"{interviewer_label} {prompt}\n{candidate_label} 你的回答: "
 
 
@@ -502,7 +502,7 @@ def _write_reference_answer(
     reference_answer: list[str],
     write_line: WriteLineFunc,
 ) -> None:
-    write_line(output, "参考答案/方案：")
+    write_line(output, _format_title(output, "参考答案/方案："))
     for item in reference_answer:
         write_line(output, f"- {item}")
 
@@ -543,6 +543,10 @@ def _style_terminal_text(output: TextIO, text: str, style_code: str) -> str:
     if not is_terminal:
         return text
     return f"\033[{style_code}m{text}\033[0m"
+
+
+def _format_title(output: TextIO, text: str) -> str:
+    return _style_terminal_text(output, text, "1;95")
 
 
 def _read_text_list(value: object) -> list[str]:

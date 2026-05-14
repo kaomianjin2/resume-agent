@@ -12,6 +12,7 @@ import zipfile
 import pytest
 
 from interview_agent import cli
+from interview_agent import mock_interview
 from interview_agent.config import LLMConfig
 from interview_agent.kb.embedding import FakeEmbedder
 from interview_agent.kb.retrieval import SQLiteHybridRetriever
@@ -25,6 +26,11 @@ from interview_agent.storage import initialize_database, set_knowledge_base_stat
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE_CONFIG = PROJECT_ROOT / "config" / "interview-agent.toml.example"
 DEFAULT_SESSION_ID = "interactive-cli-session"
+
+
+class TtyOutput(StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 def run_module_help() -> subprocess.CompletedProcess[str]:
@@ -59,6 +65,30 @@ def test_module_entry_catches_mock_interview_eof(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert "输入结束，已取消当前模拟面试。" in result.stdout
     assert "Traceback" not in result.stderr
+
+
+def test_ctrl_c_exits_from_mock_interview_without_traceback(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+    input_values = iter(["开始模拟面试", "", ""])
+
+    def interrupt_during_answer(prompt: str) -> str:
+        del prompt
+        try:
+            return next(input_values)
+        except StopIteration:
+            raise KeyboardInterrupt
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=interrupt_during_answer,
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    assert "已退出。" in output.getvalue()
+    assert "已取消当前模拟面试" not in output.getvalue()
 
 
 def test_example_config_exists_with_placeholders_only() -> None:
@@ -130,6 +160,151 @@ def test_interactive_entry_prompts_for_user_input(tmp_path: Path) -> None:
     assert exit_code == 0
     assert "请输入需求" in output.getvalue()
     assert SessionStore(database_path).get_all_state(DEFAULT_SESSION_ID) == {}
+
+
+def test_ctrl_c_exits_interactive_entry_without_traceback(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    def interrupt_input(prompt: str) -> str:
+        del prompt
+        raise KeyboardInterrupt
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=interrupt_input,
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    assert "已退出。" in output.getvalue()
+
+
+def test_injected_input_does_not_require_terminal_line_editing(
+    tmp_path: Path,
+) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["exit"]),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    assert "已退出。" in output.getvalue()
+
+
+def test_terminal_line_editing_skips_non_terminal_output() -> None:
+    output = StringIO()
+
+    cli._enable_terminal_line_editing(input, output)
+
+
+def test_terminal_output_styles_titles_indexes_keys_and_errors() -> None:
+    output = TtyOutput()
+
+    cli._write_result(
+        output,
+        cli.NodeExecutionResult(
+            run_id="run-id",
+            session_id=DEFAULT_SESSION_ID,
+            node_name="question_generate",
+            status="success",
+            output={"questions": ["解释 Go 调度器"]},
+            missing_inputs=[],
+        ),
+        "question_generate",
+    )
+    cli._write_result(
+        output,
+        cli.NodeExecutionResult(
+            run_id="run-id",
+            session_id=DEFAULT_SESSION_ID,
+            node_name="jd_parse",
+            status="success",
+            output={"jd_requirements": {"role": "后端工程师"}},
+            missing_inputs=[],
+        ),
+        "jd_parse",
+    )
+    cli._write_result(
+        output,
+        cli.NodeExecutionResult(
+            run_id="run-id",
+            session_id=DEFAULT_SESSION_ID,
+            node_name="jd_parse",
+            status="failed",
+            output={},
+            missing_inputs=[],
+            error_message="节点失败",
+        ),
+        "jd_parse",
+    )
+
+    output_text = output.getvalue()
+    assert "\033[1;95m我生成了这些面试题：\033[0m" in output_text
+    assert "\033[1;33m1.\033[0m 解释 Go 调度器" in output_text
+    assert "\033[1;94m岗位\033[0m: 后端工程师" in output_text
+    assert "\033[1;91m处理失败。\033[0m" in output_text
+    assert "\033[1;91m错误信息\033[0m: 节点失败" in output_text
+
+
+def test_non_terminal_output_keeps_plain_text() -> None:
+    output = StringIO()
+
+    cli._write_result(
+        output,
+        cli.NodeExecutionResult(
+            run_id="run-id",
+            session_id=DEFAULT_SESSION_ID,
+            node_name="question_generate",
+            status="success",
+            output={"questions": ["解释 Go 调度器"]},
+            missing_inputs=[],
+        ),
+        "question_generate",
+    )
+
+    output_text = output.getvalue()
+    assert "\033[" not in output_text
+    assert "我生成了这些面试题：" in output_text
+    assert "1. 解释 Go 调度器" in output_text
+
+
+def test_terminal_route_choice_styles_title_index_and_prompt() -> None:
+    output = TtyOutput()
+    route_result = cli.RouteResult(
+        selected_node="resume_optimize",
+        candidate_nodes=["resume_optimize", "session_summary"],
+        via="llm",
+        needs_user_choice=True,
+    )
+
+    selected_node = cli._select_node_for_route(
+        route_result,
+        cli.build_default_registry(),
+        build_input(["2"]),
+        output,
+    )
+
+    output_text = output.getvalue()
+    assert selected_node == "session_summary"
+    assert "\033[1;95m我识别到几种处理方向，请选择一个继续：\033[0m" in output_text
+    assert "\033[1;33m1.\033[0m 给出简历优化建议" in output_text
+    assert "\033[1;96m请输入序号: \033[0m" in output_text
+
+
+def test_input_prompt_styles_only_terminal_prompt_layer() -> None:
+    output = TtyOutput()
+
+    result = cli._read_line(build_input(["Go 后端工程师"]), output, cli._input_prompt_for("target_role"))
+
+    assert result == "Go 后端工程师"
+    assert "\033[1;96m请输入目标岗位（可直接粘贴文本，或输入文件路径）: \033[0m" in output.getvalue()
 
 
 def test_natural_language_request_shows_matched_node(tmp_path: Path) -> None:
@@ -730,14 +905,24 @@ def test_mock_interview_skips_reference_answer_when_user_declines(tmp_path: Path
 
 
 def test_mock_interview_prompt_styles_question_and_answer_labels_for_terminal_output() -> None:
-    class TtyOutput(StringIO):
-        def isatty(self) -> bool:
-            return True
-
     prompt = cli._build_interview_prompt(TtyOutput(), "第 1 题：介绍项目。")
 
-    assert "\033[1;36m[面试官]\033[0m 第 1 题：介绍项目。" in prompt
-    assert "\033[1;32m[候选人]\033[0m 你的回答: " in prompt
+    assert "\033[1;95m[面试官]\033[0m 第 1 题：介绍项目。" in prompt
+    assert "\033[1;96m[候选人]\033[0m 你的回答: " in prompt
+
+
+def test_mock_interview_reference_answer_styles_title_for_terminal_output() -> None:
+    output = TtyOutput()
+
+    mock_interview._write_reference_answer(
+        output,
+        ["先给结论"],
+        lambda output_stream, message: output_stream.write(message + "\n"),
+    )
+
+    output_text = output.getvalue()
+    assert "\033[1;95m参考答案/方案：\033[0m" in output_text
+    assert "- 先给结论" in output_text
 
 
 def test_mock_interview_accepts_structured_question_items_from_llm(tmp_path: Path) -> None:
