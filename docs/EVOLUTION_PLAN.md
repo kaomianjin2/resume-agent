@@ -39,7 +39,7 @@
 | -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------ |
 | Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
 | Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
-| Phase 2 交互编排层拆分            | `[~]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 待补充                                        |
+| Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 阻塞：三次拆分实现未达最小搬移要求                         |
 | Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                        |
 | Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
 | Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                        |
@@ -162,13 +162,13 @@
 
 ## Phase 2：交互编排层拆分
 
-**Status:** `[~]`  
+**Status:** `[!]`  
 **Owner:** implementer  
 **Dependencies:** Phase 1  
 **Parallel:** 可与 Phase 4 并行  
 **Tracking ID:** `evolution-phase-2-orchestration-split`  
 **完成证据:** 待补充提交记录、测试命令、reviewer 结论  
-**阻塞原因:** none
+**阻塞原因:** `task/evolution-phase-2-orchestration-split` 复制重写 CLI 且删除 `cli.py`；`task/evolution-phase-2-orchestration-split-v2` subagent 因 401 Unauthorized 退出且未提交；`task/evolution-phase-2-orchestration-split-v3` 超过 450 行阈值并出现大量删除。下一步必须拆成更小任务：先做 `run_user_request()` 薄包装/搬移，再单独迁移模拟面试入口。
 
 ### 目标
 
