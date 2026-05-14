@@ -2,7 +2,7 @@
 
 ## 结论
 
-本计划将当前 Agent 拆成 7 个可分步落地的演进阶段。执行顺序为 Phase 0 到 Phase 6；Phase 2 与 Phase 4 可并行，Phase 3 与 Phase 5 可并行，Phase 6 在核心接口稳定后执行。
+本计划将当前 Agent 拆成 8 个可分步落地的演进阶段。执行顺序为 Phase 0 到 Phase 7；Phase 2 与 Phase 4 可并行，Phase 3 与 Phase 5 可并行，Phase 6 在核心接口稳定后执行，Phase 7 收口模拟面试流程拆分技术债。
 
 ## 演进原则
 
@@ -44,6 +44,7 @@
 | Phase 4 知识检索链路增强           | `[x]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | `dd0bf67`；`rtk uv run pytest` 167 passed；reviewer 可继续                                                                                                   |
 | Phase 5 节点输出质量增强           | `[x]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | `rtk uv run pytest`：171 passed                                                                                                                          |
 | Phase 6 端到端验收场景固化          | `[x]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | `rtk uv run pytest tests/test_e2e_cli_flow.py` 4 passed；`rtk uv run pytest tests/test_cli.py -k "mock"` 23 passed；`rtk uv run pytest` 175 passed；验收自检通过 |
+| Phase 7 模拟面试流程拆分            | `[x]` | main agent     | Phase 6                         | 否               | `rtk uv run pytest tests/test_cli.py -k "mock"` 24 passed；`rtk uv run pytest tests/test_cli.py` 51 passed；`rtk uv run pytest` 176 passed；reviewer 可继续 |
 
 ## 推荐顺序与并行关系
 
@@ -54,10 +55,12 @@
 5. Phase 4：知识检索链路增强
 6. Phase 5：节点输出质量增强
 7. Phase 6：端到端验收场景固化
+8. Phase 7：模拟面试流程拆分
 - Phase 0 完成后再启动后续演进，避免在未收口工作区上叠加改动。
 - Phase 1 完成后，Phase 2 与 Phase 4 可并行。
 - Phase 3 与 Phase 5 可并行，但合并前必须统一 `session_state` key 与节点输出契约。
 - Phase 6 依赖 Phase 2、Phase 3、Phase 4、Phase 5 的接口稳定。
+- Phase 7 只做结构拆分，不新增模拟面试能力。
 
 ## Phase 0：当前主线收口
 
@@ -168,12 +171,12 @@
 **Parallel:** 可与 Phase 4 并行  
 **Tracking ID:** `evolution-phase-2-orchestration-split`  
 **完成证据:** Phase 2A 提交 `c4b9405`；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"` 4 passed；`rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"` 3 passed；`rtk uv run pytest tests/test_cli.py` 48 passed；reviewer 结论：可继续；Phase 2B 模拟面试入口拆分取消为 Phase 2 必做项  
-**延期原因:** Phase 2B 三次未完成：`task/phase-2b-mock-interview-entry` 迁移后 `mock_interview.py` 501 行，超过 450 行上限；`task/phase-2b-mock-interview-entry-v2` 长时间未完成且只产生测试改动；`task/phase-2b-mock-interview-entry-v3` 未落盘实现。失败 worktree 与分支均已清理。模拟面试流程当前仍保留在 `src/interview_agent/cli.py`，不阻塞后续演进。  
-**后续触发条件:** 需要新增模拟面试能力、修改模拟面试交互流程，或 `cli.py` 维护成本再次成为明确阻塞时，再单独重启模拟面试拆分。
+**延期原因:** Phase 2B 三次未完成：`task/phase-2b-mock-interview-entry` 迁移后 `mock_interview.py` 501 行，超过 450 行上限；`task/phase-2b-mock-interview-entry-v2` 长时间未完成且只产生测试改动；`task/phase-2b-mock-interview-entry-v3` 未落盘实现。失败 worktree 与分支均已清理。Phase 2 当时未处理模拟面试拆分；Phase 7 已重启该技术债。  
+**后续触发条件:** 已由 Phase 7 触发并处理。
 
 ### 目标
 
-将 `src/interview_agent/cli.py` 中的普通请求执行、缺输入补齐、结果展示拆到清晰的函数模块，降低入口文件复杂度，同时保持 CLI 行为不变。模拟面试流程仍保留在 CLI 模块内，拆分工作作为延期技术债记录。
+将 `src/interview_agent/cli.py` 中的普通请求执行、缺输入补齐、结果展示拆到清晰的函数模块，降低入口文件复杂度，同时保持 CLI 行为不变。模拟面试拆分在 Phase 2 延期，后续由 Phase 7 单独处理。
 
 ### 前置依赖
 
@@ -185,7 +188,7 @@
 1. [x] 新增 `src/interview_agent/orchestrator.py`，迁移普通请求执行流程，保留 `main()` 负责参数解析、配置加载、服务装配、输入循环 → verify: `rtk uv run pytest tests/test_cli.py -k "natural_language_request or missing_jd_input"`
 2. [x] 新增 `run_user_request()` 函数，输入 `user_message/session_id/session_store/registry/executor/llm_client`，输出面向 CLI 的结果 → verify: `rtk uv run pytest tests/test_cli.py -k "matched_node or missing_jd_input"`
 3. [x] 将缺输入补齐函数保留为函数式接口，确保节点 handler 不读取用户输入 → verify: `rtk rg "input_func" src/interview_agent/nodes src/interview_agent/agents.py`
-4. [取消] 不新增 `src/interview_agent/mock_interview.py`，不迁移模拟面试流程；后续触发条件满足时单独处理 → verify: `rg "模拟面试流程仍保留在 CLI|run_user_request" docs/architecture.md src/interview_agent`
+4. [取消] Phase 2 不新增 `src/interview_agent/mock_interview.py`，不迁移模拟面试流程；后续由 Phase 7 单独处理 → verify: `rg "Phase 7|run_user_request" docs/EVOLUTION_PLAN.md docs/architecture.md src/interview_agent`
 5. [x] 保持 CLI 输出文本兼容现有断言，不输出内部节点名和执行计划 → verify: `rtk uv run pytest tests/test_cli.py`
 6. [取消] Phase 2 不再以模拟面试拆分或全量拆分测试作为验收条件；全量回归由 Phase 6 覆盖 → verify: `rtk uv run pytest`：175 passed
 
@@ -199,7 +202,7 @@
 
 - `cli.py` 保留入口装配和输入循环主干。
 - 普通请求委派给 `run_user_request()`。
-- 模拟面试流程仍保留在 CLI 模块内，后续按触发条件单独拆分。
+- 模拟面试流程不作为 Phase 2 验收范围；后续由 Phase 7 单独拆分。
 - 明确路由直接执行。
 - 缺输入继续通过 CLI 提示补齐。
 - 节点之间仍只通过 SQLite `session_state` 共享数据。
@@ -411,6 +414,57 @@
 - 不在自动测试中访问 `/Users/cynicism/Desktop/面试`。
 - 不安装或升级依赖。
 - 不引入真实外部 LLM 调用作为 CI 前置条件。
+
+## Phase 7：模拟面试流程拆分
+
+**Status:** `[x]`
+**Owner:** main agent
+**Dependencies:** Phase 6
+**Parallel:** no
+**Tracking ID:** `phase-7-mock-interview-split`
+**完成证据:** `rtk uv run pytest tests/test_cli.py -k "prompt_styles or module_entry_catches_mock_interview_eof"`：2 passed；`rtk uv run pytest tests/test_cli.py -k "mock"`：24 passed；`rtk uv run pytest tests/test_cli.py`：51 passed；`rtk uv run pytest tests/test_e2e_cli_flow.py`：4 passed；`rtk uv run pytest`：176 passed；reviewer 复审结论：代码与文档可继续，`mock_interview.py` 已纳入 Git 变更范围
+**阻塞原因:** none
+
+### 目标
+
+将 `src/interview_agent/cli.py` 中模拟面试专属逻辑迁移到 `src/interview_agent/mock_interview.py`。CLI 保留入口、配置加载、服务装配、输入循环，以及普通请求仍在复用的补输入和结果展示回调。
+
+### 前置依赖
+
+- Phase 6 已覆盖模拟面试主流程。
+- 本阶段不新增模拟面试能力，不修改节点契约、SQLite schema、配置读取或检索链路。
+
+### 任务清单
+
+1. [x] 新增 `src/interview_agent/mock_interview.py`，迁移模拟面试请求识别、计划构建、请求路径种子输入、题目生成重试、追问、参考答案和终端 prompt 样式 → verify: `rtk rg -n "run_mock_interview|build_interview_prompt" src/interview_agent/mock_interview.py`
+2. [x] `cli.py` 的模拟面试分支改为调用 `mock_interview.py`，保留 `InputCancelledError` 和 `_build_interview_prompt()` 兼容测试入口 → verify: `rtk rg -n "_run_mock_interview|_collect_mock|_retry_mock|_ask_followup|_offer_reference|_score_interview|_is_mock_interview_interrupt" src/interview_agent/cli.py`
+3. [x] 更新架构文档和架构图，说明模拟面试流程已迁出 CLI → verify: `rtk rg "mock_interview.py|模拟面试流程" docs/EVOLUTION_PLAN.md docs/architecture.md docs/architecture.svg`
+4. [x] 修复模块方式启动时模拟面试 EOF 取消异常归属，并增加回归测试 → verify: `rtk uv run pytest tests/test_cli.py -k "module_entry_catches_mock_interview_eof"`
+5. [x] 运行模拟面试和 CLI 回归测试 → verify: `rtk uv run pytest tests/test_cli.py -k "mock"`；`rtk uv run pytest tests/test_cli.py`
+6. [x] 运行端到端与全量测试 → verify: `rtk uv run pytest tests/test_e2e_cli_flow.py`；`rtk uv run pytest`
+
+### 影响范围
+
+- `src/interview_agent/cli.py`
+- `src/interview_agent/mock_interview.py`
+- `docs/EVOLUTION_PLAN.md`
+- `docs/architecture.md`
+- `docs/architecture.svg`
+- `docs/HISTORY.md`
+
+### 验收标准
+
+- 题目数、追问轮数、中断、空回答参考答案、低分参考答案、缺输入重试、docx 路径复用行为保持不变。
+- `cli.py` 不再包含模拟面试流程私有实现。
+- `mock_interview.py` 不运行时导入 `cli.py`，避免 `python -m interview_agent.cli` 下异常类型分裂。
+- `cli._build_interview_prompt()` 继续作为兼容入口存在。
+- 全量测试通过。
+
+### 风险/边界
+
+- 不修改 SQLite schema。
+- 不修改节点输入输出契约。
+- 不修改配置读取、知识库构建、LLM client 或 retriever。
 
 ## 最小下一步
 

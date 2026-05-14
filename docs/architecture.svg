@@ -49,6 +49,11 @@
   <text class="tiny" x="370" y="276">加载配置、检查 KB、循环输入</text>
   <text class="tiny" x="370" y="294">普通请求委派 orchestrator.py</text>
 
+  <rect class="logic" x="650" y="450" width="230" height="70"/>
+  <text class="label" x="704" y="480">模拟面试流程</text>
+  <text class="small" x="694" y="506">mock_interview.py</text>
+  <text class="tiny" x="682" y="522">复用 CLI 输入与展示回调</text>
+
   <rect class="data" x="340" y="350" width="230" height="112"/>
   <text class="label" x="390" y="385">项目配置</text>
   <text class="small" x="376" y="412">config/interview-agent.toml</text>
@@ -108,8 +113,10 @@
   <path class="soft-line" d="M 455 302 L 455 350"/>
   <path class="line" d="M 570 226 C 610 226 610 208 650 208"/>
   <path class="line" d="M 570 260 C 615 260 615 364 650 364"/>
+  <path class="line" d="M 570 294 C 612 330 612 485 650 485"/>
   <path class="line" d="M 880 208 C 925 208 925 270 960 270"/>
   <path class="line" d="M 880 364 C 925 364 925 315 960 315"/>
+  <path class="line" d="M 880 485 C 930 485 930 334 960 334"/>
   <path class="line" d="M 1200 276 C 1235 276 1235 209 1280 209"/>
   <path class="line" d="M 1200 322 C 1235 322 1235 389 1280 389"/>
   <path class="line" d="M 1280 410 C 1240 410 1240 556 1200 556"/>
@@ -125,6 +132,7 @@
   <text class="note" x="300" y="232">输入</text>
   <text class="note" x="590" y="202">路由契约</text>
   <text class="note" x="592" y="354">生成内部步骤</text>
+  <text class="note" x="600" y="448">模拟面试流程</text>
   <text class="note" x="892" y="258">按计划执行</text>
   <text class="note" x="1216" y="198">读取节点契约</text>
   <text class="note" x="1216" y="382">调用处理函数</text>
