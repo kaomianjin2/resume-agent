@@ -1144,6 +1144,63 @@ def test_ambiguous_route_asks_user_to_choose_direction(tmp_path: Path) -> None:
     assert "执行计划" not in output.getvalue()
 
 
+def test_rule_based_ambiguous_route_asks_user_to_choose_direction_without_node_names(
+    tmp_path: Path,
+) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+    executed_nodes: list[str] = []
+
+    def executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry, services
+
+        class SuccessExecutor:
+            def execute_node(
+                self,
+                session_id: str,
+                node_name: str,
+                inputs: dict[str, object] | None = None,
+            ) -> cli.NodeExecutionResult:
+                del session_id, inputs
+                executed_nodes.append(node_name)
+                return cli.NodeExecutionResult(
+                    run_id="run-id",
+                    session_id=DEFAULT_SESSION_ID,
+                    node_name=node_name,
+                    status="success",
+                    output={},
+                    missing_inputs=[],
+                )
+
+        return SuccessExecutor()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["帮我总结并优化简历", "2", "exit"]),
+        output=output,
+        executor_factory=executor_factory,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="resume_optimize",
+            candidate_nodes=["resume_optimize", "session_summary"],
+            via="rule",
+        ),
+    )
+
+    assert exit_code == 0
+    output_text = output.getvalue()
+    assert "我识别到几种处理方向，请选择一个继续：" in output_text
+    assert "1. 给出简历优化建议" in output_text
+    assert "2. 总结本轮准备内容" in output_text
+    assert "请输入序号: " in output_text
+    assert "resume_optimize" not in output_text
+    assert "session_summary" not in output_text
+    assert executed_nodes == ["session_summary"]
+
+
 def test_default_route_executes_without_asking_user_to_choose_plan(tmp_path: Path) -> None:
     _, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
