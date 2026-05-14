@@ -35,15 +35,15 @@
 
 ### 阶段总览
 
-| Phase                      | 状态    | Owner          | 依赖                              | 可并行             | 完成证据                                 |
-| -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------ |
-| Phase 0 当前主线收口             | `[~]` | main agent     | 无                               | 否               | 待补充：提交记录、`uv run pytest`、reviewer 结论 |
-| Phase 1 运行时契约硬化            | `[ ]` | implementer    | Phase 0                         | 否               | 待补充                                  |
-| Phase 2 交互编排层拆分            | `[ ]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 待补充                                  |
-| Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                  |
-| Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                  |
-| Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                  |
-| Phase 6 端到端验收场景固化          | `[ ]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | 待补充                                  |
+| Phase                      | 状态    | Owner          | 依赖                              | 可并行             | 完成证据                                       |
+| -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------ |
+| Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
+| Phase 1 运行时契约硬化            | `[ ]` | implementer    | Phase 0                         | 否               | 待补充                                        |
+| Phase 2 交互编排层拆分            | `[ ]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 待补充                                        |
+| Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                        |
+| Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
+| Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                        |
+| Phase 6 端到端验收场景固化          | `[ ]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | 待补充                                        |
 
 ## 推荐顺序与并行关系
 
@@ -61,12 +61,12 @@
 
 ## Phase 0：当前主线收口
 
-**Status:** `[~]`  
+**Status:** `[x]`  
 **Owner:** main agent  
 **Dependencies:** none  
 **Parallel:** no  
 **Tracking ID:** `evolution-phase-0-current-mainline-closeout`  
-**完成证据:** 待补充提交记录、测试命令、reviewer 结论  
+**完成证据:** 提交 `e0689b0`；`rtk uv run pytest tests/test_router_planner.py tests/test_cli.py` 58 passed；`rtk uv run pytest` 129 passed；reviewer 结论：可继续  
 **阻塞原因:** none
 
 ### 目标
