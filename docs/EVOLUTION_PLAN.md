@@ -39,7 +39,7 @@
 | -------------------------- | ----- | -------------- | ------------------------------- | --------------- | ------------------------------------------ |
 | Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
 | Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
-| Phase 2 交互编排层拆分            | `[ ]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 待补充                                        |
+| Phase 2 交互编排层拆分            | `[~]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | 待补充                                        |
 | Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                        |
 | Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
 | Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                        |
@@ -162,7 +162,7 @@
 
 ## Phase 2：交互编排层拆分
 
-**Status:** `[ ]`  
+**Status:** `[~]`  
 **Owner:** implementer  
 **Dependencies:** Phase 1  
 **Parallel:** 可与 Phase 4 并行  
