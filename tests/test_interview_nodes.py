@@ -190,6 +190,76 @@ def test_resume_parse_output_can_drive_question_generate_via_sqlite_session_stat
     assert question_result.output == {"questions": ["请解释你如何维护 SLA"]}
 
 
+def test_session_state_flows_across_resume_jd_question_score_and_training_nodes(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    llm = RecordingLLM(
+        responses={
+            "你是简历解析助手": '{"resume_profile":{"name":"Alice","skills":["Python"],"role":"Backend"}}',
+            "你是 JD 解析助手": '{"jd_requirements":{"role":"Backend","skills":["Python","SQL"]}}',
+            "你是 JD 匹配助手": '{"match_report":{"score":91,"matched_skills":["Python"]}}',
+            "你是面试题生成助手": '{"questions":["请解释你如何保障 SLA"]}',
+            "你是回答评分助手": '{"score_report":{"score":8,"gaps":["指标不够具体"]}}',
+            "你是薄弱点训练助手": '{"training_plan":{"focus":"指标量化","steps":["补充量化案例"]}}',
+        }
+    )
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={"llm": llm},
+    )
+
+    resume_result = executor.execute_node(
+        session_id="session-1",
+        node_name="resume_parse",
+        inputs={"resume_text": "Alice built Python services and owned SLA."},
+    )
+    jd_result = executor.execute_node(
+        session_id="session-1",
+        node_name="jd_parse",
+        inputs={"jd_text": "Need Backend engineer with Python and SQL."},
+    )
+    match_result = executor.execute_node(
+        session_id="session-1",
+        node_name="jd_match",
+    )
+    question_result = executor.execute_node(
+        session_id="session-1",
+        node_name="question_generate",
+        inputs={"target_role": "Backend"},
+    )
+    score_result = executor.execute_node(
+        session_id="session-1",
+        node_name="answer_score",
+        inputs={
+            "question": "请解释你如何保障 SLA",
+            "answer": "我会建立 SLO、告警和容量预案。",
+            "rubric": "按 SLA、告警、容量预案评分",
+        },
+    )
+    training_result = executor.execute_node(
+        session_id="session-1",
+        node_name="weakness_train",
+        inputs={"weaknesses": ["指标量化"], "goal": "补强回答中的量化表达"},
+    )
+
+    assert resume_result.status == "success"
+    assert jd_result.status == "success"
+    assert match_result.status == "success"
+    assert question_result.status == "success"
+    assert score_result.status == "success"
+    assert training_result.status == "success"
+    assert resume_result.output["resume_profile"] == resume_result.output["candidate_profile"]
+    assert match_result.output == {"match_report": {"score": 91, "matched_skills": ["Python"]}}
+    assert question_result.output == {"questions": ["请解释你如何保障 SLA"]}
+    assert score_result.output == {"score_report": {"score": 8, "gaps": ["指标不够具体"]}}
+    assert training_result.output == {
+        "training_plan": {"focus": "指标量化", "steps": ["补充量化案例"]}
+    }
+
+
 def test_prompt_includes_node_inputs_for_fields_not_declared_in_template(tmp_path: Path) -> None:
     database_path = tmp_path / "interview.sqlite3"
     initialize_database(database_path)

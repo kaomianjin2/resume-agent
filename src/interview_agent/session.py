@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from interview_agent.state_contracts import validate_state_entry
 from interview_agent.storage import get_connection, transaction
 
 
@@ -48,6 +49,7 @@ class SessionStore:
         return {row[0]: _decode_value(state_value=row[1], value_type=row[2]) for row in rows}
 
     def set_state(self, session_id: str, key: str, value: object) -> None:
+        validate_state_entry(key, value)
         with get_connection(self.database_path) as connection:
             with transaction(connection):
                 ensure_session(connection, session_id)
@@ -56,6 +58,8 @@ class SessionStore:
 
 def write_session_state(connection: sqlite3.Connection, session_id: str, values: dict[str, object]) -> None:
     current_timestamp = _current_timestamp()
+    for state_key, state_value in values.items():
+        validate_state_entry(state_key, state_value)
     for state_key, state_value in values.items():
         connection.execute(
             "INSERT INTO session_state "

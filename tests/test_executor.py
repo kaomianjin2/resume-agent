@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
+
+import pytest
 
 from interview_agent.executor import NodeExecutor
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, NodeSpec
-from interview_agent.session import SessionStore
+from interview_agent.session import SessionStore, write_session_state
+from interview_agent.state_contracts import CANDIDATE_PROFILE
 from interview_agent.storage import initialize_database
 
 
@@ -245,7 +249,7 @@ def test_failed_node_preserves_existing_successful_state(tmp_path: Path) -> None
     initialize_database(database_path)
     session_store = SessionStore(database_path)
     session_store.create_session("session-1")
-    session_store.set_state("session-1", "candidate_profile", {"name": "Alice"})
+    session_store.set_state("session-1", CANDIDATE_PROFILE, {"name": "Alice"})
     executor = NodeExecutor(database_path, build_registry())
 
     result = executor.execute_node(
@@ -255,7 +259,7 @@ def test_failed_node_preserves_existing_successful_state(tmp_path: Path) -> None
     )
 
     assert result.status == "failed"
-    assert session_store.get_state("session-1", "candidate_profile") == {"name": "Alice"}
+    assert session_store.get_state("session-1", CANDIDATE_PROFILE) == {"name": "Alice"}
     assert session_store.get_state("session-1", "failed_output") is None
 
 
@@ -278,3 +282,66 @@ def test_session_store_set_state_creates_session_for_fresh_session_id(tmp_path: 
 
     assert session_row == ("fresh-session", "active")
     assert state_row == ('{"v":1}',)
+
+
+@pytest.mark.parametrize("invalid_key", ["", "   "])
+def test_session_store_set_state_rejects_empty_state_key(tmp_path: Path, invalid_key: str) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="state key 必须是非空字符串"):
+        session_store.set_state("session-1", invalid_key, {"v": 1})
+
+
+def test_session_store_set_state_rejects_none_value(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="state value 不能为 None"):
+        session_store.set_state("session-1", "empty", None)
+
+
+def test_session_store_set_state_rejects_non_json_serializable_value(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="state value 必须可 JSON 编码"):
+        session_store.set_state("session-1", "bad", {"payload": object()})
+
+
+def test_session_store_set_state_accepts_json_serializable_value(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+    value = {"items": ["a"], "meta": {"count": 1}}
+
+    session_store.set_state("session-1", "good", value)
+
+    assert session_store.get_state("session-1", "good") == value
+
+
+def test_write_session_state_rejects_none_value_when_called_directly(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+    session_store.create_session("session-1")
+    value = {"items": ["a"], "meta": {"count": 1}}
+
+    with sqlite3.connect(database_path) as connection:
+        with pytest.raises(ValueError, match="state value 不能为 None"):
+            write_session_state(connection, "session-1", {"bad": None})
+
+    assert session_store.get_state("session-1", "bad") is None
+
+    session_store.set_state("session-1", "good", value)
+
+    with sqlite3.connect(database_path) as connection:
+        state_row = connection.execute(
+            "SELECT state_value FROM session_state WHERE session_id = ? AND state_key = ?",
+            ("session-1", "good"),
+        ).fetchone()
+
+    assert state_row == (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")),)
