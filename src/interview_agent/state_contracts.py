@@ -28,6 +28,8 @@ SESSION_TRANSCRIPT = "session_transcript"
 SUMMARY = "summary"
 SEARCH_RESULTS = "search_results"
 
+ALLOWED_EMPTY_LIST_STATE_KEYS = frozenset({SEARCH_RESULTS, QUESTIONS, FOLLOWUP_QUESTIONS})
+
 NodeStateContract: TypeAlias = tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]
 
 
@@ -89,4 +91,4 @@ def _is_empty_state_value(key: str, value: object) -> bool:
 
 
 def _allows_empty_state_value(key: str, value: object) -> bool:
-    return key == SEARCH_RESULTS and isinstance(value, list)
+    return key in ALLOWED_EMPTY_LIST_STATE_KEYS and isinstance(value, list)

@@ -10,7 +10,7 @@ from interview_agent.executor import NodeExecutor
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, NodeSpec
 from interview_agent.session import SessionStore, write_session_state
-from interview_agent.state_contracts import CANDIDATE_PROFILE, SEARCH_RESULTS
+from interview_agent.state_contracts import CANDIDATE_PROFILE, FOLLOWUP_QUESTIONS, QUESTIONS, SEARCH_RESULTS
 from interview_agent.storage import initialize_database
 
 
@@ -392,6 +392,26 @@ def test_session_store_set_state_accepts_empty_search_results_list(tmp_path: Pat
     session_store.set_state("session-1", SEARCH_RESULTS, [])
 
     assert session_store.get_state("session-1", SEARCH_RESULTS) == []
+
+
+def test_session_store_set_state_accepts_empty_questions_list(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    session_store.set_state("session-1", QUESTIONS, [])
+
+    assert session_store.get_state("session-1", QUESTIONS) == []
+
+
+def test_session_store_set_state_accepts_empty_followup_questions_list(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    session_store.set_state("session-1", FOLLOWUP_QUESTIONS, [])
+
+    assert session_store.get_state("session-1", FOLLOWUP_QUESTIONS) == []
 
 
 def test_write_session_state_rejects_none_value_when_called_directly(tmp_path: Path) -> None:
