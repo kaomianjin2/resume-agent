@@ -62,17 +62,17 @@
   <rect class="logic" x="650" y="310" width="230" height="108"/>
   <text class="label" x="696" y="346">节点规划器</text>
   <text class="small" x="693" y="373">planner.py</text>
-  <text class="tiny" x="677" y="395">内部步骤，无确认</text>
+  <text class="tiny" x="677" y="395">复用 state_contracts.py</text>
 
   <rect class="exec" x="960" y="235" width="240" height="118"/>
   <text class="label" x="1010" y="272">节点执行器</text>
   <text class="small" x="1028" y="299">executor.py</text>
-  <text class="tiny" x="990" y="322">校验输入、执行节点、记录结果</text>
+  <text class="tiny" x="990" y="322">校验契约、执行节点、记录结果</text>
 
   <rect class="exec" x="1280" y="150" width="220" height="118"/>
   <text class="label" x="1322" y="186">节点注册表</text>
   <text class="small" x="1320" y="213">nodes/registry.py</text>
-  <text class="tiny" x="1310" y="238">节点契约与 handler 映射</text>
+  <text class="tiny" x="1310" y="238">复用 state_contracts.py</text>
 
   <rect class="exec" x="1280" y="325" width="220" height="128"/>
   <text class="label" x="1302" y="361">面试节点处理器</text>
@@ -95,6 +95,10 @@
   <text class="small" x="693" y="615">session_state</text>
   <text class="small" x="693" y="637">node_runs</text>
 
+  <rect class="logic" x="910" y="650" width="270" height="58"/>
+  <text class="label" x="950" y="676">状态契约</text>
+  <text class="small" x="962" y="698">state_contracts.py</text>
+
   <rect class="data" x="90" y="545" width="480" height="112"/>
   <text class="label" x="236" y="580">SQLite 知识库索引</text>
   <text class="small" x="145" y="608">knowledge_documents / knowledge_chunks / knowledge_base_meta</text>
@@ -111,6 +115,9 @@
   <path class="line" d="M 1280 410 C 1240 410 1240 556 1200 556"/>
   <path class="line" d="M 1200 582 L 1280 582"/>
   <path class="line" d="M 960 582 C 920 582 920 595 880 595"/>
+  <path class="soft-line" d="M 910 679 C 845 679 825 418 765 418"/>
+  <path class="soft-line" d="M 1045 650 L 1080 353"/>
+  <path class="soft-line" d="M 1180 679 C 1290 680 1340 268 1390 268"/>
   <path class="line" d="M 960 535 C 815 475 700 490 570 595"/>
   <path class="line" d="M 960 560 C 815 545 710 545 570 610"/>
   <path class="soft-line" d="M 455 462 C 455 510 612 535 650 565"/>
@@ -122,7 +129,7 @@
   <text class="note" x="1216" y="198">读取节点契约</text>
   <text class="note" x="1216" y="382">调用处理函数</text>
   <text class="note" x="1217" y="572">结构化 JSON</text>
-  <text class="note" x="810" y="580">读写状态</text>
+  <text class="note" x="810" y="580">校验后读写状态</text>
   <text class="note" x="675" y="526">检索上下文</text>
 
   <rect class="boundary" x="50" y="780" width="1500" height="280"/>
@@ -175,6 +182,6 @@
   <text class="note" x="1195" y="786">运行时只读检索</text>
 
   <rect class="panel" x="70" y="1040" width="1460" height="46"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；Router 输出 needs_user_choice；Planner 只生成内部步骤；节点之间只通过 SQLite session_state 共享数据。</text>
+  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；Router 输出 needs_user_choice；Planner/Registry 复用 state_contracts.py；节点之间只通过 SQLite session_state 共享数据。</text>
   <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
 </svg>

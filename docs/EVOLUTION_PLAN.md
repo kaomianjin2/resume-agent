@@ -40,7 +40,7 @@
 | Phase 0 当前主线收口             | `[x]` | main agent     | 无                               | 否               | `e0689b0`；`rtk uv run pytest`；reviewer 可继续 |
 | Phase 1 运行时契约硬化            | `[x]` | implementer    | Phase 0                         | 否               | `8803c28`；最小测试通过；reviewer 可继续              |
 | Phase 2 交互编排层拆分            | `[!]` | implementer    | Phase 1                         | 可与 Phase 4 并行   | Phase 2A `c4b9405` 已完成；Phase 2B 模拟面试入口拆分阻塞 |
-| Phase 3 Session State 契约固化 | `[ ]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | 待补充                                        |
+| Phase 3 Session State 契约固化 | `[x]` | implementer    | Phase 1                         | 可与 Phase 5 并行   | `a4d4a5b`；最小测试通过；reviewer 可继续            |
 | Phase 4 知识检索链路增强           | `[ ]` | implementer    | Phase 1                         | 可与 Phase 2 并行   | 待补充                                        |
 | Phase 5 节点输出质量增强           | `[ ]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | 待补充                                        |
 | Phase 6 端到端验收场景固化          | `[ ]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | 待补充                                        |
@@ -211,12 +211,12 @@
 
 ## Phase 3：Session State 契约固化
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** implementer  
 **Dependencies:** Phase 1  
 **Parallel:** 可与 Phase 5 协调推进  
 **Tracking ID:** `evolution-phase-3-session-state-contracts`  
-**完成证据:** 待补充提交记录、测试命令、reviewer 结论  
+**完成证据:** 合并提交 `a4d4a5b`；任务提交 `fb61e0b`、`75f0188`、`fa4292a`；`uv run pytest tests/test_node_registry.py tests/test_executor.py tests/test_router_planner.py tests/test_interview_nodes.py` 55 passed；reviewer 结论：可继续  
 **阻塞原因:** none
 
 ### 目标
@@ -230,12 +230,12 @@
 
 ### 任务清单
 
-1. [操作] 新增 `src/interview_agent/state_contracts.py`，定义节点输入输出 key 常量和校验函数，不新增数据库表 → verify: `uv run pytest tests/test_node_registry.py tests/test_executor.py`
-2. [操作] 将 `DEFAULT_NODE_CONTRACTS` 中的 key 改为引用常量，避免核心 key 字符串分散 → verify: `rg "\"candidate_profile\"|\"jd_requirements\"|\"questions\"" src/interview_agent`
-3. [操作] 为 `SessionStore.set_state()` 增加最小结构校验入口，只校验 JSON 可编码和值非空边界，不限制业务 schema → verify: `uv run pytest tests/test_executor.py -k "session_store"`
-4. [操作] 在 Planner 中复用 state contract 判断缺失输入，避免 Planner 与 Registry 重复维护依赖规则 → verify: `uv run pytest tests/test_router_planner.py`
-5. [操作] 补充跨节点状态流测试，覆盖 `resume_parse -> jd_match -> question_generate -> answer_score -> weakness_train` → verify: `uv run pytest tests/test_interview_nodes.py -k "state"`
-6. [操作] 确认失败节点不覆盖既有成功状态 → verify: `uv run pytest tests/test_executor.py -k "failed_node_preserves"`
+1. [x] 新增 `src/interview_agent/state_contracts.py`，定义节点输入输出 key 常量和校验函数，不新增数据库表 → verify: `uv run pytest tests/test_node_registry.py tests/test_executor.py`
+2. [x] 将 `DEFAULT_NODE_CONTRACTS` 中的 key 改为引用常量，避免核心 key 字符串分散 → verify: `rg "\"candidate_profile\"|\"jd_requirements\"|\"questions\"" src/interview_agent`
+3. [x] 为 `SessionStore.set_state()` 增加最小结构校验入口，只校验 JSON 可编码和值非空边界，不限制业务 schema → verify: `uv run pytest tests/test_executor.py -k "session_store"`
+4. [x] 在 Planner 中复用 state contract 判断缺失输入，避免 Planner 与 Registry 重复维护依赖规则 → verify: `uv run pytest tests/test_router_planner.py`
+5. [x] 补充跨节点状态流测试，覆盖 `resume_parse -> jd_match -> question_generate -> answer_score -> weakness_train` → verify: `uv run pytest tests/test_interview_nodes.py -k "state"`
+6. [x] 确认失败节点不覆盖既有成功状态 → verify: `uv run pytest tests/test_executor.py -k "failed_node_preserves"`
 
 ### 影响范围
 

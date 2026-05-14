@@ -33,13 +33,18 @@ flowchart TD
 
     UserChoice --> Planner
     Planner[Node Planner<br/>src/interview_agent/planner.py]
+    StateContracts[State Contracts<br/>src/interview_agent/state_contracts.py]
+    StateContracts --> Planner
     Planner --> Executor[Node Executor<br/>src/interview_agent/executor.py]
     MockFlow --> Executor
 
     Executor --> Registry[Node Registry<br/>src/interview_agent/nodes/registry.py]
+    StateContracts --> Registry
+    StateContracts --> SessionValidation[session_state 写入校验]
     Registry --> Handlers[Interview Node Handlers<br/>src/interview_agent/nodes/interview.py]
 
     Executor --> SQLite[(SQLite<br/>sessions / session_state / node_runs)]
+    SessionValidation --> SQLite
     Handlers --> AgentRuntime[Structured Node Runtime<br/>src/interview_agent/agents.py]
     AgentRuntime --> Prompts[Prompt Templates<br/>src/interview_agent/prompts.py]
     AgentRuntime --> LLM[OpenAI-compatible LLM<br/>src/interview_agent/llm.py]
@@ -85,6 +90,7 @@ sequenceDiagram
             U-->>O: 选择方向
         end
         O->>P: build_execution_plan()
+        P->>S: 读取 state contract 判断缺失输入
         O->>E: execute_node(session_id, node_name)
         E->>S: 合并 session_state 与本次输入
         E->>N: 调用节点 handler
@@ -96,7 +102,7 @@ sequenceDiagram
         A-->>N: 结构化输出
         N-->>E: 节点输出
         E->>S: 写入 node_runs
-        E->>S: 成功时写入 session_state
+        E->>S: 校验后写入 session_state
         O-->>U: 输出执行结果
     end
 ```
@@ -192,6 +198,9 @@ erDiagram
 - 运行时只检查知识库 ready 状态，不构建知识库。
 - 知识库通过离线命令构建到 SQLite。
 - 节点之间只通过 SQLite `session_state` 共享数据。
+- 节点输入、可选输入和输出 key 由 `state_contracts.py` 集中定义。
+- Planner 和 Registry 复用同一份 state contract。
+- `session_state` 写入只做轻量结构校验，不强制业务 schema；`search_results = []` 是合法空检索结果。
 - 节点执行结果统一记录到 `node_runs`。
 - 路由明确时直接执行内部步骤。
 - Router 通过 `needs_user_choice` 显式告诉 CLI 是否询问用户。
