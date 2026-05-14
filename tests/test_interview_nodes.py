@@ -5,6 +5,7 @@ from pathlib import Path
 
 from interview_agent.executor import NodeExecutor
 from interview_agent.nodes.registry import build_default_registry
+from interview_agent.session import SessionStore
 from interview_agent.storage import initialize_database
 
 
@@ -354,11 +355,12 @@ def test_rag_nodes_read_retrieval_chunks_and_pass_them_into_llm_prompt(tmp_path:
     assert "RAG chunk content for interview preparation." in llm.prompts[1]
 
 
-def test_knowledge_search_falls_back_to_empty_results_when_llm_response_is_invalid(
+def test_knowledge_search_returns_failed_when_fallback_results_are_empty(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "interview.sqlite3"
     initialize_database(database_path)
+    session_store = SessionStore(database_path)
     executor = NodeExecutor(
         database_path,
         build_default_registry(),
@@ -374,5 +376,14 @@ def test_knowledge_search_falls_back_to_empty_results_when_llm_response_is_inval
         inputs={"question": "How to explain retry?"},
     )
 
-    assert result.status == "success"
-    assert result.output == {"search_results": []}
+    with sqlite3.connect(database_path) as connection:
+        run_row = connection.execute(
+            "SELECT status, output_payload, error_message FROM node_runs WHERE run_id = ?",
+            (result.run_id,),
+        ).fetchone()
+
+    assert result.status == "failed"
+    assert result.output == {}
+    assert result.error_message == "state value 不能为空"
+    assert session_store.get_state("session-1", "search_results") is None
+    assert run_row == ("failed", None, "state value 不能为空")

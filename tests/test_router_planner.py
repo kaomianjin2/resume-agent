@@ -155,6 +155,42 @@ def test_build_execution_plan_includes_jd_parse_before_question_generation_when_
     assert plan.missing_inputs == ["jd_text"]
 
 
+def test_build_execution_plan_includes_resume_parse_for_question_generation_when_profile_and_resume_are_missing() -> None:
+    registry = build_default_registry()
+
+    plan = build_execution_plan(
+        user_message="生成后端面试题",
+        selected_node="question_generate",
+        session_inputs={TARGET_ROLE: "后端工程师"},
+        registry=registry,
+    )
+
+    assert [step.node_name for step in plan.steps] == [
+        "resume_parse",
+        "jd_parse",
+        "question_generate",
+    ]
+    assert plan.missing_inputs == [RESUME_TEXT, JD_TEXT]
+
+
+def test_build_execution_plan_includes_resume_parse_for_question_generation_when_profile_is_missing_but_resume_exists() -> None:
+    registry = build_default_registry()
+
+    plan = build_execution_plan(
+        user_message="生成后端面试题",
+        selected_node="question_generate",
+        session_inputs={RESUME_TEXT: "Alice 做过后端服务", TARGET_ROLE: "后端工程师"},
+        registry=registry,
+    )
+
+    assert [step.node_name for step in plan.steps] == [
+        "resume_parse",
+        "jd_parse",
+        "question_generate",
+    ]
+    assert plan.missing_inputs == [JD_TEXT]
+
+
 def test_build_execution_plan_includes_parse_steps_for_downstream_nodes() -> None:
     registry = build_default_registry()
 

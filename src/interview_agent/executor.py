@@ -9,6 +9,7 @@ from uuid import uuid4
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, validate_required_inputs
 from interview_agent.session import SessionStore, encode_json_payload, ensure_session, write_session_state
+from interview_agent.state_contracts import validate_state_entry
 from interview_agent.storage import get_connection, transaction
 
 
@@ -50,6 +51,7 @@ class NodeExecutor:
             context = NodeContext(session_id=session_id, services=self.services)
             output = spec.handler(context, dict(merged_inputs))
             _validate_node_output(spec.outputs, output)
+            _validate_output_state_entries(output)
             result = NodeExecutionResult(
                 run_id, session_id, node_name, "success", output, []
             )
@@ -91,3 +93,8 @@ def _validate_node_output(expected_outputs: tuple[str, ...], output: dict[str, o
     missing_outputs = [output_name for output_name in expected_outputs if output_name not in output]
     if missing_outputs:
         raise RuntimeError("节点输出缺少字段: " + ", ".join(missing_outputs))
+
+
+def _validate_output_state_entries(output: dict[str, object]) -> None:
+    for output_name, output_value in output.items():
+        validate_state_entry(output_name, output_value)

@@ -6,6 +6,7 @@ import json
 
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.state_contracts import (
+    CANDIDATE_PROFILE,
     TARGET_ROLE,
     find_missing_required_inputs,
     get_node_state_contract,
@@ -39,6 +40,10 @@ def build_execution_plan(
 
     steps: list[PlanStep] = []
     missing_inputs: list[str] = []
+
+    if _requires_candidate_profile_parse(selected_node, session_inputs):
+        steps.append(_build_step("resume_parse"))
+        _append_missing_inputs(missing_inputs, get_node_state_contract("resume_parse")[0], session_inputs)
 
     if _requires_resume_parse(selected_node, session_inputs):
         steps.append(_build_step("resume_parse"))
@@ -100,6 +105,17 @@ def _requires_resume_parse(selected_node: str, session_inputs: dict[str, object]
         return False
 
     return True
+
+
+def _requires_candidate_profile_parse(selected_node: str, session_inputs: dict[str, object]) -> bool:
+    required_inputs, _, _ = get_node_state_contract(selected_node)
+    if CANDIDATE_PROFILE not in required_inputs:
+        return False
+    if CANDIDATE_PROFILE in session_inputs:
+        return False
+
+    _, _, resume_outputs = get_node_state_contract("resume_parse")
+    return CANDIDATE_PROFILE in resume_outputs
 
 
 def _requires_target_role(selected_node: str, session_inputs: dict[str, object]) -> bool:

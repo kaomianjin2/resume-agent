@@ -36,6 +36,11 @@ def failing_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str
     raise RuntimeError("handler failed")
 
 
+def invalid_output_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {"bad": None}
+
+
 def build_registry() -> NodeRegistry:
     return NodeRegistry(
         [
@@ -62,6 +67,14 @@ def build_registry() -> NodeRegistry:
                 optional_inputs=(),
                 outputs=("failed_output",),
                 handler=failing_handler,
+            ),
+            NodeSpec(
+                name="invalid_output_node",
+                description="Return invalid output.",
+                required_inputs=(),
+                optional_inputs=(),
+                outputs=("bad",),
+                handler=invalid_output_handler,
             ),
         ]
     )
@@ -244,6 +257,31 @@ def test_node_output_must_include_declared_fields(tmp_path: Path) -> None:
     assert SessionStore(database_path).get_state("session-1", "other") is None
 
 
+def test_invalid_node_output_returns_failed_result_and_records_failed_run(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+    executor = NodeExecutor(database_path, build_registry())
+
+    result = executor.execute_node(session_id="session-1", node_name="invalid_output_node")
+
+    with sqlite3.connect(database_path) as connection:
+        run_row = connection.execute(
+            """
+            SELECT status, output_payload, error_message
+            FROM node_runs
+            WHERE run_id = ?
+            """,
+            (result.run_id,),
+        ).fetchone()
+
+    assert result.status == "failed"
+    assert result.output == {}
+    assert result.error_message == "state value 不能为 None"
+    assert session_store.get_state("session-1", "bad") is None
+    assert run_row == ("failed", None, "state value 不能为 None")
+
+
 def test_failed_node_preserves_existing_successful_state(tmp_path: Path) -> None:
     database_path = tmp_path / "executor.sqlite3"
     initialize_database(database_path)
@@ -301,6 +339,29 @@ def test_session_store_set_state_rejects_none_value(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="state value 不能为 None"):
         session_store.set_state("session-1", "empty", None)
+
+
+@pytest.mark.parametrize(
+    ("invalid_value", "expected_message"),
+    [
+        ("", "state value 不能为空"),
+        ("   ", "state value 不能为空"),
+        ([], "state value 不能为空"),
+        ({}, "state value 不能为空"),
+        ((), "state value 不能为空"),
+    ],
+)
+def test_session_store_set_state_rejects_empty_like_values(
+    tmp_path: Path,
+    invalid_value: object,
+    expected_message: str,
+) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match=expected_message):
+        session_store.set_state("session-1", "empty", invalid_value)
 
 
 def test_session_store_set_state_rejects_non_json_serializable_value(tmp_path: Path) -> None:
