@@ -23,6 +23,17 @@
 
 ## 历史记录
 
+## 2026-05-14 - Phase 5: 节点输出质量增强
+
+- 测试命令：`rtk uv run pytest tests/test_interview_nodes.py tests/test_llm.py tests/test_executor.py`；`rtk uv run pytest`
+- reviewer 结论：可继续
+- 影响范围：`src/interview_agent/nodes/interview.py` / 11 个运行时 handler、`_normalize_node_output()`、`_require_object_fields()`；`src/interview_agent/prompts.py` / `render_prompt()`；`tests/test_interview_nodes.py`；`tests/test_llm.py`
+- 变更摘要：
+  - 11 个运行时节点返回前统一归一化输出，只保留声明的 output key。
+  - 缺少声明输出、非法输出类型、非法 JSON 统一记录为 failed node_run，且不写入 `session_state`。
+  - `answer_score`、`weakness_train`、`resume_optimize` 增加最小子字段校验。
+  - Prompt 模板补充顶层输出字段和复杂输出子字段要求。
+
 ## 2026-05-14 - Phase 4: 知识检索链路增强
 
 - 测试命令：`rtk uv run pytest tests/test_interview_nodes.py -k "knowledge_search or rag or empty_results"`；`rtk uv run pytest tests/test_cli.py -k "retriever or knowledge_search"`；`rtk uv run pytest tests/test_kb_file_policy.py tests/test_kb_build.py`；`rtk uv run pytest tests/test_retrieval.py`；`rtk uv run pytest`

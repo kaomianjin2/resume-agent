@@ -7,18 +7,14 @@ from interview_agent.nodes.spec import NodeContext
 def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     question = _require_text(inputs, "question")
     limit = _read_limit(inputs["top_k"]) if "top_k" in inputs else None
-    search_result = run_structured_node(
+    result = run_structured_node(
         "knowledge_search",
         services=_mutable_services(context),
         prompt_inputs={"question": question, "context": question},
         rag_query=question,
         rag_limit=limit,
-        fallback_output={"search_results": []},
     )
-    search_results = search_result.get("search_results")
-    if isinstance(search_results, list) and search_results:
-        return {**search_result, "search_results": search_results}
-    return {"search_results": []}
+    return _normalize_node_output(result, {"search_results": list})
 
 
 def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
@@ -27,30 +23,30 @@ def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dic
         services=_mutable_services(context),
         prompt_inputs={"resume_text": _require_text(inputs, "resume_text")},
     )
-    resume_profile = result.get("resume_profile")
-    if not isinstance(resume_profile, dict):
-        return result
-    return {**result, "candidate_profile": dict(resume_profile)}
+    output = _normalize_node_output(result, {"resume_profile": dict})
+    return {**output, "candidate_profile": dict(output["resume_profile"])}
 
 
 def project_extract_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "project_extract",
         services=_mutable_services(context),
         prompt_inputs={"resume_text": _require_text(inputs, "resume_text")},
     )
+    return _normalize_node_output(result, {"project_experiences": list})
 
 
 def jd_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "jd_parse",
         services=_mutable_services(context),
         prompt_inputs={"jd_text": _require_text(inputs, "jd_text")},
     )
+    return _normalize_node_output(result, {"jd_requirements": dict})
 
 
 def jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "jd_match",
         services=_mutable_services(context),
         prompt_inputs={
@@ -62,10 +58,11 @@ def jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[st
             _read_role_name(inputs.get("jd_requirements")),
         ),
     )
+    return _normalize_node_output(result, {"match_report": dict})
 
 
 def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "question_generate",
         services=_mutable_services(context),
         prompt_inputs={
@@ -80,10 +77,11 @@ def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -
             _read_profile_name(inputs.get("candidate_profile")),
         ),
     )
+    return _normalize_node_output(result, {"questions": list})
 
 
 def mock_followup_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "mock_followup",
         services=_mutable_services(context),
         prompt_inputs={
@@ -93,10 +91,11 @@ def mock_followup_handler(context: NodeContext, inputs: dict[str, object]) -> di
         | _optional_prompt_input(inputs, "rubric"),
         rag_query=_join_query_parts(_require_text(inputs, "question"), _require_text(inputs, "answer")),
     )
+    return _normalize_node_output(result, {"followup_questions": list})
 
 
 def answer_score_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "answer_score",
         services=_mutable_services(context),
         prompt_inputs={
@@ -106,10 +105,17 @@ def answer_score_handler(context: NodeContext, inputs: dict[str, object]) -> dic
         },
         rag_query=_join_query_parts(_require_text(inputs, "question"), _require_text(inputs, "rubric")),
     )
+    output = _normalize_node_output(result, {"score_report": dict})
+    _require_object_fields(
+        output["score_report"],
+        "score_report",
+        {"score": (int, float), "gaps": list, "suggestions": list, "reference_answer": str},
+    )
+    return output
 
 
 def weakness_train_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "weakness_train",
         services=_mutable_services(context),
         prompt_inputs={
@@ -119,10 +125,17 @@ def weakness_train_handler(context: NodeContext, inputs: dict[str, object]) -> d
         | _optional_prompt_input(inputs, "candidate_profile"),
         rag_query=_join_query_parts(_read_role_name(inputs.get("candidate_profile")), _require_text(inputs, "goal")),
     )
+    output = _normalize_node_output(result, {"training_plan": dict})
+    _require_object_fields(
+        output["training_plan"],
+        "training_plan",
+        {"focus": str, "steps": list, "drills": list, "schedule": list},
+    )
+    return output
 
 
 def resume_optimize_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "resume_optimize",
         services=_mutable_services(context),
         prompt_inputs={
@@ -132,19 +145,56 @@ def resume_optimize_handler(context: NodeContext, inputs: dict[str, object]) -> 
         | _optional_prompt_input(inputs, "jd_requirements"),
         rag_query=_join_query_parts(_require_text(inputs, "target_role"), "resume optimize"),
     )
+    output = _normalize_node_output(result, {"optimization_advice": dict})
+    _require_object_fields(
+        output["optimization_advice"],
+        "optimization_advice",
+        {"summary": str, "bullets": list, "risks": list, "rewrite_examples": list},
+    )
+    return output
 
 
 def session_summary_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
-    return run_structured_node(
+    result = run_structured_node(
         "session_summary",
         services=_mutable_services(context),
         prompt_inputs={"session_transcript": _require_text(inputs, "session_transcript")},
         rag_query=_require_text(inputs, "session_transcript"),
     )
+    return _normalize_node_output(result, {"summary": dict})
 
 
 def _mutable_services(context: NodeContext) -> dict[str, object]:
     return dict(context.services)
+
+
+def _normalize_node_output(
+    output: dict[str, object],
+    expected_types: dict[str, type | tuple[type, ...]],
+) -> dict[str, object]:
+    normalized_output = {}
+    for output_key, expected_type in expected_types.items():
+        if output_key not in output:
+            raise RuntimeError("节点输出缺少字段: " + output_key)
+        output_value = output[output_key]
+        if not isinstance(output_value, expected_type):
+            raise RuntimeError(f"节点输出字段类型错误: {output_key}")
+        normalized_output[output_key] = output_value
+    return normalized_output
+
+
+def _require_object_fields(
+    value: object,
+    object_name: str,
+    expected_fields: dict[str, type | tuple[type, ...]],
+) -> None:
+    if not isinstance(value, dict):
+        raise RuntimeError(f"节点输出字段类型错误: {object_name}")
+    for field_name, expected_type in expected_fields.items():
+        if field_name not in value:
+            raise RuntimeError(f"节点输出缺少字段: {object_name}.{field_name}")
+        if not isinstance(value[field_name], expected_type):
+            raise RuntimeError(f"节点输出字段类型错误: {object_name}.{field_name}")
 
 
 def _optional_prompt_input(inputs: dict[str, object], key: str) -> dict[str, object]:

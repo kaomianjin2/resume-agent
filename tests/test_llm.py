@@ -14,7 +14,13 @@ from interview_agent.llm import (
     _default_transport,
     request_structured_output,
 )
-from interview_agent.prompts import PROMPT_OUTPUT_KEYS, PROMPT_TEMPLATES, get_prompt_template, render_prompt
+from interview_agent.prompts import (
+    PROMPT_OUTPUT_KEYS,
+    PROMPT_OUTPUT_SCHEMA_HINTS,
+    PROMPT_TEMPLATES,
+    get_prompt_template,
+    render_prompt,
+)
 
 
 def test_fake_llm_fixed_json_response_is_parsed() -> None:
@@ -209,6 +215,31 @@ def test_render_prompt_requires_contract_output_keys() -> None:
     assert "只返回 JSON 对象" in rendered_prompt
     assert "resume_profile" in rendered_prompt
     assert set(PROMPT_OUTPUT_KEYS) == set(PROMPT_TEMPLATES)
+    assert set(PROMPT_OUTPUT_SCHEMA_HINTS) == set(PROMPT_TEMPLATES)
+
+
+def test_render_prompt_describes_required_nested_output_fields() -> None:
+    score_prompt = render_prompt(
+        "answer_score",
+        question="如何保障 SLA？",
+        answer="建立告警。",
+        rubric="按完整度评分。",
+    )
+    training_prompt = render_prompt(
+        "weakness_train",
+        weaknesses='["指标量化"]',
+        goal="补强回答。",
+    )
+    optimize_prompt = render_prompt(
+        "resume_optimize",
+        resume_text="Alice built services.",
+        target_role="Backend",
+    )
+
+    assert "JSON 顶层必须只包含字段: score_report" in score_prompt
+    assert "score、gaps、suggestions、reference_answer" in score_prompt
+    assert "focus、steps、drills、schedule" in training_prompt
+    assert "summary、bullets、risks、rewrite_examples" in optimize_prompt
 
 
 def test_get_prompt_template_rejects_unknown_name() -> None:

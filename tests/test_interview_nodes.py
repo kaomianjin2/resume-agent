@@ -33,6 +33,98 @@ class RecordingRetriever:
         return self.results[:limit]
 
 
+NODE_CASES = {
+    "knowledge_search": (
+        {"question": "How to explain retry?", "top_k": 1},
+        "search_results",
+        '{"search_results":[{"chunk_id":"chunk-1","summary":"Python retry guidance"}]}',
+        '{"search_results":"bad"}',
+    ),
+    "resume_parse": (
+        {"resume_text": "Alice built Python services."},
+        "resume_profile",
+        '{"resume_profile":{"name":"Alice","skills":["Python"]}}',
+        '{"resume_profile":["bad"]}',
+    ),
+    "project_extract": (
+        {"resume_text": "Project Agent improved throughput."},
+        "project_experiences",
+        '{"project_experiences":[{"name":"Agent","impact":"improved throughput"}]}',
+        '{"project_experiences":"bad"}',
+    ),
+    "jd_parse": (
+        {"jd_text": "Need Backend engineer with Python and SQL."},
+        "jd_requirements",
+        '{"jd_requirements":{"role":"Backend","skills":["Python","SQL"]}}',
+        '{"jd_requirements":["bad"]}',
+    ),
+    "jd_match": (
+        {
+            "resume_profile": {"name": "Alice", "skills": ["Python"]},
+            "jd_requirements": {"role": "Backend", "skills": ["Python", "SQL"]},
+        },
+        "match_report",
+        '{"match_report":{"score":87,"matched_skills":["Python"]}}',
+        '{"match_report":"bad"}',
+    ),
+    "question_generate": (
+        {"candidate_profile": {"name": "Alice"}, "target_role": "Backend", "difficulty": "hard"},
+        "questions",
+        '{"questions":["解释 Python GIL","如何设计重试机制"]}',
+        '{"questions":"bad"}',
+    ),
+    "mock_followup": (
+        {"question": "Explain retry.", "answer": "Use backoff.", "rubric": "depth"},
+        "followup_questions",
+        '{"followup_questions":["给出生产事故案例"]}',
+        '{"followup_questions":"bad"}',
+    ),
+    "answer_score": (
+        {"question": "Explain retry.", "answer": "Use backoff.", "rubric": "accuracy"},
+        "score_report",
+        '{"score_report":{"score":8,"gaps":["缺少指标"],"suggestions":["补充量化指标"],"reference_answer":"先说明策略。"}}',
+        '{"score_report":{"score":"bad","gaps":["缺少指标"],"suggestions":["补充量化指标"],"reference_answer":"先说明策略。"}}',
+    ),
+    "weakness_train": (
+        {"weaknesses": ["system design"], "goal": "improve architecture", "candidate_profile": {"name": "Alice"}},
+        "training_plan",
+        '{"training_plan":{"focus":"system design","steps":["daily drill"],"drills":["mock"],"schedule":["day 1"]}}',
+        '{"training_plan":{"focus":"system design","steps":"bad","drills":["mock"],"schedule":["day 1"]}}',
+    ),
+    "resume_optimize": (
+        {
+            "resume_text": "Alice built services.",
+            "target_role": "Backend",
+            "jd_requirements": {"skills": ["Python", "SQL"]},
+        },
+        "optimization_advice",
+        '{"optimization_advice":{"summary":"突出指标","bullets":["补充 SLA 成果"],"risks":["指标缺失"],"rewrite_examples":["将负责改为主导"]}}',
+        '{"optimization_advice":{"summary":"突出指标","bullets":"bad","risks":["指标缺失"],"rewrite_examples":["将负责改为主导"]}}',
+    ),
+    "session_summary": (
+        {"session_transcript": "Q: retry? A: backoff."},
+        "summary",
+        '{"summary":{"highlights":["完成一轮模拟"],"next_steps":["补强 system design"]}}',
+        '{"summary":"bad"}',
+    ),
+}
+
+
+PROMPT_MARKERS = {
+    "knowledge_search": "你是知识库检索助手",
+    "resume_parse": "你是简历解析助手",
+    "project_extract": "你是项目经历提炼助手",
+    "jd_parse": "你是 JD 解析助手",
+    "jd_match": "你是 JD 匹配助手",
+    "question_generate": "你是面试题生成助手",
+    "mock_followup": "你是追问生成助手",
+    "answer_score": "你是回答评分助手",
+    "weakness_train": "你是薄弱点训练助手",
+    "resume_optimize": "你是简历优化助手",
+    "session_summary": "你是会话总结助手",
+}
+
+
 def test_interview_runtime_nodes_return_structured_outputs_and_write_session_state(
     tmp_path: Path,
 ) -> None:
@@ -46,9 +138,18 @@ def test_interview_runtime_nodes_return_structured_outputs_and_write_session_sta
             "你是 JD 匹配助手": '{"match_report":{"score":87,"matched_skills":["Python"]}}',
             "你是面试题生成助手": '{"questions":["解释 Python GIL","如何设计重试机制"]}',
             "你是追问生成助手": '{"followup_questions":["给出生产事故案例"]}',
-            "你是回答评分助手": '{"score_report":{"score":8,"strengths":["结构清晰"],"gaps":["缺少指标"]}}',
-            "你是薄弱点训练助手": '{"training_plan":{"focus":"system design","steps":["daily drill"]}}',
-            "你是简历优化助手": '{"optimization_advice":{"summary":"突出指标","bullets":["补充 SLA 成果"]}}',
+            "你是回答评分助手": (
+                '{"score_report":{"score":8,"strengths":["结构清晰"],"gaps":["缺少指标"],'
+                '"suggestions":["补充量化指标"],"reference_answer":"先说明策略。"}}'
+            ),
+            "你是薄弱点训练助手": (
+                '{"training_plan":{"focus":"system design","steps":["daily drill"],'
+                '"drills":["mock"],"schedule":["day 1"]}}'
+            ),
+            "你是简历优化助手": (
+                '{"optimization_advice":{"summary":"突出指标","bullets":["补充 SLA 成果"],'
+                '"risks":["指标缺失"],"rewrite_examples":["将负责改为主导"]}}'
+            ),
             "你是会话总结助手": '{"summary":{"highlights":["完成一轮模拟"],"next_steps":["补强 system design"]}}',
             "你是知识库检索助手": '{"search_results":[{"chunk_id":"chunk-1","summary":"Python retry guidance"}]}',
         }
@@ -157,6 +258,85 @@ def test_interview_runtime_nodes_return_structured_outputs_and_write_session_sta
     assert chunk_count == (0,)
 
 
+def test_interview_runtime_nodes_accept_minimal_declared_output_structures(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+
+    for node_name, (inputs, output_key, response, _) in NODE_CASES.items():
+        llm = RecordingLLM({PROMPT_MARKERS[node_name]: response})
+        executor = NodeExecutor(
+            database_path,
+            build_default_registry(),
+            services={"llm": llm, "retriever": RecordingRetriever([])},
+        )
+
+        result = executor.execute_node(
+            session_id=f"session-success-{node_name}",
+            node_name=node_name,
+            inputs=inputs,
+        )
+
+        expected_output_keys = {output_key}
+        if node_name == "resume_parse":
+            expected_output_keys = {"resume_profile", "candidate_profile"}
+        assert result.status == "success"
+        assert set(result.output) == expected_output_keys
+
+
+def test_interview_runtime_nodes_fail_when_declared_output_is_missing(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    for node_name, (inputs, output_key, _, _) in NODE_CASES.items():
+        llm = RecordingLLM({PROMPT_MARKERS[node_name]: '{"unexpected":"value"}'})
+        executor = NodeExecutor(
+            database_path,
+            build_default_registry(),
+            services={"llm": llm, "retriever": RecordingRetriever([])},
+        )
+
+        result = executor.execute_node(
+            session_id=f"session-missing-{node_name}",
+            node_name=node_name,
+            inputs=inputs,
+        )
+
+        assert result.status == "failed"
+        assert result.output == {}
+        assert session_store.get_state(f"session-missing-{node_name}", output_key) is None
+
+
+def test_interview_runtime_nodes_fail_when_declared_output_has_invalid_type(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    for node_name, (inputs, output_key, _, invalid_response) in NODE_CASES.items():
+        llm = RecordingLLM({PROMPT_MARKERS[node_name]: invalid_response})
+        executor = NodeExecutor(
+            database_path,
+            build_default_registry(),
+            services={"llm": llm, "retriever": RecordingRetriever([])},
+        )
+
+        result = executor.execute_node(
+            session_id=f"session-invalid-{node_name}",
+            node_name=node_name,
+            inputs=inputs,
+        )
+
+        assert result.status == "failed"
+        assert result.output == {}
+        assert session_store.get_state(f"session-invalid-{node_name}", output_key) is None
+
+
 def test_resume_parse_output_can_drive_question_generate_via_sqlite_session_state(
     tmp_path: Path,
 ) -> None:
@@ -202,8 +382,14 @@ def test_session_state_flows_across_resume_jd_question_score_and_training_nodes(
             "你是 JD 解析助手": '{"jd_requirements":{"role":"Backend","skills":["Python","SQL"]}}',
             "你是 JD 匹配助手": '{"match_report":{"score":91,"matched_skills":["Python"]}}',
             "你是面试题生成助手": '{"questions":["请解释你如何保障 SLA"]}',
-            "你是回答评分助手": '{"score_report":{"score":8,"gaps":["指标不够具体"]}}',
-            "你是薄弱点训练助手": '{"training_plan":{"focus":"指标量化","steps":["补充量化案例"]}}',
+            "你是回答评分助手": (
+                '{"score_report":{"score":8,"gaps":["指标不够具体"],'
+                '"suggestions":["补充量化指标"],"reference_answer":"先说明策略。"}}'
+            ),
+            "你是薄弱点训练助手": (
+                '{"training_plan":{"focus":"指标量化","steps":["补充量化案例"],'
+                '"drills":["每天复盘一个案例"],"schedule":["day 1"]}}'
+            ),
         }
     )
     executor = NodeExecutor(
@@ -255,9 +441,21 @@ def test_session_state_flows_across_resume_jd_question_score_and_training_nodes(
     assert resume_result.output["resume_profile"] == resume_result.output["candidate_profile"]
     assert match_result.output == {"match_report": {"score": 91, "matched_skills": ["Python"]}}
     assert question_result.output == {"questions": ["请解释你如何保障 SLA"]}
-    assert score_result.output == {"score_report": {"score": 8, "gaps": ["指标不够具体"]}}
+    assert score_result.output == {
+        "score_report": {
+            "score": 8,
+            "gaps": ["指标不够具体"],
+            "suggestions": ["补充量化指标"],
+            "reference_answer": "先说明策略。",
+        }
+    }
     assert training_result.output == {
-        "training_plan": {"focus": "指标量化", "steps": ["补充量化案例"]}
+        "training_plan": {
+            "focus": "指标量化",
+            "steps": ["补充量化案例"],
+            "drills": ["每天复盘一个案例"],
+            "schedule": ["day 1"],
+        }
     }
 
 
@@ -267,7 +465,10 @@ def test_prompt_includes_node_inputs_for_fields_not_declared_in_template(tmp_pat
     llm = RecordingLLM(
         responses={
             "你是面试题生成助手": '{"questions":["请解释你如何维护 SLA"]}',
-            "你是回答评分助手": '{"score_report":{"score":9,"strengths":["SLA ownership"]}}',
+            "你是回答评分助手": (
+                '{"score_report":{"score":9,"gaps":["缺少容量指标"],'
+                '"suggestions":["补充 SLA ownership"],"reference_answer":"先说明指标。"}}'
+            ),
         }
     )
     executor = NodeExecutor(
@@ -355,7 +556,7 @@ def test_rag_nodes_read_retrieval_chunks_and_pass_them_into_llm_prompt(tmp_path:
     assert "RAG chunk content for interview preparation." in llm.prompts[1]
 
 
-def test_knowledge_search_falls_back_to_empty_results_when_llm_response_is_invalid(
+def test_knowledge_search_fails_when_llm_response_is_invalid(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "interview.sqlite3"
@@ -382,12 +583,12 @@ def test_knowledge_search_falls_back_to_empty_results_when_llm_response_is_inval
             (result.run_id,),
         ).fetchone()
 
-    assert result.status == "success"
-    assert result.output == {"search_results": []}
-    assert result.error_message is None
-    assert session_store.get_state("session-1", "search_results") == []
+    assert result.status == "failed"
+    assert result.output == {}
+    assert result.error_message == "LLM 返回空响应"
+    assert session_store.get_state("session-1", "search_results") is None
     assert session_store.get_state("session-1", "message") is None
-    assert run_row == ("success", '{"search_results":[]}', None)
+    assert run_row == ("failed", None, "LLM 返回空响应")
 
 
 def test_knowledge_search_uses_retriever_chunks_as_base_and_llm_only_adds_non_source_fields(
@@ -492,7 +693,7 @@ def test_knowledge_search_returns_empty_results_without_extra_output_keys_when_r
         database_path,
         build_default_registry(),
         services={
-            "llm": RecordingLLM({"你是知识库检索助手": '{"summary":"unused"}'}),
+            "llm": RecordingLLM({"你是知识库检索助手": '{"search_results":[]}'}),
             "retriever": RecordingRetriever([]),
         },
     )

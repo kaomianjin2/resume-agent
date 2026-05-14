@@ -41,7 +41,7 @@ flowchart TD
     Executor --> Registry[Node Registry<br/>src/interview_agent/nodes/registry.py]
     StateContracts --> Registry
     StateContracts --> SessionValidation[session_state 写入校验]
-    Registry --> Handlers[Interview Node Handlers<br/>src/interview_agent/nodes/interview.py]
+    Registry --> Handlers[Interview Node Handlers<br/>src/interview_agent/nodes/interview.py<br/>输出归一化]
 
     Executor --> SQLite[(SQLite<br/>sessions / session_state / node_runs)]
     SessionValidation --> SQLite
@@ -100,6 +100,7 @@ sequenceDiagram
         A->>L: request_structured_output()
         L-->>A: JSON object
         A-->>N: 保护来源字段后的结构化输出
+        N->>N: 归一化声明输出并校验最小结构
         N-->>E: 节点输出
         E->>S: 写入 node_runs
         E->>S: 校验后写入 session_state

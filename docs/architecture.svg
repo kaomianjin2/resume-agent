@@ -77,7 +77,7 @@
   <rect class="exec" x="1280" y="325" width="220" height="128"/>
   <text class="label" x="1302" y="361">面试节点处理器</text>
   <text class="small" x="1308" y="388">nodes/interview.py</text>
-  <text class="tiny" x="1313" y="414">11 个运行时能力节点</text>
+  <text class="tiny" x="1313" y="414">11 个节点归一化输出</text>
 
   <rect class="logic" x="960" y="500" width="240" height="112"/>
   <text class="label" x="1004" y="535">结构化运行时</text>
@@ -182,6 +182,6 @@
   <text class="note" x="1195" y="786">运行时只读检索</text>
 
   <rect class="panel" x="70" y="1040" width="1460" height="46"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；检索默认 top_k 来自配置；RAG 来源字段不由 LLM 覆盖；节点之间只通过 SQLite session_state 共享数据。</text>
+  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；检索默认 top_k 来自配置；RAG 来源字段不由 LLM 覆盖；节点输出校验后才写入 session_state。</text>
   <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
 </svg>

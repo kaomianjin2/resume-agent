@@ -82,6 +82,20 @@ PROMPT_OUTPUT_KEYS: dict[str, tuple[str, ...]] = {
     "session_summary": ("summary",),
 }
 
+PROMPT_OUTPUT_SCHEMA_HINTS: dict[str, str] = {
+    "knowledge_search": "search_results 必须是数组。",
+    "resume_parse": "resume_profile 必须是对象。",
+    "project_extract": "project_experiences 必须是数组。",
+    "jd_parse": "jd_requirements 必须是对象。",
+    "jd_match": "match_report 必须是对象。",
+    "question_generate": "questions 必须是字符串数组。",
+    "mock_followup": "followup_questions 必须是字符串数组。",
+    "answer_score": "score_report 必须是对象，且包含 score、gaps、suggestions、reference_answer。",
+    "weakness_train": "training_plan 必须是对象，且包含 focus、steps、drills、schedule。",
+    "resume_optimize": "optimization_advice 必须是对象，且包含 summary、bullets、risks、rewrite_examples。",
+    "session_summary": "summary 必须是对象。",
+}
+
 
 def get_prompt_template(prompt_name: str) -> str:
     if prompt_name not in PROMPT_TEMPLATES:
@@ -100,8 +114,10 @@ def render_prompt(prompt_name: str, **variables: str) -> str:
 
     output_keys = PROMPT_OUTPUT_KEYS[prompt_name]
     output_key_list = ", ".join(output_keys)
+    schema_hint = PROMPT_OUTPUT_SCHEMA_HINTS[prompt_name]
     return (
         f"{rendered_prompt}\n"
         "只返回 JSON 对象，不要输出 Markdown 或解释文字。\n"
-        f"JSON 顶层必须包含字段: {output_key_list}。"
+        f"JSON 顶层必须只包含字段: {output_key_list}。\n"
+        f"{schema_hint}"
     )
