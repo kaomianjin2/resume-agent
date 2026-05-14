@@ -45,6 +45,22 @@ def test_module_help_exits_successfully() -> None:
     assert "--config" in result.stdout
 
 
+def test_module_entry_catches_mock_interview_eof(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "interview_agent.cli", "--config", str(config_path)],
+        input="开始模拟面试\n",
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT,
+    )
+
+    assert result.returncode == 0
+    assert "输入结束，已取消当前模拟面试。" in result.stdout
+    assert "Traceback" not in result.stderr
+
+
 def test_example_config_exists_with_placeholders_only() -> None:
     content = EXAMPLE_CONFIG.read_text(encoding="utf-8")
 

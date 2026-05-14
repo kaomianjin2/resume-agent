@@ -23,6 +23,17 @@
 
 ## 历史记录
 
+## 2026-05-14 - Phase 7: 模拟面试流程拆分
+
+- 测试命令：`rtk uv run pytest tests/test_cli.py -k "prompt_styles or module_entry_catches_mock_interview_eof"`；`rtk uv run pytest tests/test_cli.py -k "mock"`；`rtk uv run pytest tests/test_cli.py`；`rtk uv run pytest tests/test_e2e_cli_flow.py`；`rtk uv run pytest`
+- reviewer 结论：可继续；复审指出 `mock_interview.py` 未纳入 Git，已通过 `rtk git add` 纳入变更范围
+- 影响范围：`src/interview_agent/cli.py` / 模拟面试分支、`_build_interview_prompt()`；`src/interview_agent/mock_interview.py` / 模拟面试流程；`tests/test_cli.py`；`docs/EVOLUTION_PLAN.md`；`docs/architecture.md`；`docs/architecture.svg`
+- 变更摘要：
+  - 新增 `mock_interview.py` 承接模拟面试请求识别、计划构建、题目数、追问轮数、题目生成重试、追问、参考答案和终端 prompt 样式。
+  - `cli.py` 的模拟面试分支改为调用新模块，保留 `_build_interview_prompt()` 作为测试兼容入口。
+  - 修复 `python -m interview_agent.cli` 启动时模拟面试 EOF 取消异常类型分裂，并增加模块启动回归测试。
+  - 架构文档同步模拟面试流程迁出 CLI 的边界。
+
 ## 2026-05-14 - Phase 5: 节点输出质量增强
 
 - 测试命令：`rtk uv run pytest tests/test_interview_nodes.py tests/test_llm.py tests/test_executor.py`；`rtk uv run pytest`
