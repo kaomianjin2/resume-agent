@@ -133,7 +133,7 @@ def test_natural_language_request_shows_matched_node(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
-    assert "已收到需求，正在分析并整理处理步骤。" in output.getvalue()
+    assert "已收到需求，我来处理。" in output.getvalue()
     assert "当前进度 1/1：正在执行知识检索。" in output.getvalue()
     assert "我会继续查找相关准备资料。" in output.getvalue()
     assert "这一轮已经完成。接下来是否需要我帮你继续生成面试题、模拟面试，或者查找更具体的准备资料？" in output.getvalue()
@@ -165,7 +165,7 @@ def test_missing_jd_input_accepts_file_path_and_executes_plan(tmp_path: Path) ->
     )
 
     assert exit_code == 0
-    assert "已收到需求，正在分析并整理处理步骤。" in output.getvalue()
+    assert "已收到需求，我来处理。" in output.getvalue()
     assert "当前进度 1/2：正在执行JD 解析。" in output.getvalue()
     assert "当前进度 2/2：正在执行面试题生成。" in output.getvalue()
     assert "我会分几步处理：" in output.getvalue()
@@ -429,7 +429,7 @@ def test_mock_interview_generates_questions_then_asks_each_question_and_followup
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始模拟面试", "回答一", "追问回答", "回答二", "exit"]),
+        input_func=build_input(["开始模拟面试", "", "", "回答一", "追问回答", "回答二", "exit"]),
         output=output,
         registry_builder=build_mock_interview_registry,
     )
@@ -442,6 +442,261 @@ def test_mock_interview_generates_questions_then_asks_each_question_and_followup
     assert "模拟面试已完成。" in output.getvalue()
 
 
+def test_mock_interview_uses_selected_question_count(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "1", "", "回答一", "追问回答", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "请输入本轮模拟面试题目数，直接回车默认 6 题: " in output.getvalue()
+    assert "第 1 题：介绍你最近一次线上延迟排查。" in output.getvalue()
+    assert "第 2 题：如果延迟再次出现，你会如何设计预防机制？" not in output.getvalue()
+    assert session_store.get_state(DEFAULT_SESSION_ID, "question_count") == 1
+
+
+def test_mock_interview_defaults_to_six_questions(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "", "", "回答一", "exit"]),
+        output=output,
+        registry_builder=build_structured_question_item_registry,
+    )
+
+    assert exit_code == 0
+    assert session_store.get_state(DEFAULT_SESSION_ID, "question_count") == 6
+
+
+def test_mock_interview_uses_selected_followup_rounds(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "1", "1", "多轮追问", "追问回答", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "请输入每题追问轮数，直接回车默认 6 轮: " in output.getvalue()
+    assert "追问 1：追问问题 1" in output.getvalue()
+    assert "追问 2：追问问题 2" not in output.getvalue()
+    assert session_store.get_state(DEFAULT_SESSION_ID, "followup_rounds") == 1
+
+
+def test_mock_interview_defaults_to_six_followup_rounds(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
+                "开始模拟面试",
+                "1",
+                "",
+                "多轮追问",
+                "追问回答 1",
+                "追问回答 2",
+                "追问回答 3",
+                "追问回答 4",
+                "追问回答 5",
+                "追问回答 6",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "追问 6：追问问题 6" in output.getvalue()
+    assert "追问 7：追问问题 7" not in output.getvalue()
+    assert session_store.get_state(DEFAULT_SESSION_ID, "followup_rounds") == 6
+
+
+def test_mock_interview_reprompts_invalid_followup_rounds(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "1", "0", "abc", "2", "候选人回答", "exit"]),
+        output=output,
+        registry_builder=build_structured_question_item_registry,
+    )
+
+    assert exit_code == 0
+    assert output.getvalue().count("追问轮数必须是正整数，请重新输入。") == 2
+    assert session_store.get_state(DEFAULT_SESSION_ID, "followup_rounds") == 2
+
+
+def test_mock_interview_reprompts_invalid_question_count(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "0", "abc", "1", "", "候选人回答", "exit"]),
+        output=output,
+        registry_builder=build_structured_question_item_registry,
+    )
+
+    assert exit_code == 0
+    assert output.getvalue().count("题目数必须是正整数，请重新输入。") == 2
+    assert session_store.get_state(DEFAULT_SESSION_ID, "question_count") == 1
+
+
+def test_mock_interview_can_be_interrupted_from_question_prompt(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "", "", "/stop", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "模拟面试中可输入 /stop 中断当前面试。" in output.getvalue()
+    assert "已中断当前模拟面试。你可以继续输入新的需求，或输入 exit 退出。" in output.getvalue()
+    assert "模拟面试已完成。" not in output.getvalue()
+    assert "已退出。" in output.getvalue()
+
+
+def test_mock_interview_can_be_interrupted_from_followup_prompt(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "", "", "回答一", "中断模拟面试", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "追问 1：你如何判断瓶颈在数据库？" in output.getvalue()
+    assert "已中断当前模拟面试。你可以继续输入新的需求，或输入 exit 退出。" in output.getvalue()
+    assert "第 2 题：如果延迟再次出现，你会如何设计预防机制？" not in output.getvalue()
+    assert "模拟面试已完成。" not in output.getvalue()
+
+
+def test_mock_interview_offers_reference_answer_for_blank_answer(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "", "", "", "y", "追问回答", "回答二", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "这个回答还没有展开。是否需要我给出完整答案或答题方案？[y/N]: " in output.getvalue()
+    assert "参考答案/方案：" in output.getvalue()
+    assert "- 先正面回答问题，再结合项目背景说明关键动作。" in output.getvalue()
+    assert "模拟面试已完成。" in output.getvalue()
+
+
+def test_mock_interview_offers_reference_answer_for_low_score_answer(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "", "", "不清楚", "需要", "追问回答", "回答二", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "这个回答还不够完整。是否需要我给出完整答案或答题方案？[y/N]: " in output.getvalue()
+    assert "参考答案/方案：" in output.getvalue()
+    assert "- 说明排查入口、定位步骤、验证指标和复盘改进。" in output.getvalue()
+    assert "模拟面试已完成。" in output.getvalue()
+
+
+def test_mock_interview_skips_reference_answer_when_user_declines(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "candidate_profile", {"name": "Alice"})
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    session_store.set_state(DEFAULT_SESSION_ID, "jd_requirements", {"role": "后端 JD"})
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始模拟面试", "", "", "不清楚", "n", "追问回答", "回答二", "exit"]),
+        output=output,
+        registry_builder=build_mock_interview_registry,
+    )
+
+    assert exit_code == 0
+    assert "这个回答还不够完整。是否需要我给出完整答案或答题方案？[y/N]: " in output.getvalue()
+    assert "参考答案/方案：" not in output.getvalue()
+    assert "模拟面试已完成。" in output.getvalue()
+
+
+def test_mock_interview_prompt_styles_question_and_answer_labels_for_terminal_output() -> None:
+    class TtyOutput(StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    prompt = cli._build_interview_prompt(TtyOutput(), "第 1 题：介绍项目。")
+
+    assert "\033[1;36m[面试官]\033[0m 第 1 题：介绍项目。" in prompt
+    assert "\033[1;32m[候选人]\033[0m 你的回答: " in prompt
+
+
 def test_mock_interview_accepts_structured_question_items_from_llm(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     session_store = SessionStore(database_path)
@@ -451,7 +706,7 @@ def test_mock_interview_accepts_structured_question_items_from_llm(tmp_path: Pat
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始模拟面试", "候选人回答", "exit"]),
+        input_func=build_input(["开始模拟面试", "", "", "候选人回答", "exit"]),
         output=output,
         registry_builder=build_structured_question_item_registry,
     )
@@ -471,7 +726,7 @@ def test_mock_interview_executes_without_confirmation(tmp_path: Path) -> None:
     output = StringIO()
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始模拟面试", "回答一", "追问回答", "回答二", "exit"]),
+        input_func=build_input(["开始模拟面试", "", "", "回答一", "追问回答", "回答二", "exit"]),
         output=output,
         registry_builder=build_mock_interview_registry,
     )
@@ -489,7 +744,7 @@ def test_mock_interview_handles_empty_generated_questions(tmp_path: Path) -> Non
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始模拟面试", "exit"]),
+        input_func=build_input(["开始模拟面试", "", "", "exit"]),
         output=output,
         registry_builder=build_empty_question_registry,
     )
@@ -507,7 +762,7 @@ def test_mock_interview_retries_question_generate_after_jd_parse_when_first_try_
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始模拟面试", "负责 Go 服务开发", "候选人回答", "exit"]),
+        input_func=build_input(["开始模拟面试", "", "", "负责 Go 服务开发", "候选人回答", "exit"]),
         output=output,
         registry_builder=build_retry_mock_interview_registry,
     )
@@ -528,6 +783,8 @@ def test_mock_interview_retries_question_generate_after_resume_parse_when_first_
         input_func=build_input(
             [
                 "开始模拟面试",
+                "",
+                "",
                 "Alice 有 6 年 Go 后端经验",
                 "后端工程师",
                 "Alice 有 6 年 Go 后端经验",
@@ -556,6 +813,8 @@ def test_mock_interview_reads_file_path_embedded_in_sentence_for_missing_profile
         input_func=build_input(
             [
                 "开始模拟面试",
+                "",
+                "",
                 f"根据{resume_file}，帮我模拟面试",
                 "后端工程师",
                 "候选人回答",
@@ -583,6 +842,8 @@ def test_mock_interview_reuses_resume_text_from_docx_sentence_when_retrying_resu
         input_func=build_input(
             [
                 "开始模拟面试",
+                "",
+                "",
                 f"根据{resume_file}，帮我模拟面试",
                 "后端工程师",
                 "候选人回答",
@@ -616,6 +877,8 @@ def test_mock_interview_maps_runtime_resume_profile_to_candidate_profile_before_
         input_func=build_input(
             [
                 f"根据{resume_file}，帮我模拟面试",
+                "",
+                "",
                 "后端工程师",
                 "候选人回答",
                 "exit",
@@ -647,6 +910,8 @@ def test_mock_interview_uses_docx_path_from_initial_request_without_prompting_ca
         input_func=build_input(
             [
                 f"根据{resume_file}，帮我模拟面试",
+                "",
+                "",
                 "后端工程师",
                 "候选人回答",
                 "exit",
@@ -681,6 +946,8 @@ def test_mock_interview_overrides_stale_candidate_profile_when_new_docx_is_provi
         input_func=build_input(
             [
                 f"根据{resume_file}，帮我模拟面试",
+                "",
+                "",
                 "后端工程师",
                 "候选人回答",
                 "exit",
@@ -777,6 +1044,139 @@ def test_llm_route_receives_client_on_default_cli_path(
     assert exit_code == 0
     assert route_llm_client is factory_llm_client
     assert "执行结果: success" not in output.getvalue()
+
+
+def test_ambiguous_route_executes_without_asking_user_to_choose_plan(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    session_store = SessionStore(database_path)
+    session_store.set_state(DEFAULT_SESSION_ID, "resume_text", "Alice 做过 Go 服务优化。")
+    session_store.set_state(DEFAULT_SESSION_ID, "target_role", "后端工程师")
+    output = StringIO()
+
+    def executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry, services
+
+        class SuccessExecutor:
+            def execute_node(
+                self,
+                session_id: str,
+                node_name: str,
+                inputs: dict[str, object] | None = None,
+            ) -> cli.NodeExecutionResult:
+                del inputs
+                return cli.NodeExecutionResult(
+                    run_id="run-id",
+                    session_id=session_id,
+                    node_name=node_name,
+                    status="success",
+                    output={
+                        "optimization_advice": {
+                            "overall_match_assessment": {
+                                "target_jd": "负责 Go 后端服务开发",
+                                "match_score": 92,
+                                "strengths": ["6年 Go 后端经验", "具备完整后端交付链路"],
+                                "risks": ["简历排版噪音严重"],
+                            },
+                            "high_priority_actions": ["先做简历文本清洗"],
+                            "section_level_optimization": {
+                                "basic_info": {
+                                    "issues": ["缺少明确求职意向岗位"],
+                                    "suggestion": "改为单行结构",
+                                }
+                            },
+                            "jd_alignment_keywords_to_embed": ["Go 后端服务开发", "高并发处理"],
+                            "rewritten_summary_example": "6年 Go 后端开发经验。",
+                        }
+                    },
+                    missing_inputs=[],
+                )
+
+        return SuccessExecutor()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["整理改进建议", "exit"]),
+        output=output,
+        executor_factory=executor_factory,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="resume_optimize",
+            candidate_nodes=["resume_optimize", "session_summary"],
+            via="llm",
+        ),
+    )
+
+    assert exit_code == 0
+    output_text = output.getvalue()
+    assert "我给出的简历优化建议：" in output_text
+    assert "整体匹配评估" in output_text
+    assert "目标岗位：负责 Go 后端服务开发" in output_text
+    assert "匹配分：92" in output_text
+    assert "分模块优化建议" in output_text
+    assert "基础信息" in output_text
+    assert "需嵌入的招聘关键词" in output_text
+    assert "优化后摘要示例" in output_text
+    assert "overall_match_assessment" not in output_text
+    assert "section_level_optimization" not in output_text
+    assert "match_score" not in output_text
+    assert "我理解为先整理简历优化建议，是否继续？[y/N]: " not in output.getvalue()
+    assert "是否继续？[y/N]" not in output.getvalue()
+    assert "resume_optimize" not in output.getvalue()
+    assert "session_summary" not in output.getvalue()
+    assert "检测到多个可能处理方式" not in output.getvalue()
+    assert "正在分析并整理处理步骤" not in output.getvalue()
+    assert "执行计划" not in output.getvalue()
+
+
+def test_default_route_executes_without_asking_user_to_choose_plan(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    def executor_factory(
+        database_path: Path,
+        registry: NodeRegistry,
+        services: dict[str, object],
+    ) -> object:
+        del database_path, registry, services
+
+        class SuccessExecutor:
+            def execute_node(
+                self,
+                session_id: str,
+                node_name: str,
+                inputs: dict[str, object] | None = None,
+            ) -> cli.NodeExecutionResult:
+                del inputs
+                return cli.NodeExecutionResult(
+                    run_id="run-id",
+                    session_id=session_id,
+                    node_name=node_name,
+                    status="success",
+                    output={"search_results": ["Go 面试准备资料"]},
+                    missing_inputs=[],
+                )
+
+        return SuccessExecutor()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["帮我看看怎么准备", "exit"]),
+        output=output,
+        executor_factory=executor_factory,
+        route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
+            selected_node="knowledge_search",
+            candidate_nodes=["knowledge_search"],
+            via="default",
+        ),
+    )
+
+    assert exit_code == 0
+    assert "我找到这些准备资料：" in output.getvalue()
+    assert "我理解为先查找相关准备资料，是否继续？[y/N]: " not in output.getvalue()
+    assert "是否继续？[y/N]" not in output.getvalue()
 
 
 def test_default_cli_services_include_retriever_for_executor(tmp_path: Path) -> None:
@@ -1036,6 +1436,14 @@ def build_mock_interview_registry() -> NodeRegistry:
                 optional_inputs=(),
                 outputs=("followup_questions",),
                 handler=mock_followup_handler,
+            ),
+            NodeSpec(
+                name="answer_score",
+                description="score answer",
+                required_inputs=("question", "answer", "rubric"),
+                optional_inputs=(),
+                outputs=("score_report",),
+                handler=answer_score_handler,
             ),
         ]
     )
@@ -1366,9 +1774,24 @@ def empty_question_generate_handler(context: NodeContext, inputs: dict[str, obje
 
 def mock_followup_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     del context
+    if inputs["answer"] == "多轮追问":
+        return {"followup_questions": [f"追问问题 {index}" for index in range(1, 8)]}
     if inputs["question"] == "介绍你最近一次线上延迟排查。":
         return {"followup_questions": ["你如何判断瓶颈在数据库？"]}
     return {"followup_questions": []}
+
+
+def answer_score_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context
+    if inputs["answer"] == "不清楚":
+        return {
+            "score_report": {
+                "score": 4,
+                "gaps": ["缺少排查步骤"],
+                "reference_answer": ["说明排查入口、定位步骤、验证指标和复盘改进。"],
+            }
+        }
+    return {"score_report": {"score": 8, "gaps": []}}
 
 
 def build_fake_transport(responses: dict[str, dict[str, object]]) -> Callable[[urllib.request.Request], str]:

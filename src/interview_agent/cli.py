@@ -24,6 +24,8 @@ from interview_agent.storage import get_knowledge_base_status
 
 
 DEFAULT_SESSION_ID = "interactive-cli-session"
+DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT = 6
+DEFAULT_MOCK_FOLLOWUP_ROUNDS = 6
 LLMClient = FakeLLMClient | OpenAICompatibleClient
 ServiceMap = Mapping[str, object]
 InputFunc = Callable[[str], str]
@@ -45,6 +47,10 @@ ExecutorFactory = Callable[[Path, NodeRegistry, ServiceMap], ExecutorProtocol]
 
 class InputCancelledError(RuntimeError):
     """Raised when the user stops providing required interactive inputs."""
+
+
+class MockInterviewInterruptedError(RuntimeError):
+    """Raised when the user intentionally stops the mock interview."""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -127,17 +133,6 @@ def main(
             )
             mock_interview_plan = _build_mock_interview_plan(normalized_message)
             _print_plan(output_stream, mock_interview_plan)
-            if not _confirm_ambiguous_route(
-                route_result=RouteResult(
-                    selected_node="question_generate",
-                    candidate_nodes=["question_generate"],
-                    via="rule",
-                ),
-                input_func=input_func,
-                output=output_stream,
-            ):
-                _write_line(output_stream, "已取消执行计划。")
-                continue
             try:
                 _run_mock_interview(
                     executor=executor,
@@ -149,6 +144,8 @@ def main(
                 )
             except InputCancelledError:
                 _write_line(output_stream, "输入结束，已取消当前模拟面试。")
+            except MockInterviewInterruptedError:
+                _write_line(output_stream, "已中断当前模拟面试。你可以继续输入新的需求，或输入 exit 退出。")
             continue
 
         direct_node_name = _parse_direct_node_name(normalized_message)
@@ -163,9 +160,6 @@ def main(
         else:
             route_result = route_func(normalized_message, registry, llm_client)
             selected_node = route_result.selected_node
-            if not _confirm_ambiguous_route(route_result, input_func, output_stream):
-                _write_line(output_stream, "已取消执行计划。")
-                continue
 
         try:
             plan = build_execution_plan(
@@ -257,6 +251,19 @@ def _run_mock_interview(
     available_node_names: set[str],
 ) -> None:
     _write_line(output, "我会先生成一组层层递进的面试题，然后逐题开始模拟面试。")
+    _write_line(output, "模拟面试中可输入 /stop 中断当前面试。")
+    question_count = _collect_mock_interview_question_count(
+        session_store=session_store,
+        session_id=session_id,
+        input_func=input_func,
+        output=output,
+    )
+    followup_rounds = _collect_mock_followup_rounds(
+        session_store=session_store,
+        session_id=session_id,
+        input_func=input_func,
+        output=output,
+    )
     question_result = _execute_step_with_prompt(
         executor=executor,
         session_store=session_store,
@@ -282,9 +289,19 @@ def _run_mock_interview(
     if not questions:
         _write_line(output, "还没有生成可用于模拟面试的问题。")
         return
+    questions = questions[:question_count]
 
     for question_index, question in enumerate(questions, start=1):
         answer = _ask_interview_question(output, input_func, f"第 {question_index} 题：{question}")
+        _offer_reference_answer_if_needed(
+            executor=executor,
+            session_id=session_id,
+            question=question,
+            answer=answer,
+            input_func=input_func,
+            output=output,
+            available_node_names=available_node_names,
+        )
         _ask_followup_questions(
             executor=executor,
             session_id=session_id,
@@ -292,9 +309,67 @@ def _run_mock_interview(
             answer=answer,
             input_func=input_func,
             output=output,
+            available_node_names=available_node_names,
+            followup_rounds=followup_rounds,
         )
     _write_line(output, "模拟面试已完成。")
     _write_line(output, _build_next_need_prompt("mock_followup"))
+
+
+def _collect_mock_interview_question_count(
+    session_store: SessionStore,
+    session_id: str,
+    input_func: InputFunc,
+    output: TextIO,
+) -> int:
+    while True:
+        raw_count = _read_line(
+            input_func,
+            output,
+            f"请输入本轮模拟面试题目数，直接回车默认 {DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT} 题: ",
+        )
+        if raw_count is None:
+            raise InputCancelledError("缺少模拟面试题目数")
+        question_count = _parse_positive_count(raw_count, DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT)
+        if question_count is None:
+            _write_line(output, "题目数必须是正整数，请重新输入。")
+            continue
+        session_store.set_state(session_id, "question_count", question_count)
+        return question_count
+
+
+def _collect_mock_followup_rounds(
+    session_store: SessionStore,
+    session_id: str,
+    input_func: InputFunc,
+    output: TextIO,
+) -> int:
+    while True:
+        raw_rounds = _read_line(
+            input_func,
+            output,
+            f"请输入每题追问轮数，直接回车默认 {DEFAULT_MOCK_FOLLOWUP_ROUNDS} 轮: ",
+        )
+        if raw_rounds is None:
+            raise InputCancelledError("缺少模拟面试追问轮数")
+        followup_rounds = _parse_positive_count(raw_rounds, DEFAULT_MOCK_FOLLOWUP_ROUNDS)
+        if followup_rounds is None:
+            _write_line(output, "追问轮数必须是正整数，请重新输入。")
+            continue
+        session_store.set_state(session_id, "followup_rounds", followup_rounds)
+        return followup_rounds
+
+
+def _parse_positive_count(raw_count: str, default_count: int) -> int | None:
+    stripped_count = raw_count.strip()
+    if not stripped_count:
+        return default_count
+    if not stripped_count.isdecimal():
+        return None
+    parsed_count = int(stripped_count)
+    if parsed_count <= 0:
+        return None
+    return parsed_count
 
 
 def _seed_mock_interview_inputs_from_request(
@@ -425,6 +500,8 @@ def _ask_followup_questions(
     answer: str,
     input_func: InputFunc,
     output: TextIO,
+    available_node_names: set[str],
+    followup_rounds: int,
 ) -> None:
     followup_result = executor.execute_node(
         session_id=session_id,
@@ -435,16 +512,147 @@ def _ask_followup_questions(
         _write_result(output, followup_result, "mock_followup")
         return
 
-    followup_questions = _read_text_list(followup_result.output.get("followup_questions"))
+    followup_questions = _read_text_list(followup_result.output.get("followup_questions"))[:followup_rounds]
     for followup_index, followup_question in enumerate(followup_questions, start=1):
-        _ask_interview_question(output, input_func, f"追问 {followup_index}：{followup_question}")
+        followup_answer = _ask_interview_question(output, input_func, f"追问 {followup_index}：{followup_question}")
+        _offer_reference_answer_if_needed(
+            executor=executor,
+            session_id=session_id,
+            question=followup_question,
+            answer=followup_answer,
+            input_func=input_func,
+            output=output,
+            available_node_names=available_node_names,
+        )
+
+
+def _offer_reference_answer_if_needed(
+    executor: ExecutorProtocol,
+    session_id: str,
+    question: str,
+    answer: str,
+    input_func: InputFunc,
+    output: TextIO,
+    available_node_names: set[str],
+) -> None:
+    reference_answer = _build_blank_answer_reference(question, answer)
+    prompt = "这个回答还没有展开。是否需要我给出完整答案或答题方案？[y/N]: "
+    if reference_answer is None:
+        if "answer_score" not in available_node_names:
+            return
+        score_report = _score_interview_answer(executor, session_id, question, answer)
+        if score_report is None or not _needs_reference_answer(score_report):
+            return
+        reference_answer = _build_scored_reference(score_report)
+        prompt = "这个回答还不够完整。是否需要我给出完整答案或答题方案？[y/N]: "
+
+    confirmation_text = _read_line(input_func, output, prompt)
+    if confirmation_text is None:
+        raise InputCancelledError("缺少参考答案确认")
+    if not _is_affirmative(confirmation_text):
+        return
+    _write_reference_answer(output, reference_answer)
+
+
+def _build_blank_answer_reference(question: str, answer: str) -> list[str] | None:
+    del question
+    if answer.strip():
+        return None
+    return [
+        "先正面回答问题，再结合项目背景说明关键动作。",
+        "补充可量化结果，例如耗时、指标变化、影响范围。",
+        "最后说明复盘结论和后续改进。",
+    ]
+
+
+def _score_interview_answer(
+    executor: ExecutorProtocol,
+    session_id: str,
+    question: str,
+    answer: str,
+) -> dict[str, object] | None:
+    score_result = executor.execute_node(
+        session_id=session_id,
+        node_name="answer_score",
+        inputs={
+            "question": question,
+            "answer": answer,
+            "rubric": "按完整性、准确性、结构化表达和项目细节评分，指出缺口，并给出 reference_answer。",
+        },
+    )
+    if score_result.status != "success":
+        return None
+    score_report = score_result.output.get("score_report")
+    if isinstance(score_report, dict):
+        return score_report
+    return None
+
+
+def _needs_reference_answer(score_report: dict[str, object]) -> bool:
+    score = score_report.get("score")
+    if isinstance(score, int | float) and score < 6:
+        return True
+    gaps = score_report.get("gaps")
+    return isinstance(gaps, list) and bool(gaps)
+
+
+def _build_scored_reference(score_report: dict[str, object]) -> list[str]:
+    reference_answer = score_report.get("reference_answer")
+    reference_items = _read_text_list(reference_answer)
+    if reference_items:
+        return reference_items
+    suggestions = _read_text_list(score_report.get("suggestions"))
+    if suggestions:
+        return suggestions
+    return [
+        "先给出结论，再说明关键判断依据。",
+        "结合项目场景补充做法、指标和取舍。",
+        "最后说明结果验证和复盘改进。",
+    ]
+
+
+def _write_reference_answer(output: TextIO, reference_answer: list[str]) -> None:
+    _write_line(output, "参考答案/方案：")
+    for item in reference_answer:
+        _write_line(output, f"- {item}")
+
+
+def _is_affirmative(value: str) -> bool:
+    return value.strip().lower() in {"y", "yes", "需要", "要", "好的", "好"}
 
 
 def _ask_interview_question(output: TextIO, input_func: InputFunc, prompt: str) -> str:
-    answer = _read_line(input_func, output, f"{prompt}\n你的回答: ")
+    answer = _read_line(input_func, output, _build_interview_prompt(output, prompt))
     if answer is None:
         raise InputCancelledError("缺少候选人回答")
+    if _is_mock_interview_interrupt(answer):
+        raise MockInterviewInterruptedError("用户中断模拟面试")
     return answer
+
+
+def _build_interview_prompt(output: TextIO, prompt: str) -> str:
+    interviewer_label = _style_terminal_text(output, "[面试官]", "1;36")
+    candidate_label = _style_terminal_text(output, "[候选人]", "1;32")
+    return f"{interviewer_label} {prompt}\n{candidate_label} 你的回答: "
+
+
+def _is_mock_interview_interrupt(answer: str) -> bool:
+    return answer.strip().lower() in {
+        "/stop",
+        "stop",
+        "中断",
+        "中断模拟面试",
+        "结束模拟面试",
+        "取消模拟面试",
+        "退出模拟面试",
+    }
+
+
+def _style_terminal_text(output: TextIO, text: str, style_code: str) -> str:
+    is_terminal = getattr(output, "isatty", lambda: False)()
+    if not is_terminal:
+        return text
+    return f"\033[{style_code}m{text}\033[0m"
 
 
 def _read_text_list(value: object) -> list[str]:
@@ -636,10 +844,10 @@ def _build_step_transition_prompt(next_node_name: str) -> str:
 
 def _build_processing_hint(user_message: str) -> str:
     if _parse_direct_node_name(user_message):
-        return "已收到节点执行请求，正在准备执行。"
+        return "已收到请求，我来处理。"
     if _is_mock_interview_request(user_message):
-        return "已收到模拟面试需求，正在整理处理步骤。"
-    return "已收到需求，正在分析并整理处理步骤。"
+        return "已收到模拟面试需求，我来处理。"
+    return "已收到需求，我来处理。"
 
 
 def _node_display_name(node_name: str) -> str:
@@ -696,20 +904,6 @@ def _action_question_for_node(node_name: str, *, prefix: str) -> str:
     }
     action_question = action_questions.get(node_name, "帮你继续处理下一步需求")
     return f"{prefix}{action_question}？"
-
-
-def _confirm_ambiguous_route(route_result: RouteResult, input_func: InputFunc, output: TextIO) -> bool:
-    if route_result.via == "default":
-        confirmation_text = _read_line(input_func, output, "我先按“知识检索”处理，是否继续？[y/N]: ")
-        return (confirmation_text or "").strip().lower() in {"y", "yes"}
-    if len(route_result.candidate_nodes) <= 1:
-        return True
-    confirmation_text = _read_line(
-        input_func,
-        output,
-        f"检测到多个可能处理方式（{', '.join(route_result.candidate_nodes)}），先按“{route_result.selected_node}”处理，是否继续？[y/N]: ",
-    )
-    return (confirmation_text or "").strip().lower() in {"y", "yes"}
 
 
 def _execute_step_with_prompt(
@@ -869,7 +1063,7 @@ def _write_success_output(output: TextIO, node_name: str, result_output: dict[st
         optimization_advice = result_output.get("optimization_advice")
         if isinstance(optimization_advice, dict):
             _write_line(output, "我给出的简历优化建议：")
-            _write_mapping_summary(output, optimization_advice)
+            _write_resume_optimization_advice(output, optimization_advice)
         return
 
     if node_name == "project_extract":
@@ -945,6 +1139,98 @@ def _write_list(output: TextIO, items: list[object]) -> None:
 def _write_mapping_summary(output: TextIO, values: dict[str, object]) -> None:
     for key, value in list(values.items())[:6]:
         _write_line(output, f"- {_format_output_key(key)}: {_format_output_value(value)}")
+
+
+def _write_resume_optimization_advice(output: TextIO, values: dict[str, object]) -> None:
+    preferred_keys = (
+        "overall_match_assessment",
+        "high_priority_actions",
+        "section_level_optimization",
+        "jd_alignment_keywords_to_embed",
+        "rewritten_summary_example",
+        "rewritten_experience_bullet_example",
+        "summary",
+        "suggestions",
+    )
+    written_keys: set[str] = set()
+    for key in preferred_keys:
+        if key not in values:
+            continue
+        _write_structured_output_item(
+            output,
+            _format_resume_optimization_key(key),
+            values[key],
+            indent_level=0,
+        )
+        written_keys.add(key)
+
+    for key, value in values.items():
+        if key in written_keys:
+            continue
+        _write_structured_output_item(
+            output,
+            _format_resume_optimization_key(key),
+            value,
+            indent_level=0,
+        )
+
+
+def _write_structured_output_item(
+    output: TextIO,
+    label: str,
+    value: object,
+    *,
+    indent_level: int,
+) -> None:
+    indent = "  " * indent_level
+    if isinstance(value, dict):
+        _write_line(output, f"{indent}- {label}：")
+        for child_key, child_value in value.items():
+            _write_structured_output_item(
+                output,
+                _format_resume_optimization_key(child_key),
+                child_value,
+                indent_level=indent_level + 1,
+            )
+        return
+    if isinstance(value, list):
+        _write_line(output, f"{indent}- {label}：")
+        for item in value:
+            if isinstance(item, dict):
+                _write_structured_output_item(output, "明细", item, indent_level=indent_level + 1)
+                continue
+            _write_line(output, f"{'  ' * (indent_level + 1)}- {_format_output_value(item)}")
+        return
+    _write_line(output, f"{indent}- {label}：{_format_output_value(value)}")
+
+
+def _format_resume_optimization_key(key: str) -> str:
+    labels = {
+        "overall_match_assessment": "整体匹配评估",
+        "target_jd": "目标岗位",
+        "target_role": "目标岗位",
+        "match_score": "匹配分",
+        "strengths": "优势",
+        "risks": "风险",
+        "high_priority_actions": "优先处理动作",
+        "section_level_optimization": "分模块优化建议",
+        "basic_info": "基础信息",
+        "summary": "职业摘要",
+        "skills": "技能表达",
+        "experience": "工作经历",
+        "projects": "项目经历",
+        "issues": "问题",
+        "suggestion": "建议",
+        "suggestions": "建议",
+        "jd_alignment_keywords_to_embed": "需嵌入的招聘关键词",
+        "rewritten_summary_example": "优化后摘要示例",
+        "rewritten_experience_bullet_example": "优化后经历示例",
+        "bullets": "要点",
+        "gaps": "缺口",
+        "actions": "行动项",
+        "examples": "示例",
+    }
+    return labels.get(key, _format_output_key(key))
 
 
 def _format_output_key(key: str) -> str:
