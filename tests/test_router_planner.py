@@ -7,6 +7,7 @@ from interview_agent.planner import (
     build_execution_plan,
 )
 from interview_agent.router import classify_with_llm, route_conversation
+from interview_agent.state_contracts import JD_REQUIREMENTS, JD_TEXT, RESUME_PROFILE, RESUME_TEXT, TARGET_ROLE
 
 
 def test_route_conversation_matches_question_generate_for_go_request() -> None:
@@ -154,6 +155,42 @@ def test_build_execution_plan_includes_jd_parse_before_question_generation_when_
     assert plan.missing_inputs == ["jd_text"]
 
 
+def test_build_execution_plan_includes_resume_parse_for_question_generation_when_profile_and_resume_are_missing() -> None:
+    registry = build_default_registry()
+
+    plan = build_execution_plan(
+        user_message="生成后端面试题",
+        selected_node="question_generate",
+        session_inputs={TARGET_ROLE: "后端工程师"},
+        registry=registry,
+    )
+
+    assert [step.node_name for step in plan.steps] == [
+        "resume_parse",
+        "jd_parse",
+        "question_generate",
+    ]
+    assert plan.missing_inputs == [RESUME_TEXT, JD_TEXT]
+
+
+def test_build_execution_plan_includes_resume_parse_for_question_generation_when_profile_is_missing_but_resume_exists() -> None:
+    registry = build_default_registry()
+
+    plan = build_execution_plan(
+        user_message="生成后端面试题",
+        selected_node="question_generate",
+        session_inputs={RESUME_TEXT: "Alice 做过后端服务", TARGET_ROLE: "后端工程师"},
+        registry=registry,
+    )
+
+    assert [step.node_name for step in plan.steps] == [
+        "resume_parse",
+        "jd_parse",
+        "question_generate",
+    ]
+    assert plan.missing_inputs == [JD_TEXT]
+
+
 def test_build_execution_plan_includes_parse_steps_for_downstream_nodes() -> None:
     registry = build_default_registry()
 
@@ -185,6 +222,53 @@ def test_build_execution_plan_includes_parse_steps_for_downstream_nodes() -> Non
     assert [step.node_name for step in optimize_plan.steps] == ["resume_parse", "resume_optimize"]
     assert optimize_plan.missing_inputs == ["resume_text", "target_role"]
     assert optimize_plan.requires_confirmation is False
+
+
+def test_build_execution_plan_reuses_state_contract_keys_for_existing_missing_input_behavior() -> None:
+    registry = build_default_registry()
+
+    jd_match_plan = build_execution_plan(
+        user_message="把简历和岗位做匹配分析",
+        selected_node="jd_match",
+        session_inputs={RESUME_PROFILE: {"name": "Alice"}},
+        registry=registry,
+    )
+    question_plan = build_execution_plan(
+        user_message="生成后端面试题",
+        selected_node="question_generate",
+        session_inputs={"candidate_profile": {"name": "Alice"}, TARGET_ROLE: "后端工程师"},
+        registry=registry,
+    )
+
+    assert [step.node_name for step in jd_match_plan.steps] == ["jd_parse", "jd_match"]
+    assert jd_match_plan.missing_inputs == [JD_TEXT]
+    assert [step.node_name for step in question_plan.steps] == ["jd_parse", "question_generate"]
+    assert question_plan.missing_inputs == [JD_TEXT]
+
+
+def test_build_execution_plan_skips_parse_steps_when_contract_outputs_already_exist() -> None:
+    registry = build_default_registry()
+
+    jd_match_plan = build_execution_plan(
+        user_message="把简历和岗位做匹配分析",
+        selected_node="jd_match",
+        session_inputs={
+            RESUME_PROFILE: {"name": "Alice"},
+            JD_REQUIREMENTS: {"role": "后端工程师"},
+        },
+        registry=registry,
+    )
+    optimize_plan = build_execution_plan(
+        user_message="优化简历",
+        selected_node="resume_optimize",
+        session_inputs={RESUME_TEXT: "Alice 做过后端服务"},
+        registry=registry,
+    )
+
+    assert [step.node_name for step in jd_match_plan.steps] == ["jd_match"]
+    assert jd_match_plan.missing_inputs == []
+    assert [step.node_name for step in optimize_plan.steps] == ["resume_optimize"]
+    assert optimize_plan.missing_inputs == [TARGET_ROLE]
 
 
 def test_plan_dataclasses_support_multi_node_display() -> None:

@@ -5,6 +5,12 @@ import hashlib
 import json
 
 from interview_agent.nodes.registry import NodeRegistry
+from interview_agent.state_contracts import (
+    CANDIDATE_PROFILE,
+    TARGET_ROLE,
+    find_missing_required_inputs,
+    get_node_state_contract,
+)
 
 
 @dataclass(frozen=True)
@@ -35,16 +41,20 @@ def build_execution_plan(
     steps: list[PlanStep] = []
     missing_inputs: list[str] = []
 
+    if _requires_candidate_profile_parse(selected_node, session_inputs):
+        steps.append(_build_step("resume_parse"))
+        _append_missing_inputs(missing_inputs, get_node_state_contract("resume_parse")[0], session_inputs)
+
     if _requires_resume_parse(selected_node, session_inputs):
         steps.append(_build_step("resume_parse"))
-        missing_inputs.append("resume_text")
+        _append_missing_inputs(missing_inputs, get_node_state_contract("resume_parse")[0], session_inputs)
 
     if _requires_jd_parse(selected_node, session_inputs):
         steps.append(_build_step("jd_parse"))
-        missing_inputs.append("jd_text")
+        _append_missing_inputs(missing_inputs, get_node_state_contract("jd_parse")[0], session_inputs)
 
     if _requires_target_role(selected_node, session_inputs):
-        missing_inputs.append("target_role")
+        _append_missing_inputs(missing_inputs, (TARGET_ROLE,), session_inputs)
 
     steps.append(_build_step(selected_node))
 
@@ -73,10 +83,11 @@ def _requires_jd_parse(selected_node: str, session_inputs: dict[str, object]) ->
     if selected_node not in {"question_generate", "jd_match"}:
         return False
 
-    if "jd_text" in session_inputs:
+    required_inputs, _, outputs = get_node_state_contract("jd_parse")
+    if not find_missing_required_inputs(required_inputs, session_inputs):
         return False
 
-    if "jd_requirements" in session_inputs:
+    if outputs[0] in session_inputs:
         return False
 
     return True
@@ -86,20 +97,42 @@ def _requires_resume_parse(selected_node: str, session_inputs: dict[str, object]
     if selected_node not in {"jd_match", "project_extract", "resume_optimize"}:
         return False
 
-    if "resume_text" in session_inputs:
+    required_inputs, _, outputs = get_node_state_contract("resume_parse")
+    if not find_missing_required_inputs(required_inputs, session_inputs):
         return False
 
-    if selected_node == "jd_match" and "resume_profile" in session_inputs:
+    if selected_node == "jd_match" and outputs[0] in session_inputs:
         return False
 
     return True
+
+
+def _requires_candidate_profile_parse(selected_node: str, session_inputs: dict[str, object]) -> bool:
+    required_inputs, _, _ = get_node_state_contract(selected_node)
+    if CANDIDATE_PROFILE not in required_inputs:
+        return False
+    if CANDIDATE_PROFILE in session_inputs:
+        return False
+
+    _, _, resume_outputs = get_node_state_contract("resume_parse")
+    return CANDIDATE_PROFILE in resume_outputs
 
 
 def _requires_target_role(selected_node: str, session_inputs: dict[str, object]) -> bool:
     if selected_node != "resume_optimize":
         return False
 
-    return "target_role" not in session_inputs
+    return bool(find_missing_required_inputs((TARGET_ROLE,), session_inputs))
+
+
+def _append_missing_inputs(
+    missing_inputs: list[str],
+    required_inputs: tuple[str, ...],
+    session_inputs: dict[str, object],
+) -> None:
+    for input_name in find_missing_required_inputs(required_inputs, session_inputs):
+        if input_name not in missing_inputs:
+            missing_inputs.append(input_name)
 
 
 def _build_step(node_name: str) -> PlanStep:

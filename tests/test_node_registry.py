@@ -3,11 +3,22 @@ from __future__ import annotations
 import pytest
 
 from interview_agent.nodes.registry import (
+    DEFAULT_NODE_CONTRACTS,
     NodeRegistry,
     UnknownNodeError,
     build_default_registry,
 )
 from interview_agent.nodes.spec import NodeContext, NodeSpec, validate_required_inputs
+from interview_agent.state_contracts import (
+    CANDIDATE_PROFILE,
+    JD_REQUIREMENTS,
+    QUESTION,
+    QUESTIONS,
+    RESUME_PROFILE,
+    RESUME_TEXT,
+    TARGET_ROLE,
+    get_node_state_contract,
+)
 
 
 EXPECTED_NODE_NAMES = {
@@ -46,11 +57,21 @@ def test_default_registry_lists_all_runtime_nodes_with_io_contracts() -> None:
         assert spec.handler is not None
 
 
+def test_default_node_contracts_use_shared_state_contracts() -> None:
+    assert get_node_state_contract("resume_parse") == ((RESUME_TEXT,), (), (RESUME_PROFILE, CANDIDATE_PROFILE))
+    assert get_node_state_contract("question_generate") == (
+        (CANDIDATE_PROFILE, TARGET_ROLE),
+        (JD_REQUIREMENTS, "difficulty", "question_count"),
+        (QUESTIONS,),
+    )
+    assert DEFAULT_NODE_CONTRACTS["question_generate"] == get_node_state_contract("question_generate")
+
+
 def test_node_spec_contains_required_contract_fields() -> None:
     spec = NodeSpec(
         name="fake_node",
         description="Fake node for registry tests.",
-        required_inputs=("question",),
+        required_inputs=(QUESTION,),
         optional_inputs=("context",),
         outputs=("answer",),
         handler=fake_handler,
@@ -58,7 +79,7 @@ def test_node_spec_contains_required_contract_fields() -> None:
 
     assert spec.name == "fake_node"
     assert spec.description == "Fake node for registry tests."
-    assert spec.required_inputs == ("question",)
+    assert spec.required_inputs == (QUESTION,)
     assert spec.optional_inputs == ("context",)
     assert spec.outputs == ("answer",)
     assert spec.handler(NodeContext(), {"question": "hi"}) == {"received": {"question": "hi"}}

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
+
+import pytest
 
 from interview_agent.executor import NodeExecutor
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, NodeSpec
-from interview_agent.session import SessionStore
+from interview_agent.session import SessionStore, write_session_state
+from interview_agent.state_contracts import CANDIDATE_PROFILE, SEARCH_RESULTS
 from interview_agent.storage import initialize_database
 
 
@@ -30,6 +34,11 @@ def question_handler(context: NodeContext, inputs: dict[str, object]) -> dict[st
 def failing_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     del context, inputs
     raise RuntimeError("handler failed")
+
+
+def invalid_output_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {"bad": None}
 
 
 def build_registry() -> NodeRegistry:
@@ -58,6 +67,14 @@ def build_registry() -> NodeRegistry:
                 optional_inputs=(),
                 outputs=("failed_output",),
                 handler=failing_handler,
+            ),
+            NodeSpec(
+                name="invalid_output_node",
+                description="Return invalid output.",
+                required_inputs=(),
+                optional_inputs=(),
+                outputs=("bad",),
+                handler=invalid_output_handler,
             ),
         ]
     )
@@ -240,12 +257,37 @@ def test_node_output_must_include_declared_fields(tmp_path: Path) -> None:
     assert SessionStore(database_path).get_state("session-1", "other") is None
 
 
+def test_invalid_node_output_returns_failed_result_and_records_failed_run(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+    executor = NodeExecutor(database_path, build_registry())
+
+    result = executor.execute_node(session_id="session-1", node_name="invalid_output_node")
+
+    with sqlite3.connect(database_path) as connection:
+        run_row = connection.execute(
+            """
+            SELECT status, output_payload, error_message
+            FROM node_runs
+            WHERE run_id = ?
+            """,
+            (result.run_id,),
+        ).fetchone()
+
+    assert result.status == "failed"
+    assert result.output == {}
+    assert result.error_message == "state value 不能为 None"
+    assert session_store.get_state("session-1", "bad") is None
+    assert run_row == ("failed", None, "state value 不能为 None")
+
+
 def test_failed_node_preserves_existing_successful_state(tmp_path: Path) -> None:
     database_path = tmp_path / "executor.sqlite3"
     initialize_database(database_path)
     session_store = SessionStore(database_path)
     session_store.create_session("session-1")
-    session_store.set_state("session-1", "candidate_profile", {"name": "Alice"})
+    session_store.set_state("session-1", CANDIDATE_PROFILE, {"name": "Alice"})
     executor = NodeExecutor(database_path, build_registry())
 
     result = executor.execute_node(
@@ -255,7 +297,7 @@ def test_failed_node_preserves_existing_successful_state(tmp_path: Path) -> None
     )
 
     assert result.status == "failed"
-    assert session_store.get_state("session-1", "candidate_profile") == {"name": "Alice"}
+    assert session_store.get_state("session-1", CANDIDATE_PROFILE) == {"name": "Alice"}
     assert session_store.get_state("session-1", "failed_output") is None
 
 
@@ -278,3 +320,99 @@ def test_session_store_set_state_creates_session_for_fresh_session_id(tmp_path: 
 
     assert session_row == ("fresh-session", "active")
     assert state_row == ('{"v":1}',)
+
+
+@pytest.mark.parametrize("invalid_key", ["", "   "])
+def test_session_store_set_state_rejects_empty_state_key(tmp_path: Path, invalid_key: str) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="state key 必须是非空字符串"):
+        session_store.set_state("session-1", invalid_key, {"v": 1})
+
+
+def test_session_store_set_state_rejects_none_value(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="state value 不能为 None"):
+        session_store.set_state("session-1", "empty", None)
+
+
+@pytest.mark.parametrize(
+    ("invalid_value", "expected_message"),
+    [
+        ("", "state value 不能为空"),
+        ("   ", "state value 不能为空"),
+        ([], "state value 不能为空"),
+        ({}, "state value 不能为空"),
+        ((), "state value 不能为空"),
+    ],
+)
+def test_session_store_set_state_rejects_empty_like_values(
+    tmp_path: Path,
+    invalid_value: object,
+    expected_message: str,
+) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match=expected_message):
+        session_store.set_state("session-1", "empty", invalid_value)
+
+
+def test_session_store_set_state_rejects_non_json_serializable_value(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="state value 必须可 JSON 编码"):
+        session_store.set_state("session-1", "bad", {"payload": object()})
+
+
+def test_session_store_set_state_accepts_json_serializable_value(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+    value = {"items": ["a"], "meta": {"count": 1}}
+
+    session_store.set_state("session-1", "good", value)
+
+    assert session_store.get_state("session-1", "good") == value
+
+
+def test_session_store_set_state_accepts_empty_search_results_list(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    session_store.set_state("session-1", SEARCH_RESULTS, [])
+
+    assert session_store.get_state("session-1", SEARCH_RESULTS) == []
+
+
+def test_write_session_state_rejects_none_value_when_called_directly(tmp_path: Path) -> None:
+    database_path = tmp_path / "executor.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+    session_store.create_session("session-1")
+    value = {"items": ["a"], "meta": {"count": 1}}
+
+    with sqlite3.connect(database_path) as connection:
+        with pytest.raises(ValueError, match="state value 不能为 None"):
+            write_session_state(connection, "session-1", {"bad": None})
+
+    assert session_store.get_state("session-1", "bad") is None
+
+    session_store.set_state("session-1", "good", value)
+
+    with sqlite3.connect(database_path) as connection:
+        state_row = connection.execute(
+            "SELECT state_value FROM session_state WHERE session_id = ? AND state_key = ?",
+            ("session-1", "good"),
+        ).fetchone()
+
+    assert state_row == (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")),)

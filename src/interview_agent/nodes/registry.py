@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from interview_agent.state_contracts import DEFAULT_NODE_STATE_CONTRACTS
+
 from .interview import (
     answer_score_handler,
     jd_match_handler,
@@ -45,25 +47,7 @@ def build_default_registry() -> NodeRegistry:
 
 
 DEFAULT_NODE_CONTRACTS = {
-    "knowledge_search": (("question",), ("top_k",), ("search_results",)),
-    "resume_parse": (("resume_text",), (), ("resume_profile",)),
-    "project_extract": (("resume_text",), ("resume_profile",), ("project_experiences",)),
-    "jd_parse": (("jd_text",), (), ("jd_requirements",)),
-    "jd_match": (("resume_profile", "jd_requirements"), (), ("match_report",)),
-    "question_generate": (
-        ("candidate_profile", "target_role"),
-        ("jd_requirements", "difficulty", "question_count"),
-        ("questions",),
-    ),
-    "mock_followup": (("question", "answer"), ("rubric",), ("followup_questions",)),
-    "answer_score": (("question", "answer", "rubric"), (), ("score_report",)),
-    "weakness_train": (("weaknesses", "goal"), ("candidate_profile",), ("training_plan",)),
-    "resume_optimize": (
-        ("resume_text", "target_role"),
-        ("jd_requirements",),
-        ("optimization_advice",),
-    ),
-    "session_summary": (("session_transcript",), (), ("summary",)),
+    **DEFAULT_NODE_STATE_CONTRACTS,
 }
 
 
