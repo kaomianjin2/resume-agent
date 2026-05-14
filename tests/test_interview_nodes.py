@@ -383,10 +383,11 @@ def test_knowledge_search_falls_back_to_empty_results_when_llm_response_is_inval
         ).fetchone()
 
     assert result.status == "success"
-    assert result.output == {"search_results": [], "message": "未检索到相关知识片段。"}
+    assert result.output == {"search_results": []}
     assert result.error_message is None
     assert session_store.get_state("session-1", "search_results") == []
-    assert run_row == ("success", '{"message":"未检索到相关知识片段。","search_results":[]}', None)
+    assert session_store.get_state("session-1", "message") is None
+    assert run_row == ("success", '{"search_results":[]}', None)
 
 
 def test_knowledge_search_uses_retriever_chunks_as_base_and_llm_only_adds_non_source_fields(
@@ -482,7 +483,7 @@ def test_run_structured_node_preserves_rag_source_metadata_from_retriever(
     assert result.output["search_results"][0]["summary"] == "RAG summary"
 
 
-def test_knowledge_search_returns_empty_results_with_message_when_retriever_has_no_hits(
+def test_knowledge_search_returns_empty_results_without_extra_output_keys_when_retriever_has_no_hits(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "interview.sqlite3"
@@ -503,7 +504,5 @@ def test_knowledge_search_returns_empty_results_with_message_when_retriever_has_
     )
 
     assert result.status == "success"
-    assert result.output == {
-        "search_results": [],
-        "message": "未检索到相关知识片段。",
-    }
+    assert result.output == {"search_results": []}
+    assert "message" not in result.output

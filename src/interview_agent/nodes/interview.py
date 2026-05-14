@@ -18,10 +18,7 @@ def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) ->
     search_results = search_result.get("search_results")
     if isinstance(search_results, list) and search_results:
         return {**search_result, "search_results": search_results}
-    return {
-        "search_results": [],
-        "message": "未检索到相关知识片段。",
-    }
+    return {"search_results": []}
 
 
 def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
