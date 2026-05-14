@@ -70,7 +70,7 @@ def validate_state_entry(key: str, value: object) -> None:
         raise ValueError("state key 必须是非空字符串")
     if value is None:
         raise ValueError("state value 不能为 None")
-    if _is_empty_state_value(value):
+    if _is_empty_state_value(key, value):
         raise ValueError("state value 不能为空")
     try:
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -78,9 +78,15 @@ def validate_state_entry(key: str, value: object) -> None:
         raise ValueError("state value 必须可 JSON 编码") from exc
 
 
-def _is_empty_state_value(value: object) -> bool:
+def _is_empty_state_value(key: str, value: object) -> bool:
     if isinstance(value, str):
         return not value.strip()
+    if _allows_empty_state_value(key, value):
+        return False
     if isinstance(value, list | dict | tuple):
         return len(value) == 0
     return False
+
+
+def _allows_empty_state_value(key: str, value: object) -> bool:
+    return key == SEARCH_RESULTS and isinstance(value, list)
