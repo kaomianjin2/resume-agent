@@ -24,13 +24,6 @@ class ExecutionPlan:
     summary: str
 
 
-@dataclass(frozen=True)
-class PlanConfirmation:
-    plan_id: str
-    confirmed: bool
-    reason: str | None = None
-
-
 def build_execution_plan(
     user_message: str,
     selected_node: str,
@@ -73,16 +66,6 @@ def build_execution_plan(
         missing_inputs=missing_inputs,
         summary=summary,
     )
-
-
-def ensure_plan_confirmation(
-    plan: ExecutionPlan,
-    confirmation: PlanConfirmation | None,
-) -> str | None:
-    del confirmation
-    if not plan.requires_confirmation:
-        return None
-    return None
 
 
 def _requires_jd_parse(selected_node: str, session_inputs: dict[str, object]) -> bool:

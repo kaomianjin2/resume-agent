@@ -25,12 +25,13 @@ flowchart TD
     Router --> RuleRoute[规则路由]
     Router --> LLMRoute[LLM 分类兜底]
     Router --> DefaultRoute[默认 knowledge_search]
+    Router --> DirectionChoice{处理方向不确定}
+    DirectionChoice -->|是| UserChoice[用户选择处理方向]
+    DirectionChoice -->|否| Planner
 
-    CLI --> Planner[Node Planner<br/>src/interview_agent/planner.py]
-    Planner --> Confirm{多节点计划}
-    Confirm -->|是| UserConfirm[用户确认]
-    Confirm -->|否| Executor[Node Executor<br/>src/interview_agent/executor.py]
-    UserConfirm --> Executor
+    UserChoice --> Planner
+    Planner[Node Planner<br/>src/interview_agent/planner.py]
+    Planner --> Executor[Node Executor<br/>src/interview_agent/executor.py]
 
     Executor --> Registry[Node Registry<br/>src/interview_agent/nodes/registry.py]
     Registry --> Handlers[Interview Node Handlers<br/>src/interview_agent/nodes/interview.py]
@@ -74,11 +75,11 @@ sequenceDiagram
         CLI->>S: create_session()
         CLI->>R: route_conversation()
         R-->>CLI: selected_node / candidate_nodes
-        CLI->>P: build_execution_plan()
-        alt 多节点计划
-            CLI-->>U: 展示计划并请求确认
-            U->>CLI: y / N
+        opt 处理方向不确定
+            CLI-->>U: 询问处理方向
+            U-->>CLI: 选择方向
         end
+        CLI->>P: build_execution_plan()
         CLI->>E: execute_node(session_id, node_name)
         E->>S: 合并 session_state 与本次输入
         E->>N: 调用节点 handler
@@ -186,5 +187,6 @@ erDiagram
 - 知识库通过离线命令构建到 SQLite。
 - 节点之间只通过 SQLite `session_state` 共享数据。
 - 节点执行结果统一记录到 `node_runs`。
-- 多节点计划执行前必须展示计划并获得用户确认。
+- 路由明确时直接执行内部步骤。
+- 处理方向不确定时询问用户选择，不展示内部节点名。
 - 知识库检索使用 SQLite FTS5 和本地 bge-m3 embedding 混合排序。

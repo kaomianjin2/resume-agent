@@ -168,7 +168,7 @@ def test_missing_jd_input_accepts_file_path_and_executes_plan(tmp_path: Path) ->
     assert "已收到需求，我来处理。" in output.getvalue()
     assert "当前进度 1/2：正在执行JD 解析。" in output.getvalue()
     assert "当前进度 2/2：正在执行面试题生成。" in output.getvalue()
-    assert "我会分几步处理：" in output.getvalue()
+    assert "我会先补齐必要信息，再继续处理。" in output.getvalue()
     assert "请输入招聘 JD 内容" in output.getvalue()
     assert "我会继续基于已有简历和 JD 生成面试题。" in output.getvalue()
     assert "我生成了这些面试题：" in output.getvalue()
@@ -335,7 +335,7 @@ def test_missing_jd_input_accepts_docx_file_path(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
-    assert "我会分几步处理：" in output.getvalue()
+    assert "我会先补齐必要信息，再继续处理。" in output.getvalue()
     assert "执行结果: success" not in output.getvalue()
     assert session_store.get_state(DEFAULT_SESSION_ID, "jd_text") == "负责 Go 服务开发"
 
@@ -388,7 +388,7 @@ def test_multi_node_plan_executes_without_confirmation(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
-    assert "我会分几步处理：" in output.getvalue()
+    assert "我会先补齐必要信息，再继续处理。" in output.getvalue()
     assert "确认这样处理？" not in output.getvalue()
     assert "当前进度 1/2：正在执行JD 解析。" in output.getvalue()
     assert "当前进度 2/2：正在执行面试题生成。" in output.getvalue()
@@ -732,7 +732,7 @@ def test_mock_interview_executes_without_confirmation(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
-    assert "我会分几步处理：" in output.getvalue()
+    assert "我会先补齐必要信息，再继续处理。" in output.getvalue()
     assert "确认这样处理？" not in output.getvalue()
     assert "第 1 题：介绍你最近一次线上延迟排查。" in output.getvalue()
     assert "模拟面试已完成。" in output.getvalue()
@@ -1046,7 +1046,7 @@ def test_llm_route_receives_client_on_default_cli_path(
     assert "执行结果: success" not in output.getvalue()
 
 
-def test_ambiguous_route_executes_without_asking_user_to_choose_plan(tmp_path: Path) -> None:
+def test_ambiguous_route_asks_user_to_choose_direction(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     session_store = SessionStore(database_path)
     session_store.set_state(DEFAULT_SESSION_ID, "resume_text", "Alice 做过 Go 服务优化。")
@@ -1075,13 +1075,17 @@ def test_ambiguous_route_executes_without_asking_user_to_choose_plan(tmp_path: P
                     status="success",
                     output={
                         "optimization_advice": {
-                            "overall_match_assessment": {
-                                "target_jd": "负责 Go 后端服务开发",
-                                "match_score": 92,
-                                "strengths": ["6年 Go 后端经验", "具备完整后端交付链路"],
-                                "risks": ["简历排版噪音严重"],
-                            },
-                            "high_priority_actions": ["先做简历文本清洗"],
+                            "overall_match": "较高（与负责 Go 后端服务开发高度匹配）",
+                            "priority_actions": [
+                                {
+                                    "priority": "P0",
+                                    "action": "修复排版与基础信息可读性",
+                                    "details": [
+                                        "统一中文/英文/数字间距",
+                                        "联系方式单行展示",
+                                    ],
+                                }
+                            ],
                             "section_level_optimization": {
                                 "basic_info": {
                                     "issues": ["缺少明确求职意向岗位"],
@@ -1099,7 +1103,7 @@ def test_ambiguous_route_executes_without_asking_user_to_choose_plan(tmp_path: P
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["整理改进建议", "exit"]),
+        input_func=build_input(["整理改进建议", "1", "exit"]),
         output=output,
         executor_factory=executor_factory,
         route_func=lambda user_message, registry, llm_client=None: cli.RouteResult(
@@ -1111,17 +1115,26 @@ def test_ambiguous_route_executes_without_asking_user_to_choose_plan(tmp_path: P
 
     assert exit_code == 0
     output_text = output.getvalue()
+    assert "我识别到几种处理方向，请选择一个继续：" in output_text
+    assert "1. 给出简历优化建议" in output_text
+    assert "2. 总结本轮准备内容" in output_text
+    assert "请输入序号: " in output_text
     assert "我给出的简历优化建议：" in output_text
-    assert "整体匹配评估" in output_text
-    assert "目标岗位：负责 Go 后端服务开发" in output_text
-    assert "匹配分：92" in output_text
+    assert "整体匹配：较高（与负责 Go 后端服务开发高度匹配）" in output_text
+    assert "优先处理动作" in output_text
+    assert "优先级：P0" in output_text
+    assert "动作：修复排版与基础信息可读性" in output_text
+    assert "详细说明" in output_text
     assert "分模块优化建议" in output_text
     assert "基础信息" in output_text
     assert "需嵌入的招聘关键词" in output_text
     assert "优化后摘要示例" in output_text
-    assert "overall_match_assessment" not in output_text
+    assert "overall_match" not in output_text
+    assert "priority_actions" not in output_text
+    assert "priority:" not in output_text
+    assert "action:" not in output_text
+    assert "details:" not in output_text
     assert "section_level_optimization" not in output_text
-    assert "match_score" not in output_text
     assert "我理解为先整理简历优化建议，是否继续？[y/N]: " not in output.getvalue()
     assert "是否继续？[y/N]" not in output.getvalue()
     assert "resume_optimize" not in output.getvalue()

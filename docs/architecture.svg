@@ -61,7 +61,7 @@
   <rect class="logic" x="650" y="310" width="230" height="108"/>
   <text class="label" x="696" y="346">节点规划器</text>
   <text class="small" x="693" y="373">planner.py</text>
-  <text class="tiny" x="677" y="395">多节点计划需要确认</text>
+  <text class="tiny" x="677" y="395">生成内部执行步骤</text>
 
   <rect class="exec" x="960" y="235" width="240" height="118"/>
   <text class="label" x="1010" y="272">节点执行器</text>
@@ -116,7 +116,7 @@
 
   <text class="note" x="300" y="232">输入</text>
   <text class="note" x="590" y="202">选择能力节点</text>
-  <text class="note" x="592" y="354">生成执行计划</text>
+  <text class="note" x="592" y="354">生成内部步骤</text>
   <text class="note" x="892" y="258">按计划执行</text>
   <text class="note" x="1216" y="198">读取节点契约</text>
   <text class="note" x="1216" y="382">调用处理函数</text>
@@ -174,6 +174,6 @@
   <text class="note" x="1195" y="786">运行时只读检索</text>
 
   <rect class="panel" x="70" y="1040" width="1460" height="46"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；运行时不构建知识库；多节点执行前确认；节点之间只通过 SQLite session_state 共享数据。</text>
+  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；运行时不构建知识库；方向不确定时询问用户；节点之间只通过 SQLite session_state 共享数据。</text>
   <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
 </svg>

@@ -13,7 +13,7 @@
 2. 知识库通过离线命令构建完成。
 3. `uv run interview-agent` 不触发知识库接入，只检查知识库 ready 状态。
 4. 用户可用自然语言触发任意节点。
-5. 多节点串联执行前必须展示计划并获得确认。
+5. 路由明确时直接执行；处理方向不确定时询问用户选择。
 6. 所有配置来自 `config/interview-agent.toml`，不读取环境变量。
 7. 不修改 `/Users/cynicism/Desktop/面试` 原始资料。
 8. 开发流程和 subagent 边界遵循 `.codex/rules/` 与 `.codex/agents/`。
@@ -163,9 +163,9 @@
 1. [操作] 编写自然语言路由测试 → verify: “生成 Go 面试题” 命中 `question_generate`
 2. [操作] 实现规则兜底路由 → verify: 常见关键词不依赖 LLM 也能命中节点
 3. [操作] 实现 LLM 分类接口 → verify: fake LLM 返回候选节点
-4. [操作] 定义 `PlanStep`、`ExecutionPlan`、`PlanConfirmation` → verify: 多节点计划可展示
+4. [操作] 定义 `PlanStep`、`ExecutionPlan` → verify: 多节点内部步骤可生成
 5. [操作] 实现多节点计划生成 → verify: 缺 JD 时计划包含 `jd_parse` + `question_generate`
-6. [操作] 实现确认约束 → verify: `uv run pytest tests/test_router_planner.py -k "multi_node_plan_requires_confirmation"`
+6. [操作] 实现不确定路由选择 → verify: `uv run pytest tests/test_cli.py -k "ambiguous_route_asks_user_to_choose_direction"`
 7. [操作] 合并审查 → verify: reviewer 同时确认规格符合性和代码质量通过
 
 ## Task 8A: Node Executor And Session State
@@ -217,9 +217,9 @@
 1. [操作] 编写启动检查测试 → verify: 知识库缺失时只提示离线构建命令
 2. [操作] 验证启动时不构建知识库 → verify: `uv run pytest tests/test_cli.py -k "does_not_build_knowledge_base_on_startup"`
 3. [操作] 实现交互入口 → verify: `uv run interview-agent` 进入输入提示
-4. [操作] 实现自然语言请求循环 → verify: 用户输入后展示匹配节点或执行计划
+4. [操作] 实现自然语言请求循环 → verify: 路由明确时直接执行，路由不确定时询问方向
 5. [操作] 实现缺输入补齐交互 → verify: 缺 JD 时可输入文本或选择文件
-6. [操作] 实现多节点确认 → verify: 未确认时不执行计划
+6. [操作] 实现多节点内部执行 → verify: 不展示内部执行计划或节点名
 7. [操作] 实现直接节点命令 → verify: `/node question_generate` 可触发指定节点
 8. [操作] 合并审查 → verify: reviewer 同时确认规格符合性和代码质量通过
 
@@ -233,7 +233,7 @@
 2. [操作] 运行知识库构建 → verify: `uv run python -m interview_agent.kb.build --source /Users/cynicism/Desktop/面试 --config config/interview-agent.toml --db data/interview_agent.sqlite`
 3. [操作] 启动交互式 Agent → verify: `uv run interview-agent --config config/interview-agent.toml`
 4. [操作] 手工验证单节点 → verify: `/node knowledge_search`
-5. [操作] 手工验证未确认多节点 → verify: 多节点计划未确认时不执行
-6. [操作] 手工验证确认后多节点 → verify: 确认后生成题目或评分结果
+5. [操作] 手工验证明确路由多节点 → verify: 不展示执行计划，补齐输入后直接生成结果
+6. [操作] 手工验证不确定路由 → verify: 询问用户处理方向后再执行
 7. [操作] 手工验证 KB 未 ready → verify: 只提示离线构建命令
 8. [操作] 最终验收审查 → verify: final_reviewer 同时确认需求、架构、测试、流程合规且无阻塞问题

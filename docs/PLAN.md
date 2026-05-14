@@ -20,7 +20,7 @@
 
 - CLI 是交互式入口，不是固定流水线。
 - 用户通过自然语言触发能力节点。
-- 多节点串联前必须展示执行计划并获得确认。
+- 处理方向不确定时询问用户选择；路由明确时直接执行。
 - 配置落在 `config/interview-agent.toml`。
 - 不使用环境变量读取配置。
 - 知识库在开发期提前构建。
@@ -37,8 +37,6 @@ Interactive CLI
 Conversation Router
   ↓
 Node Planner
-  ↓
-Execution Confirmation
   ↓
 Node Executor
   ↓
@@ -143,7 +141,8 @@ session_summary
 - 节点之间只通过 SQLite session state 共享数据。
 - 缺少节点输入时，CLI 提示用户补齐。
 - 单节点可直接执行。
-- 多节点执行前必须展示计划并确认。
+- 路由明确时直接执行内部步骤。
+- 处理方向不确定时询问用户选择，不展示内部节点名。
 - 节点失败必须写入失败状态，不污染成功结果。
 
 

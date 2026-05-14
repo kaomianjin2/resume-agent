@@ -159,7 +159,16 @@ def main(
             selected_node = direct_node_name
         else:
             route_result = route_func(normalized_message, registry, llm_client)
-            selected_node = route_result.selected_node
+            try:
+                selected_node = _select_node_for_route(
+                    route_result=route_result,
+                    registry=registry,
+                    input_func=input_func,
+                    output=output_stream,
+                )
+            except InputCancelledError:
+                _write_line(output_stream, "输入结束，已取消当前执行。")
+                continue
 
         try:
             plan = build_execution_plan(
@@ -228,7 +237,7 @@ def _build_mock_interview_plan(user_message: str) -> ExecutionPlan:
         plan_id="mock_interview",
         user_message=user_message,
         steps=steps,
-        requires_confirmation=True,
+        requires_confirmation=False,
         missing_inputs=[],
         summary="question_generate -> mock_followup",
     )
@@ -828,14 +837,58 @@ def _parse_direct_node_name(user_message: str) -> str | None:
     return segments[1].strip()
 
 
+def _select_node_for_route(
+    route_result: RouteResult,
+    registry: NodeRegistry,
+    input_func: InputFunc,
+    output: TextIO,
+) -> str:
+    candidate_nodes = _filter_available_candidates(route_result.candidate_nodes, registry)
+    if route_result.via != "llm" or len(candidate_nodes) <= 1:
+        return route_result.selected_node
+
+    _write_line(output, "我识别到几种处理方向，请选择一个继续：")
+    for index, candidate_node in enumerate(candidate_nodes, start=1):
+        _write_line(output, f"{index}. {_action_label_for_node(candidate_node)}")
+
+    while True:
+        selection = _read_line(input_func, output, "请输入序号: ")
+        if selection is None:
+            raise InputCancelledError("缺少处理方向选择")
+        selected_node = _parse_candidate_selection(selection, candidate_nodes)
+        if selected_node is not None:
+            return selected_node
+        _write_line(output, "请输入列表中的序号。")
+
+
+def _filter_available_candidates(candidate_nodes: list[str], registry: NodeRegistry) -> list[str]:
+    available_nodes = set(registry.list_names())
+    filtered_candidates: list[str] = []
+    for candidate_node in candidate_nodes:
+        if candidate_node not in available_nodes:
+            continue
+        if candidate_node in filtered_candidates:
+            continue
+        filtered_candidates.append(candidate_node)
+    return filtered_candidates
+
+
+def _parse_candidate_selection(selection: str, candidate_nodes: list[str]) -> str | None:
+    selected_text = selection.strip()
+    if not selected_text.isdecimal():
+        return None
+    selected_index = int(selected_text)
+    if selected_index < 1 or selected_index > len(candidate_nodes):
+        return None
+    return candidate_nodes[selected_index - 1]
+
+
 def _print_plan(output: TextIO, plan: ExecutionPlan) -> None:
     if len(plan.steps) == 1:
         _write_line(output, _action_statement_for_node(plan.steps[0].node_name))
         return
 
-    _write_line(output, "我会分几步处理：")
-    for index, step in enumerate(plan.steps, start=1):
-        _write_line(output, f"{index}. {_action_statement_for_node(step.node_name)}")
+    _write_line(output, "我会先补齐必要信息，再继续处理。")
 
 
 def _build_step_transition_prompt(next_node_name: str) -> str:
@@ -886,6 +939,23 @@ def _action_statement_for_node(node_name: str) -> str:
         "session_summary": "我会继续总结本轮准备内容。",
     }
     return action_statements.get(node_name, "我会继续处理下一步。")
+
+
+def _action_label_for_node(node_name: str) -> str:
+    action_labels = {
+        "resume_parse": "整理简历信息",
+        "jd_parse": "整理岗位要求",
+        "jd_match": "分析简历和岗位匹配度",
+        "question_generate": "生成面试题",
+        "mock_followup": "进行模拟追问",
+        "answer_score": "给回答评分并指出改进点",
+        "weakness_train": "整理薄弱点训练计划",
+        "resume_optimize": "给出简历优化建议",
+        "project_extract": "提取项目经历亮点",
+        "knowledge_search": "查找相关准备资料",
+        "session_summary": "总结本轮准备内容",
+    }
+    return action_labels.get(node_name, "继续处理下一步")
 
 
 def _action_question_for_node(node_name: str, *, prefix: str) -> str:
@@ -1143,7 +1213,9 @@ def _write_mapping_summary(output: TextIO, values: dict[str, object]) -> None:
 
 def _write_resume_optimization_advice(output: TextIO, values: dict[str, object]) -> None:
     preferred_keys = (
+        "overall_match",
         "overall_match_assessment",
+        "priority_actions",
         "high_priority_actions",
         "section_level_optimization",
         "jd_alignment_keywords_to_embed",
@@ -1206,12 +1278,14 @@ def _write_structured_output_item(
 
 def _format_resume_optimization_key(key: str) -> str:
     labels = {
+        "overall_match": "整体匹配",
         "overall_match_assessment": "整体匹配评估",
         "target_jd": "目标岗位",
         "target_role": "目标岗位",
         "match_score": "匹配分",
         "strengths": "优势",
         "risks": "风险",
+        "priority_actions": "优先处理动作",
         "high_priority_actions": "优先处理动作",
         "section_level_optimization": "分模块优化建议",
         "basic_info": "基础信息",
@@ -1227,6 +1301,9 @@ def _format_resume_optimization_key(key: str) -> str:
         "rewritten_experience_bullet_example": "优化后经历示例",
         "bullets": "要点",
         "gaps": "缺口",
+        "priority": "优先级",
+        "action": "动作",
+        "details": "详细说明",
         "actions": "行动项",
         "examples": "示例",
     }
