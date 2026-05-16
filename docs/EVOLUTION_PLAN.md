@@ -2,7 +2,7 @@
 
 ## 结论
 
-本计划将当前 Agent 拆成 8 个可分步落地的演进阶段。执行顺序为 Phase 0 到 Phase 7；Phase 2 与 Phase 4 可并行，Phase 3 与 Phase 5 可并行，Phase 6 在核心接口稳定后执行，Phase 7 收口模拟面试流程拆分技术债。
+本计划将当前 Agent 拆成 9 个可分步落地的演进阶段。执行顺序为 Phase 0 到 Phase 8；Phase 2 与 Phase 4 可并行，Phase 3 与 Phase 5 可并行，Phase 6 在核心接口稳定后执行，Phase 7 收口模拟面试流程拆分技术债，Phase 8 收口 CLI 结果展示层拆分。
 
 ## 演进原则
 
@@ -45,6 +45,7 @@
 | Phase 5 节点输出质量增强           | `[x]` | implementer    | Phase 3                         | 可与 Phase 3 协调推进 | `rtk uv run pytest`：171 passed                                                                                                                          |
 | Phase 6 端到端验收场景固化          | `[x]` | final_reviewer | Phase 2、Phase 3、Phase 4、Phase 5 | 否               | `rtk uv run pytest tests/test_e2e_cli_flow.py` 4 passed；`rtk uv run pytest tests/test_cli.py -k "mock"` 23 passed；`rtk uv run pytest` 175 passed；验收自检通过 |
 | Phase 7 模拟面试流程拆分            | `[x]` | main agent     | Phase 6                         | 否               | `rtk uv run pytest tests/test_cli.py -k "mock"` 24 passed；`rtk uv run pytest tests/test_cli.py` 51 passed；`rtk uv run pytest` 176 passed；reviewer 可继续 |
+| Phase 8 CLI 结果展示层拆分          | `[x]` | main agent     | Phase 7                         | 否               | `rtk uv run pytest tests/test_cli.py -k "terminal_output_styles or non_terminal_output"` 3 passed；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or matched_node or missing_jd_input"` 4 passed；`rtk uv run pytest tests/test_cli.py -k "mock"` 26 passed；`rtk uv run pytest tests/test_e2e_cli_flow.py` 4 passed；`rtk uv run pytest` 189 passed |
 
 ## 推荐顺序与并行关系
 
@@ -56,11 +57,13 @@
 6. Phase 5：节点输出质量增强
 7. Phase 6：端到端验收场景固化
 8. Phase 7：模拟面试流程拆分
+9. Phase 8：CLI 结果展示层拆分
 - Phase 0 完成后再启动后续演进，避免在未收口工作区上叠加改动。
 - Phase 1 完成后，Phase 2 与 Phase 4 可并行。
 - Phase 3 与 Phase 5 可并行，但合并前必须统一 `session_state` key 与节点输出契约。
 - Phase 6 依赖 Phase 2、Phase 3、Phase 4、Phase 5 的接口稳定。
 - Phase 7 只做结构拆分，不新增模拟面试能力。
+- Phase 8 只拆结果展示，不修改节点契约、配置、检索、数据库结构或用户可见输出。
 
 ## Phase 0：当前主线收口
 
@@ -465,6 +468,56 @@
 - 不修改 SQLite schema。
 - 不修改节点输入输出契约。
 - 不修改配置读取、知识库构建、LLM client 或 retriever。
+
+## Phase 8：CLI 结果展示层拆分
+
+**Status:** `[x]`
+**Owner:** main agent
+**Dependencies:** Phase 7
+**Parallel:** no
+**Tracking ID:** `phase-8-cli-rendering-split`
+**完成证据:** `rtk uv run pytest tests/test_cli.py -k "terminal_output_styles or non_terminal_output"`：3 passed；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or matched_node or missing_jd_input"`：4 passed；`rtk uv run pytest tests/test_cli.py -k "mock"`：26 passed；`rtk uv run pytest tests/test_e2e_cli_flow.py`：4 passed；`rtk uv run pytest`：189 passed
+**阻塞原因:** none
+
+### 目标
+
+将 `src/interview_agent/cli.py` 中的结果展示、格式化和终端样式函数迁移到 `src/interview_agent/rendering.py`。CLI 保留入口、配置加载、服务装配、输入循环、补输入逻辑，以及 `_write_result()`、`_format_title()`、`_write_line()` 等兼容包装。
+
+### 前置依赖
+
+- Phase 7 已完成模拟面试流程迁出。
+- 本阶段不新增用户能力，不修改节点输入输出契约、SQLite schema、配置读取、知识库构建、LLM client 或 retriever。
+
+### 任务清单
+
+1. [x] 新增 `src/interview_agent/rendering.py`，迁移结果展示、列表/映射格式化、简历优化建议格式化和终端样式函数 → verify: `rtk rg -n "def write_result|def write_success_output|def format_title" src/interview_agent/rendering.py`
+2. [x] `cli.py` 导入展示模块，并保留 `_write_result`、`_format_title`、`_format_status`、`_format_key`、`_format_index`、`_format_error`、`_write_line` 兼容包装 → verify: `rtk uv run pytest tests/test_cli.py -k "terminal_output_styles or non_terminal_output"`
+3. [x] 保持 `run_user_request()` 与模拟面试流程的回调注入不变，继续传入 `write_result` 和 `write_line` → verify: `rtk uv run pytest tests/test_cli.py -k "natural_language_request or matched_node or missing_jd_input"`
+4. [x] 更新架构文档和架构图，标注 `rendering.py` 结果展示边界 → verify: `rtk rg "rendering.py|结果展示" docs/EVOLUTION_PLAN.md docs/architecture.md docs/architecture.svg`
+5. [x] 运行展示层、普通请求、模拟面试、端到端和全量回归 → verify: `rtk uv run pytest tests/test_cli.py -k "mock"`；`rtk uv run pytest tests/test_e2e_cli_flow.py`；`rtk uv run pytest`
+
+### 影响范围
+
+- `src/interview_agent/cli.py`
+- `src/interview_agent/rendering.py`
+- `docs/EVOLUTION_PLAN.md`
+- `docs/architecture.md`
+- `docs/architecture.svg`
+- `docs/HISTORY.md`
+
+### 验收标准
+
+- `cli.py` 行数减少，结果展示逻辑集中在 `rendering.py`。
+- 用户可见输出与现有测试断言保持一致。
+- `cli.py` 的兼容包装函数继续可用于测试和回调注入。
+- 全量测试通过。
+
+### 风险/边界
+
+- 不修改 SQLite schema。
+- 不修改节点输入输出契约。
+- 不修改配置读取、知识库构建、LLM client 或 retriever。
+- 不新增配置项、类封装或跨模块重命名。
 
 ## 最小下一步
 

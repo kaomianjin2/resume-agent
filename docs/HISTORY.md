@@ -23,6 +23,36 @@
 
 ## 历史记录
 
+## 2026-05-16 - Phase 10: 算法练习代码安全检测
+
+- 测试命令：`rtk uv run pytest tests/test_cli.py -k "algorithm_practice or inspect_code_safety or run_code"`
+- reviewer 结论：未运行 reviewer；本次按用户要求在主 agent 内完成
+- 影响范围：`src/interview_agent/cli.py` / `_run_algorithm_practice()`、`_inspect_code_safety()`、`_write_code_safety_rejection()`；`tests/test_cli.py`
+- 变更摘要：
+  - 算法练习运行用户代码前新增强制静态安全检测。
+  - 检测到进程执行、网络访问、环境变量或密钥读取、破坏性文件操作、文件写入、绝对路径/家目录/父级目录访问、动态代码执行或反射加载时拒绝执行。
+  - 拒绝执行时展示检测原因，并跳过代码运行和答案评审节点。
+
+## 2026-05-16 - Phase 9: 算法练习开发语言与代码运行
+
+- 测试命令：`rtk uv run pytest tests/test_cli.py -k "algorithm_practice or run_code"`；`rtk uv run pytest tests/test_cli.py tests/test_interview_nodes.py`
+- reviewer 结论：未运行 reviewer；本次按用户提供的执行计划在主 agent 内完成
+- 影响范围：`src/interview_agent/cli.py` / `CodeRunResult`、`_run_algorithm_practice()`、`_read_code_language()`、`_read_source_code()`、`_run_code()`、`_write_code_run_result()`、`_build_practice_review_answer()`；`tests/test_cli.py`
+- 变更摘要：
+  - 算法练习支持选择 Python、JavaScript、Go、Java、C、C++，并以空行提交完整程序。
+  - CLI 在临时目录运行或编译用户程序，展示 `stdout`、`stderr`、退出码和超时状态。
+  - 答案评审输入追加用户代码与代码运行结果，节点契约、配置、数据库结构和部署流程保持不变。
+
+## 2026-05-16 - Phase 8: CLI 结果展示层拆分
+
+- 测试命令：`rtk uv run pytest tests/test_cli.py -k "terminal_output_styles or non_terminal_output"`；`rtk uv run pytest tests/test_cli.py -k "natural_language_request or matched_node or missing_jd_input"`；`rtk uv run pytest tests/test_cli.py -k "mock"`；`rtk uv run pytest tests/test_e2e_cli_flow.py`；`rtk uv run pytest`
+- reviewer 结论：未运行 reviewer；本次按用户提供的执行计划在主 agent 内完成
+- 影响范围：`src/interview_agent/cli.py` / `_write_result()`、`_write_success_output()`、`_write_existing_list()`、`_write_existing_mapping()`、`_write_existing_text()`、`_format_title()`、`_format_status()`、`_format_key()`、`_format_index()`、`_format_error()`、`_write_line()`；`src/interview_agent/rendering.py`；`docs/EVOLUTION_PLAN.md`；`docs/architecture.md`；`docs/architecture.svg`
+- 变更摘要：
+  - 新增 `rendering.py` 承接节点结果展示、已有结果展示、列表/映射格式化、简历优化建议格式化和终端样式。
+  - `cli.py` 保留兼容包装函数，继续向普通请求编排和模拟面试流程注入 `write_result` 与 `write_line`。
+  - 架构文档和架构图同步标注结果展示层边界。
+
 ## 2026-05-14 - Phase 7: 模拟面试流程拆分
 
 - 测试命令：`rtk uv run pytest tests/test_cli.py -k "prompt_styles or module_entry_catches_mock_interview_eof"`；`rtk uv run pytest tests/test_cli.py -k "mock"`；`rtk uv run pytest tests/test_cli.py`；`rtk uv run pytest tests/test_e2e_cli_flow.py`；`rtk uv run pytest`

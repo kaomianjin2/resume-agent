@@ -23,6 +23,7 @@ flowchart TD
 
     CLI --> Orchestrator[普通请求编排<br/>src/interview_agent/orchestrator.py<br/>run_user_request]
     CLI --> MockFlow[模拟面试流程<br/>src/interview_agent/mock_interview.py]
+    CLI --> Rendering[结果展示层<br/>src/interview_agent/rendering.py]
     Orchestrator --> Router[Conversation Router<br/>src/interview_agent/router.py]
     Router --> RuleRoute[规则路由]
     Router --> LLMRoute[LLM 分类兜底]
@@ -56,6 +57,9 @@ flowchart TD
 
     Executor --> Runs[(node_runs<br/>成功/失败/缺输入记录)]
     Executor --> State[(session_state<br/>节点输出共享状态)]
+    Orchestrator --> Rendering
+    MockFlow --> Rendering
+    Rendering --> User
 ```
 
 ## 运行时调用链
@@ -64,6 +68,7 @@ flowchart TD
 sequenceDiagram
     participant U as 用户
     participant CLI as CLI
+    participant G as Rendering
     participant M as Mock Interview
     participant O as Orchestrator
     participant C as Config
@@ -111,7 +116,8 @@ sequenceDiagram
             N-->>E: 节点输出
             E->>S: 写入 node_runs
             E->>S: 校验后写入 session_state
-            O-->>U: 输出执行结果
+            O->>G: write_result() / write_line()
+            G-->>U: 输出执行结果
         end
     end
 ```
@@ -202,7 +208,8 @@ erDiagram
 ## 架构约束
 
 - 入口是交互式 CLI，不是固定流水线。
-- CLI 的普通请求路径委派给 `run_user_request()`；模拟面试专属流程委派给 `mock_interview.py`，并复用 CLI 提供的补输入、输出展示和取消异常回调。
+- CLI 的普通请求路径委派给 `run_user_request()`；模拟面试专属流程委派给 `mock_interview.py`，并复用 CLI 提供的补输入、结果展示和取消异常回调。
+- 用户可见结果展示集中在 `rendering.py`；`cli.py` 仅保留 `_write_result()`、`_write_line()` 等兼容包装和回调装配。
 - 配置固定读取 `config/interview-agent.toml`。
 - 运行时只检查知识库 ready 状态，不构建知识库。
 - 知识库通过离线命令构建到 SQLite。

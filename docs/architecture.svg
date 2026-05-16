@@ -47,7 +47,12 @@
   <text class="label" x="384" y="225">交互式 CLI</text>
   <text class="small" x="375" y="252">cli.py</text>
   <text class="tiny" x="370" y="276">加载配置、检查 KB、循环输入</text>
-  <text class="tiny" x="370" y="294">普通请求委派 orchestrator.py</text>
+  <text class="tiny" x="370" y="294">装配编排与展示回调</text>
+
+  <rect class="runtime" x="340" y="495" width="230" height="82"/>
+  <text class="label" x="394" y="528">结果展示层</text>
+  <text class="small" x="386" y="553">rendering.py</text>
+  <text class="tiny" x="366" y="570">格式化节点结果与终端样式</text>
 
   <rect class="logic" x="650" y="450" width="230" height="70"/>
   <text class="label" x="704" y="480">模拟面试流程</text>
@@ -111,6 +116,7 @@
 
   <path class="line" d="M 270 246 L 340 246"/>
   <path class="soft-line" d="M 455 302 L 455 350"/>
+  <path class="soft-line" d="M 500 302 C 540 375 540 455 500 495"/>
   <path class="line" d="M 570 226 C 610 226 610 208 650 208"/>
   <path class="line" d="M 570 260 C 615 260 615 364 650 364"/>
   <path class="line" d="M 570 294 C 612 330 612 485 650 485"/>
@@ -130,6 +136,7 @@
   <path class="soft-line" d="M 455 462 C 455 510 612 535 650 565"/>
 
   <text class="note" x="300" y="232">输入</text>
+  <text class="note" x="506" y="436">结果展示</text>
   <text class="note" x="590" y="202">路由契约</text>
   <text class="note" x="592" y="354">生成内部步骤</text>
   <text class="note" x="600" y="448">模拟面试流程</text>
@@ -190,6 +197,6 @@
   <text class="note" x="1195" y="786">运行时只读检索</text>
 
   <rect class="panel" x="70" y="1040" width="1460" height="46"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；检索默认 top_k 来自配置；RAG 来源字段不由 LLM 覆盖；节点输出校验后才写入 session_state。</text>
+  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；CLI 结果展示由 rendering.py 承接；RAG 来源字段不由 LLM 覆盖；节点输出校验后才写入 session_state。</text>
   <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
 </svg>

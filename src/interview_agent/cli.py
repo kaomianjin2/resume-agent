@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from typing import Protocol, TextIO
 
 from interview_agent.config import DEFAULT_CONFIG_PATH, ConfigError, LLMConfig, load_config
@@ -23,6 +27,7 @@ from interview_agent.mock_interview import (
 from interview_agent.nodes.registry import NodeRegistry, build_default_registry
 from interview_agent.orchestrator import run_user_request
 from interview_agent.planner import ExecutionPlan
+from interview_agent import rendering
 from interview_agent.router import RouteResult, route_conversation
 from interview_agent.session import SessionStore
 from interview_agent.storage import get_knowledge_base_status
@@ -50,6 +55,15 @@ ExecutorFactory = Callable[[Path, NodeRegistry, ServiceMap], ExecutorProtocol]
 
 class InputCancelledError(RuntimeError):
     """Raised when the user stops providing required interactive inputs."""
+
+
+@dataclass(frozen=True)
+class CodeRunResult:
+    language: str
+    exit_code: int
+    stdout: str
+    stderr: str
+    timed_out: bool
 
 
 def _raise_input_cancelled(message: str) -> None:
@@ -395,7 +409,7 @@ def _run_algorithm_practice(
     input_func: InputFunc,
     output: TextIO,
 ) -> None:
-    _write_line(output, "我会先生成一组算法和数据结构练习，然后逐题检查回答。")
+    _write_line(output, "我会先生成一组算法和数据结构练习，然后逐题运行完整程序并检查结果。")
     practice_result = executor.execute_node(session_id=session_id, node_name="algorithm_practice", inputs=None)
     if practice_result.status != "success":
         _write_result(output, practice_result, "algorithm_practice")
@@ -413,20 +427,33 @@ def _run_algorithm_practice(
         _write_line(output, f"第 {exercise_index} 题：{title}")
         if prompt:
             _write_line(output, prompt)
-        answer = _read_line(input_func, output, "你的回答（直接回车查看答案）: ")
-        if answer is None:
+        language = _read_code_language(input_func, output)
+        if language is None:
             raise InputCancelledError("缺少练习回答")
-        if not answer.strip():
+        if not language:
             _write_line(output, "你还没有回答，这道题的参考答案：")
             _write_line(output, reference_answer)
             continue
+        source_code = _read_source_code(input_func, output)
+        if source_code is None:
+            raise InputCancelledError("缺少练习代码")
+        if not source_code.strip():
+            _write_line(output, "你还没有回答，这道题的参考答案：")
+            _write_line(output, reference_answer)
+            continue
+        safety_issues = _inspect_code_safety(language, source_code)
+        if safety_issues:
+            _write_code_safety_rejection(output, safety_issues)
+            continue
+        run_result = _run_code(language, source_code)
+        _write_code_run_result(output, run_result)
         review_result = executor.execute_node(
             session_id=session_id,
             node_name="practice_answer_review",
             inputs={
                 "practice_question": _join_query_parts(title, prompt),
                 "reference_answer": reference_answer,
-                "answer": answer,
+                "answer": _build_practice_review_answer(source_code, run_result),
             },
         )
         _write_practice_answer_feedback(output, review_result, reference_answer)
@@ -457,6 +484,216 @@ def _build_reference_answer(exercise: dict[str, object]) -> str:
         if outline_parts:
             return " ".join(outline_parts)
     return "这道题暂未生成参考答案。"
+
+
+def _read_code_language(input_func: InputFunc, output: TextIO) -> str | None:
+    _write_line(output, "请选择开发语言：1. Python  2. JavaScript  3. Go  4. Java  5. C  6. C++")
+    language_input = _read_line(input_func, output, "语言（直接回车查看答案）: ")
+    if language_input is None:
+        return None
+    if not language_input.strip():
+        return ""
+    return _normalize_code_language(language_input)
+
+
+def _normalize_code_language(language_input: str) -> str:
+    language_aliases = {
+        "1": "python",
+        "python": "python",
+        "py": "python",
+        "2": "javascript",
+        "javascript": "javascript",
+        "js": "javascript",
+        "node": "javascript",
+        "3": "go",
+        "golang": "go",
+        "4": "java",
+        "5": "c",
+        "6": "cpp",
+        "cpp": "cpp",
+        "c++": "cpp",
+    }
+    normalized_input = language_input.strip().lower()
+    return language_aliases.get(normalized_input, normalized_input)
+
+
+def _read_source_code(input_func: InputFunc, output: TextIO) -> str | None:
+    _write_line(output, "请粘贴完整程序，最后输入一个空行提交。仅运行可信代码。")
+    source_lines: list[str] = []
+    while True:
+        line = _read_line(input_func, output, "")
+        if line is None:
+            return None
+        if line == "":
+            return "\n".join(source_lines)
+        source_lines.append(line)
+
+
+def _inspect_code_safety(language: str, source_code: str) -> list[str]:
+    del language
+    normalized_source = source_code.lower()
+    keyword_rules = (
+        (
+            "进程或命令执行",
+            (
+                "subprocess",
+                "os.system",
+                "popen",
+                "execv",
+                "processbuilder",
+                "runtime.getruntime",
+                "child_process",
+                "system(",
+            ),
+        ),
+        (
+            "网络访问",
+            ("socket", "requests", "urllib", "httpclient", "http.get", "fetch(", "xmlhttprequest", "net/http", "java.net"),
+        ),
+        (
+            "环境变量或密钥读取",
+            ("os.environ", "os.getenv", "getenv", "process.env", "system.getenv", "openai_api_key", "api_key", "secret", "token"),
+        ),
+        (
+            "文件删除或破坏性文件操作",
+            ("os.remove", "os.unlink", "shutil.rmtree", "rm -rf", "remove(", "unlink(", "delete("),
+        ),
+        (
+            "文件写入",
+            ("writefile", "createwritestream", "ofstream", "filewriter", "files.write", "os.writefile", "ioutil.writefile"),
+        ),
+        (
+            "绝对路径、家目录或父级目录访问",
+            ('"/etc', "'/etc", '"/var', "'/var", '"/tmp', "'/tmp", '"/private', "'/private", '"/users', "'/users", '"/home', "'/home", '"~', "'~", '"..', "'.."),
+        ),
+        (
+            "动态代码执行或反射加载",
+            ("eval(", "exec(", "compile(", "function(", "classloader", "reflection", "reflect."),
+        ),
+    )
+    issues: list[str] = []
+    for reason, blocked_keywords in keyword_rules:
+        if any(blocked_keyword in normalized_source for blocked_keyword in blocked_keywords):
+            issues.append(reason)
+    if re.search(r"open\s*\([^)]*['\"]w", normalized_source):
+        issues.append("文件写入")
+    return issues
+
+
+def _write_code_safety_rejection(output: TextIO, safety_issues: list[str]) -> None:
+    _write_line(output, "代码安全检测未通过，已拒绝执行。")
+    for safety_issue in safety_issues:
+        _write_line(output, f"- {safety_issue}")
+
+
+def _run_code(language: str, source_code: str, timeout_seconds: int = 5) -> CodeRunResult:
+    language_spec = _build_language_spec(language)
+    if language_spec is None:
+        return CodeRunResult(language=language, exit_code=127, stdout="", stderr="不支持的开发语言。", timed_out=False)
+    missing_commands = [command for command in language_spec["commands"] if shutil.which(command) is None]
+    if missing_commands:
+        return CodeRunResult(
+            language=language_spec["label"],
+            exit_code=127,
+            stdout="",
+            stderr="缺少运行命令: " + ", ".join(missing_commands),
+            timed_out=False,
+        )
+    with tempfile.TemporaryDirectory(prefix="interview-agent-code-") as temporary_directory:
+        workdir = Path(temporary_directory)
+        source_path = workdir / str(language_spec["filename"])
+        source_path.write_text(source_code, encoding="utf-8")
+        compile_command = language_spec.get("compile_command")
+        run_command = list(language_spec["run_command"])
+        if isinstance(compile_command, list):
+            compile_result = _run_subprocess(compile_command, workdir, timeout_seconds, language_spec["label"])
+            if compile_result.exit_code != 0 or compile_result.timed_out:
+                return compile_result
+        return _run_subprocess(run_command, workdir, timeout_seconds, language_spec["label"])
+
+
+def _build_language_spec(language: str) -> dict[str, object] | None:
+    if language == "python":
+        return {"label": "Python", "commands": ["python3"], "filename": "main.py", "run_command": ["python3", "main.py"]}
+    if language == "javascript":
+        return {"label": "JavaScript", "commands": ["node"], "filename": "main.js", "run_command": ["node", "main.js"]}
+    if language == "go":
+        return {"label": "Go", "commands": ["go"], "filename": "main.go", "run_command": ["go", "run", "main.go"]}
+    if language == "java":
+        return {
+            "label": "Java",
+            "commands": ["javac", "java"],
+            "filename": "Main.java",
+            "compile_command": ["javac", "Main.java"],
+            "run_command": ["java", "Main"],
+        }
+    if language == "c":
+        return {
+            "label": "C",
+            "commands": ["gcc"],
+            "filename": "main.c",
+            "compile_command": ["gcc", "main.c", "-o", "main"],
+            "run_command": ["./main"],
+        }
+    if language == "cpp":
+        return {
+            "label": "C++",
+            "commands": ["g++"],
+            "filename": "main.cpp",
+            "compile_command": ["g++", "main.cpp", "-o", "main"],
+            "run_command": ["./main"],
+        }
+    return None
+
+
+def _run_subprocess(command: list[str], workdir: Path, timeout_seconds: int, language_label: str) -> CodeRunResult:
+    try:
+        completed_process = subprocess.run(
+            command,
+            cwd=workdir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as error:
+        return CodeRunResult(
+            language=language_label,
+            exit_code=-1,
+            stdout=str(error.output or ""),
+            stderr=str(error.stderr or ""),
+            timed_out=True,
+        )
+    return CodeRunResult(
+        language=language_label,
+        exit_code=completed_process.returncode,
+        stdout=completed_process.stdout,
+        stderr=completed_process.stderr,
+        timed_out=False,
+    )
+
+
+def _write_code_run_result(output: TextIO, run_result: CodeRunResult) -> None:
+    _write_line(output, "代码运行结果：")
+    _write_line(output, f"语言：{run_result.language}")
+    _write_line(output, f"stdout: {run_result.stdout.rstrip()}")
+    _write_line(output, f"stderr: {run_result.stderr.rstrip()}")
+    _write_line(output, f"退出码：{run_result.exit_code}")
+    if run_result.timed_out:
+        _write_line(output, "运行状态：超时")
+
+
+def _build_practice_review_answer(source_code: str, run_result: CodeRunResult) -> str:
+    timeout_text = "是" if run_result.timed_out else "否"
+    return (
+        "用户代码：\n"
+        f"{source_code}\n\n"
+        "代码运行结果：\n"
+        f"语言: {run_result.language}\n"
+        f"stdout: {run_result.stdout.rstrip()}\n"
+        f"stderr: {run_result.stderr.rstrip()}\n"
+        f"退出码: {run_result.exit_code}\n"
+        f"是否超时: {timeout_text}"
+    )
 
 
 def _join_query_parts(*parts: str) -> str:
@@ -727,100 +964,11 @@ def _input_prompt_for(input_name: str) -> str:
 
 
 def _write_result(output: TextIO, result: NodeExecutionResult, node_name: str) -> None:
-    if result.status == "success":
-        _write_success_output(output, node_name, result.output)
-        return
-    _write_line(output, _format_error(output, "处理失败。"))
-    if result.error_message:
-        _write_line(output, f"{_format_error(output, '错误信息')}: {result.error_message}")
+    rendering.write_result(output, result, node_name)
 
 
 def _write_success_output(output: TextIO, node_name: str, result_output: dict[str, object]) -> None:
-    if node_name == "algorithm_practice":
-        practice_set = result_output.get("practice_set")
-        if isinstance(practice_set, dict):
-            _write_line(output, _format_title(output, "我生成了这些算法和数据结构练习："))
-            _write_mapping_summary(output, practice_set)
-        return
-
-    if node_name == "question_generate":
-        questions = result_output.get("questions")
-        if isinstance(questions, list) and questions:
-            _write_line(output, _format_title(output, "我生成了这些面试题："))
-            _write_list(output, questions)
-        return
-
-    if node_name == "knowledge_search":
-        search_results = result_output.get("search_results")
-        if isinstance(search_results, list) and search_results:
-            _write_line(output, _format_title(output, "我找到这些准备资料："))
-            _write_list(output, search_results[:3])
-            return
-        if isinstance(search_results, list):
-            _write_line(output, "未检索到相关知识片段。")
-        return
-
-    if node_name == "jd_parse":
-        requirements = result_output.get("jd_requirements")
-        if isinstance(requirements, dict):
-            _write_line(output, _format_title(output, "我整理出的岗位要求："))
-            _write_mapping_summary(output, requirements)
-        return
-
-    if node_name == "resume_parse":
-        profile = result_output.get("resume_profile")
-        if isinstance(profile, dict):
-            _write_line(output, _format_title(output, "我整理出的简历信息："))
-            _write_mapping_summary(output, profile)
-        return
-
-    if node_name == "jd_match":
-        match_report = result_output.get("match_report")
-        if isinstance(match_report, dict):
-            _write_line(output, _format_title(output, "我整理出的匹配分析："))
-            _write_mapping_summary(output, match_report)
-        return
-
-    if node_name == "mock_followup":
-        followups = result_output.get("followup_questions")
-        if isinstance(followups, list) and followups:
-            _write_line(output, _format_title(output, "我建议继续追问："))
-            _write_list(output, followups)
-        return
-
-    if node_name == "answer_score":
-        score_report = result_output.get("score_report")
-        if isinstance(score_report, dict):
-            _write_line(output, _format_title(output, "我对回答的评分反馈："))
-            _write_mapping_summary(output, score_report)
-        return
-
-    if node_name == "weakness_train":
-        training_plan = result_output.get("training_plan")
-        if isinstance(training_plan, dict):
-            _write_line(output, _format_title(output, "我整理出的薄弱点训练计划："))
-            _write_mapping_summary(output, training_plan)
-        return
-
-    if node_name == "resume_optimize":
-        optimization_advice = result_output.get("optimization_advice")
-        if isinstance(optimization_advice, dict):
-            _write_line(output, _format_title(output, "我给出的简历优化建议："))
-            _write_resume_optimization_advice(output, optimization_advice)
-        return
-
-    if node_name == "project_extract":
-        project_experiences = result_output.get("project_experiences")
-        if isinstance(project_experiences, list) and project_experiences:
-            _write_line(output, _format_title(output, "我提取出的项目经历重点："))
-            _write_list(output, project_experiences)
-        return
-
-    if node_name == "session_summary":
-        summary = result_output.get("summary")
-        if isinstance(summary, dict):
-            _write_line(output, _format_title(output, "我整理出的本轮总结："))
-            _write_mapping_summary(output, summary)
+    rendering.write_success_output(output, node_name, result_output)
 
 
 def _write_existing_list(
@@ -831,13 +979,13 @@ def _write_existing_list(
     title: str,
     next_prompt: str,
 ) -> bool:
-    values = session_inputs.get(key)
-    if not isinstance(values, list) or not values:
-        return False
-    _write_line(output, _format_title(output, title))
-    _write_list(output, values)
-    _write_line(output, next_prompt)
-    return True
+    return rendering.write_existing_list(
+        output=output,
+        session_inputs=session_inputs,
+        key=key,
+        title=title,
+        next_prompt=next_prompt,
+    )
 
 
 def _write_existing_mapping(
@@ -848,13 +996,13 @@ def _write_existing_mapping(
     title: str,
     next_prompt: str,
 ) -> bool:
-    values = session_inputs.get(key)
-    if not isinstance(values, dict) or not values:
-        return False
-    _write_line(output, _format_title(output, title))
-    _write_mapping_summary(output, values)
-    _write_line(output, next_prompt)
-    return True
+    return rendering.write_existing_mapping(
+        output=output,
+        session_inputs=session_inputs,
+        key=key,
+        title=title,
+        next_prompt=next_prompt,
+    )
 
 
 def _write_existing_text(
@@ -865,186 +1013,37 @@ def _write_existing_text(
     title: str,
     next_prompt: str,
 ) -> bool:
-    value = session_inputs.get(key)
-    if not isinstance(value, str) or not value.strip():
-        return False
-    _write_line(output, _format_title(output, title))
-    _write_line(output, _format_output_value(value))
-    _write_line(output, next_prompt)
-    return True
-
-
-def _write_list(output: TextIO, items: list[object]) -> None:
-    for index, item in enumerate(items, start=1):
-        _write_line(output, f"{_format_index(output, f'{index}.')} {_format_output_value(item)}")
-
-
-def _write_mapping_summary(output: TextIO, values: dict[str, object]) -> None:
-    for key, value in list(values.items())[:6]:
-        formatted_key = _format_key(output, _format_output_key(key))
-        _write_line(output, f"- {formatted_key}: {_format_output_value(value)}")
-
-
-def _write_resume_optimization_advice(output: TextIO, values: dict[str, object]) -> None:
-    preferred_keys = (
-        "overall_match",
-        "overall_match_assessment",
-        "priority_actions",
-        "high_priority_actions",
-        "section_level_optimization",
-        "jd_alignment_keywords_to_embed",
-        "rewritten_summary_example",
-        "rewritten_experience_bullet_example",
-        "summary",
-        "suggestions",
+    return rendering.write_existing_text(
+        output=output,
+        session_inputs=session_inputs,
+        key=key,
+        title=title,
+        next_prompt=next_prompt,
     )
-    written_keys: set[str] = set()
-    for key in preferred_keys:
-        if key not in values:
-            continue
-        _write_structured_output_item(
-            output,
-            _format_resume_optimization_key(key),
-            values[key],
-            indent_level=0,
-        )
-        written_keys.add(key)
-
-    for key, value in values.items():
-        if key in written_keys:
-            continue
-        _write_structured_output_item(
-            output,
-            _format_resume_optimization_key(key),
-            value,
-            indent_level=0,
-        )
-
-
-def _write_structured_output_item(
-    output: TextIO,
-    label: str,
-    value: object,
-    *,
-    indent_level: int,
-) -> None:
-    indent = "  " * indent_level
-    formatted_label = _format_key(output, label)
-    if isinstance(value, dict):
-        _write_line(output, f"{indent}- {formatted_label}：")
-        for child_key, child_value in value.items():
-            _write_structured_output_item(
-                output,
-                _format_resume_optimization_key(child_key),
-                child_value,
-                indent_level=indent_level + 1,
-            )
-        return
-    if isinstance(value, list):
-        _write_line(output, f"{indent}- {formatted_label}：")
-        for item in value:
-            if isinstance(item, dict):
-                _write_structured_output_item(output, "明细", item, indent_level=indent_level + 1)
-                continue
-            _write_line(output, f"{'  ' * (indent_level + 1)}- {_format_output_value(item)}")
-        return
-    _write_line(output, f"{indent}- {formatted_label}：{_format_output_value(value)}")
-
-
-def _format_resume_optimization_key(key: str) -> str:
-    labels = {
-        "overall_match": "整体匹配",
-        "overall_match_assessment": "整体匹配评估",
-        "target_jd": "目标岗位",
-        "target_role": "目标岗位",
-        "match_score": "匹配分",
-        "strengths": "优势",
-        "risks": "风险",
-        "priority_actions": "优先处理动作",
-        "high_priority_actions": "优先处理动作",
-        "section_level_optimization": "分模块优化建议",
-        "basic_info": "基础信息",
-        "summary": "职业摘要",
-        "skills": "技能表达",
-        "experience": "工作经历",
-        "projects": "项目经历",
-        "issues": "问题",
-        "suggestion": "建议",
-        "suggestions": "建议",
-        "jd_alignment_keywords_to_embed": "需嵌入的招聘关键词",
-        "rewritten_summary_example": "优化后摘要示例",
-        "rewritten_experience_bullet_example": "优化后经历示例",
-        "bullets": "要点",
-        "gaps": "缺口",
-        "priority": "优先级",
-        "action": "动作",
-        "details": "详细说明",
-        "actions": "行动项",
-        "examples": "示例",
-    }
-    return labels.get(key, _format_output_key(key))
-
-
-def _format_output_key(key: str) -> str:
-    labels = {
-        "name": "姓名",
-        "role": "岗位",
-        "target_role": "目标岗位",
-        "skills": "技能",
-        "projects": "项目经历",
-        "experience": "经验",
-        "strengths": "优势",
-        "weaknesses": "薄弱点",
-        "risks": "风险",
-        "score": "评分",
-        "summary": "总结",
-        "suggestions": "建议",
-    }
-    return labels.get(key, key)
-
-
-def _format_output_value(value: object) -> str:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        return "、".join(_format_output_value(item) for item in value[:6])
-    if isinstance(value, dict):
-        return "；".join(
-            f"{key}: {_format_output_value(item)}"
-            for key, item in list(value.items())[:4]
-        )
-    return str(value)
 
 
 def _format_title(output: TextIO, text: str) -> str:
-    return _style_terminal_text(output, text, "1;95")
+    return rendering.format_title(output, text)
 
 
 def _format_status(output: TextIO, text: str) -> str:
-    return _style_terminal_text(output, text, "1;96")
+    return rendering.format_status(output, text)
 
 
 def _format_key(output: TextIO, text: str) -> str:
-    return _style_terminal_text(output, text, "1;94")
+    return rendering.format_key(output, text)
 
 
 def _format_index(output: TextIO, text: str) -> str:
-    return _style_terminal_text(output, text, "1;33")
+    return rendering.format_index(output, text)
 
 
 def _format_error(output: TextIO, text: str) -> str:
-    return _style_terminal_text(output, text, "1;91")
-
-
-def _style_terminal_text(output: TextIO, text: str, style_code: str) -> str:
-    if not getattr(output, "isatty", lambda: False)():
-        return text
-    return f"\033[{style_code}m{text}\033[0m"
+    return rendering.format_error(output, text)
 
 
 def _write_line(output: TextIO, message: str) -> None:
-    output.write(message + "\n")
-    output.flush()
+    rendering.write_line(output, message)
 
 
 if __name__ == "__main__":

@@ -451,7 +451,7 @@ def test_existing_questions_are_shown_when_user_asks_where_they_are(tmp_path: Pa
     assert calls == []
 
 
-def test_algorithm_practice_shows_correct_answer_when_answer_is_empty(tmp_path: Path) -> None:
+def test_algorithm_practice_shows_correct_answer_when_language_is_empty(tmp_path: Path) -> None:
     _, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
 
@@ -463,19 +463,103 @@ def test_algorithm_practice_shows_correct_answer_when_answer_is_empty(tmp_path: 
     )
 
     assert exit_code == 0
-    assert "我会先生成一组算法和数据结构练习，然后逐题检查回答。" in output.getvalue()
+    assert "我会先生成一组算法和数据结构练习，然后逐题运行完整程序并检查结果。" in output.getvalue()
     assert "第 1 题：反转链表" in output.getvalue()
     assert "你还没有回答，这道题的参考答案：" in output.getvalue()
     assert "使用 prev、current、next 三个指针迭代反转链表。" in output.getvalue()
 
 
-def test_algorithm_practice_shows_correct_answer_when_answer_is_wrong(tmp_path: Path) -> None:
+def test_algorithm_practice_runs_python_program_and_reviews_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
+    captured_review_answers: list[str] = []
+
+    def fake_run_code(language: str, source_code: str) -> cli.CodeRunResult:
+        assert language == "python"
+        assert "三个指针" in source_code
+        return cli.CodeRunResult(
+            language="Python",
+            exit_code=0,
+            stdout="ok\n",
+            stderr="",
+            timed_out=False,
+        )
+
+    monkeypatch.setattr(cli, "_run_code", fake_run_code)
+
+    def review_capture_registry() -> NodeRegistry:
+        def capture_review_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+            captured_review_answers.append(str(inputs["answer"]))
+            return practice_answer_review_handler(context, inputs)
+
+        return NodeRegistry(
+            [
+                NodeSpec(
+                    name="algorithm_practice",
+                    description="algorithm practice",
+                    required_inputs=(),
+                    optional_inputs=("practice_topic", "difficulty", "question_count"),
+                    outputs=("practice_set",),
+                    handler=algorithm_practice_handler,
+                ),
+                NodeSpec(
+                    name="practice_answer_review",
+                    description="review algorithm practice answer",
+                    required_inputs=("practice_question", "reference_answer", "answer"),
+                    optional_inputs=(),
+                    outputs=("practice_answer_feedback",),
+                    handler=capture_review_handler,
+                ),
+            ]
+        )
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始算法练习", "用排序解决", "exit"]),
+        input_func=build_input(["开始算法练习", "Python", "print('三个指针')", "", "exit"]),
+        output=output,
+        registry_builder=review_capture_registry,
+    )
+
+    output_text = output.getvalue()
+    assert exit_code == 0
+    assert "请选择开发语言" in output_text
+    assert "代码运行结果：" in output_text
+    assert "stdout:" in output_text
+    assert "ok" in output_text
+    assert "stderr:" in output_text
+    assert "退出码：0" in output_text
+    assert "回答正确。" in output_text
+    assert len(captured_review_answers) == 1
+    assert "用户代码：" in captured_review_answers[0]
+    assert "代码运行结果：" in captured_review_answers[0]
+    assert "stdout: ok" in captured_review_answers[0]
+
+
+def test_algorithm_practice_runs_program_and_shows_wrong_feedback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    monkeypatch.setattr(
+        cli,
+        "_run_code",
+        lambda language, source_code: cli.CodeRunResult(
+            language="Python",
+            exit_code=0,
+            stdout="wrong\n",
+            stderr="",
+            timed_out=False,
+        ),
+    )
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["开始算法练习", "1", "print('wrong')", "", "exit"]),
         output=output,
         registry_builder=build_algorithm_practice_registry,
     )
@@ -486,20 +570,179 @@ def test_algorithm_practice_shows_correct_answer_when_answer_is_wrong(tmp_path: 
     assert "正确答案：使用 prev、current、next 三个指针迭代反转链表。" in output.getvalue()
 
 
-def test_algorithm_practice_accepts_correct_answer_without_showing_correct_answer(tmp_path: Path) -> None:
+def test_algorithm_practice_rejects_malicious_code_without_running_or_reviewing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
+    review_calls: list[dict[str, object]] = []
+
+    def fail_run_code(language: str, source_code: str) -> cli.CodeRunResult:
+        del language, source_code
+        raise AssertionError("恶意代码不得进入运行阶段")
+
+    monkeypatch.setattr(cli, "_run_code", fail_run_code)
+
+    def review_capture_registry() -> NodeRegistry:
+        def capture_review_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+            del context
+            review_calls.append(inputs)
+            return {"practice_answer_feedback": {"is_correct": False, "feedback": "x", "correct_answer": "y"}}
+
+        return NodeRegistry(
+            [
+                NodeSpec(
+                    name="algorithm_practice",
+                    description="algorithm practice",
+                    required_inputs=(),
+                    optional_inputs=("practice_topic", "difficulty", "question_count"),
+                    outputs=("practice_set",),
+                    handler=algorithm_practice_handler,
+                ),
+                NodeSpec(
+                    name="practice_answer_review",
+                    description="review algorithm practice answer",
+                    required_inputs=("practice_question", "reference_answer", "answer"),
+                    optional_inputs=(),
+                    outputs=("practice_answer_feedback",),
+                    handler=capture_review_handler,
+                ),
+            ]
+        )
 
     exit_code = cli.main(
         ["--config", str(config_path)],
-        input_func=build_input(["开始算法练习", "用三个指针反转链表", "exit"]),
+        input_func=build_input(["开始算法练习", "python", "import os", "os.remove('/tmp/x')", "", "exit"]),
         output=output,
-        registry_builder=build_algorithm_practice_registry,
+        registry_builder=review_capture_registry,
     )
 
+    output_text = output.getvalue()
     assert exit_code == 0
-    assert "回答正确。" in output.getvalue()
-    assert "正确答案：" not in output.getvalue()
+    assert "代码安全检测未通过，已拒绝执行。" in output_text
+    assert "文件删除或破坏性文件操作" in output_text
+    assert "代码运行结果：" not in output_text
+    assert review_calls == []
+
+
+@pytest.mark.parametrize(
+    ("language", "source_code", "expected_reason"),
+    [
+        ("python", "import subprocess\nsubprocess.run(['ls'])", "进程或命令执行"),
+        ("javascript", "fetch('https://example.test')", "网络访问"),
+        ("go", "os.Getenv(\"OPENAI_API_KEY\")", "环境变量或密钥读取"),
+        ("java", "new java.io.File(\"/etc/passwd\")", "绝对路径、家目录或父级目录访问"),
+        ("c", "#include <stdlib.h>\nint main(){system(\"ls\");}", "进程或命令执行"),
+        ("cpp", "#include <fstream>\nint main(){std::ofstream f(\"/tmp/x\");}", "文件写入"),
+    ],
+)
+def test_inspect_code_safety_detects_dangerous_patterns(
+    language: str,
+    source_code: str,
+    expected_reason: str,
+) -> None:
+    issues = cli._inspect_code_safety(language, source_code)
+
+    assert any(expected_reason in issue for issue in issues)
+
+
+@pytest.mark.parametrize(
+    ("language", "source_code", "expected_command"),
+    [
+        ("python", "print('ok')", ["python3"]),
+        ("javascript", "console.log('ok')", ["node"]),
+        ("go", "package main\nfunc main() {}", ["go", "run"]),
+        ("java", "public class Main { public static void main(String[] args) {} }", ["javac"]),
+        ("c", "#include <stdio.h>\nint main(){return 0;}", ["gcc"]),
+        ("cpp", "#include <iostream>\nint main(){return 0;}", ["g++"]),
+    ],
+)
+def test_run_code_supports_six_languages(
+    monkeypatch: pytest.MonkeyPatch,
+    language: str,
+    source_code: str,
+    expected_command: list[str],
+) -> None:
+    commands: list[list[str]] = []
+
+    def fake_which(command_name: str) -> str:
+        return f"/usr/bin/{command_name}"
+
+    def fake_subprocess_run(
+        command: list[str],
+        *,
+        cwd: Path,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, capture_output, text, timeout
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "run", fake_subprocess_run)
+
+    result = cli._run_code(language, source_code)
+
+    assert result.exit_code == 0
+    assert result.stdout == "ok\n"
+    assert result.stderr == ""
+    assert result.timed_out is False
+    assert commands[0][: len(expected_command)] == expected_command
+
+
+def test_run_code_returns_compile_error_for_compiled_language(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_which(command_name: str) -> str:
+        return f"/usr/bin/{command_name}"
+
+    def fake_subprocess_run(
+        command: list[str],
+        *,
+        cwd: Path,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, capture_output, text, timeout
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="compile error")
+
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "run", fake_subprocess_run)
+
+    result = cli._run_code("c", "broken")
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert result.stderr == "compile error"
+    assert result.timed_out is False
+
+
+def test_run_code_returns_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_which(command_name: str) -> str:
+        return f"/usr/bin/{command_name}"
+
+    def fake_subprocess_run(
+        command: list[str],
+        *,
+        cwd: Path,
+        capture_output: bool,
+        text: bool,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, capture_output, text
+        raise subprocess.TimeoutExpired(command, timeout, output="partial", stderr="timeout")
+
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "run", fake_subprocess_run)
+
+    result = cli._run_code("python", "while True: pass", timeout_seconds=1)
+
+    assert result.exit_code == -1
+    assert result.stdout == "partial"
+    assert result.stderr == "timeout"
+    assert result.timed_out is True
 
 
 def test_existing_jd_summary_is_shown_when_user_asks_for_previous_result(tmp_path: Path) -> None:
