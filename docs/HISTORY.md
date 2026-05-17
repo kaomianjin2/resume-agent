@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-05-17 - GUI Phase 1: Runtime Facade
+
+- 测试命令：`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_executor.py tests/test_router_planner.py`
+- reviewer 结论：可继续
+- 影响范围：`src/interview_agent/gui_runtime.py`；`tests/test_gui_runtime.py`；`docs/architecture.md`；`docs/architecture.svg`
+- 变更摘要：
+  - 新增 GUI 专用 runtime facade，统一暴露配置、KB ready 状态、会话创建、路由、计划、执行和 session state 读取。
+  - GUI 层改为直接消费结构化数据，不依赖 CLI 文本输出。
+  - 架构图补充 GUI 运行时入口，并同步记录 Phase 1 完成情况。
+
 ## 2026-05-17 - GUI Phase 0: 设计与边界固化
 
 - 测试命令：`rtk rg "面试准备|模拟面试|算法练习|检查面板" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk rg "不修改数据库结构|不在 GUI 启动时构建知识库|config/interview-agent.toml" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk rg "Status:|Tracking ID:|完成证据|阻塞原因|测试命令|可视化验收" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk git diff --check -- docs/GUI_DEVELOPMENT_PLAN.md`

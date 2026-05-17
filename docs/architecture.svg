@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
   <title id="title">技术面试 Agent 项目架构图</title>
-  <desc id="desc">展示交互式 CLI、普通请求编排、对话路由、节点规划、节点执行、大模型调用、混合检索、SQLite 状态库和离线知识库构建之间的关系。</desc>
+  <desc id="desc">展示交互式 CLI、GUI Runtime Facade、普通请求编排、对话路由、节点规划、节点执行、大模型调用、混合检索、SQLite 状态库和离线知识库构建之间的关系。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
@@ -48,6 +48,11 @@
   <text class="small" x="375" y="252">cli.py</text>
   <text class="tiny" x="370" y="276">加载配置、检查 KB、循环输入</text>
   <text class="tiny" x="370" y="294">装配编排与展示回调</text>
+
+  <rect class="runtime" x="340" y="65" width="230" height="96"/>
+  <text class="label" x="371" y="100">GUI Runtime Facade</text>
+  <text class="small" x="365" y="126">gui_runtime.py</text>
+  <text class="tiny" x="370" y="146">结构化 status / route / plan / execute</text>
 
   <rect class="runtime" x="340" y="495" width="230" height="82"/>
   <text class="label" x="394" y="528">结果展示层</text>
@@ -115,6 +120,12 @@
   <text class="small" x="195" y="632">knowledge_chunks_fts / knowledge_chunk_embeddings</text>
 
   <path class="line" d="M 270 246 L 340 246"/>
+  <path class="line" d="M 270 226 C 300 170 315 113 340 113"/>
+  <path class="soft-line" d="M 455 161 L 455 190"/>
+  <path class="soft-line" d="M 570 113 C 620 113 620 195 650 195"/>
+  <path class="soft-line" d="M 570 132 C 625 150 625 346 650 346"/>
+  <path class="soft-line" d="M 570 151 C 650 240 850 260 960 282"/>
+  <path class="soft-line" d="M 455 161 C 500 360 570 535 650 595"/>
   <path class="soft-line" d="M 455 302 L 455 350"/>
   <path class="soft-line" d="M 500 302 C 540 375 540 455 500 495"/>
   <path class="line" d="M 570 226 C 610 226 610 208 650 208"/>
@@ -197,6 +208,6 @@
   <text class="note" x="1195" y="786">运行时只读检索</text>
 
   <rect class="panel" x="70" y="1040" width="1460" height="46"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；CLI 结果展示由 rendering.py 承接；RAG 来源字段不由 LLM 覆盖；节点输出校验后才写入 session_state。</text>
+  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；GUI Runtime Facade 只输出结构化数据；CLI 结果展示由 rendering.py 承接；节点输出校验后才写入 session_state。</text>
   <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
 </svg>

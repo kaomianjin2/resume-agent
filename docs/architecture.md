@@ -15,13 +15,21 @@
 ```mermaid
 flowchart TD
     User[用户] --> CLI[Interactive CLI<br/>src/interview_agent/cli.py]
+    User --> GUIRuntime[GUI Runtime Facade<br/>src/interview_agent/gui_runtime.py]
 
     CLI --> Config[配置加载<br/>config/interview-agent.toml<br/>src/interview_agent/config.py]
+    GUIRuntime --> Config
     CLI --> KBReady[知识库 ready 检查<br/>get_knowledge_base_status]
+    GUIRuntime --> KBReady
     KBReady -->|not_ready| OfflineHint[输出离线构建命令并退出]
     KBReady -->|ready| Session[创建/读取会话<br/>SessionStore]
+    GUIRuntime --> Session
 
     CLI --> Orchestrator[普通请求编排<br/>src/interview_agent/orchestrator.py<br/>run_user_request]
+    GUIRuntime --> Router
+    GUIRuntime --> Planner
+    GUIRuntime --> Executor
+    GUIRuntime --> State
     CLI --> MockFlow[模拟面试流程<br/>src/interview_agent/mock_interview.py]
     CLI --> Rendering[结果展示层<br/>src/interview_agent/rendering.py]
     Orchestrator --> Router[Conversation Router<br/>src/interview_agent/router.py]
