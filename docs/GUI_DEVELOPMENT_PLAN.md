@@ -38,7 +38,7 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 
 | Phase | 状态 | Owner | 依赖 | 可并行 | Tracking ID | 完成证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| GUI Phase 0 设计与边界固化 | `[~]` | main agent | 当前草图 | 否 | `gui-phase-0-plan-boundary` | 待填写 |
+| GUI Phase 0 设计与边界固化 | `[x]` | main agent | 当前草图 | 否 | `gui-phase-0-plan-boundary` | `39591b0`；Phase 0 静态验收命令通过；reviewer 可继续 |
 | GUI Phase 1 Runtime Facade | `[ ]` | implementer | Phase 0 | 否 | `gui-phase-1-runtime-facade` | 待填写 |
 | GUI Phase 2 React Web Shell | `[ ]` | implementer | Phase 0 | 可与 Phase 1 协调 | `gui-phase-2-web-shell` | 待填写 |
 | GUI Phase 3 面试准备真实接入 | `[ ]` | implementer | Phase 1、Phase 2 | 否 | `gui-phase-3-prep-integration` | 待填写 |
@@ -58,13 +58,13 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 
 ## GUI Phase 0：设计与边界固化
 
-**Status:** `[~]`
+**Status:** `[x]`
 **Owner:** main agent
 **Dependencies:** 当前 GUI 草图
 **Parallel:** no
 **Tracking ID:** `gui-phase-0-plan-boundary`
 **Write Scope:** `docs/GUI_DEVELOPMENT_PLAN.md`
-**完成证据:** 待填写
+**完成证据:** `39591b0`；`rtk rg "面试准备|模拟面试|算法练习|检查面板" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk rg "不修改数据库结构|不在 GUI 启动时构建知识库|config/interview-agent.toml" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk rg "Status:|Tracking ID:|完成证据|阻塞原因|测试命令|可视化验收" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk git diff --check -- docs/GUI_DEVELOPMENT_PLAN.md`；reviewer 结论：可继续
 **阻塞原因:** none
 
 ### 目标

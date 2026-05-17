@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-05-17 - GUI Phase 0: 设计与边界固化
+
+- 测试命令：`rtk rg "面试准备|模拟面试|算法练习|检查面板" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk rg "不修改数据库结构|不在 GUI 启动时构建知识库|config/interview-agent.toml" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk rg "Status:|Tracking ID:|完成证据|阻塞原因|测试命令|可视化验收" docs/GUI_DEVELOPMENT_PLAN.md`；`rtk git diff --check -- docs/GUI_DEVELOPMENT_PLAN.md`
+- reviewer 结论：可继续
+- 影响范围：`docs/GUI_DEVELOPMENT_PLAN.md`
+- 变更摘要：
+  - 将 GUI 开发拆为 7 个可追踪阶段，并固化 Phase 0 完成状态、阶段依赖、Owner、Write Scope、测试命令和可视化验收。
+  - 为 Runtime Facade、React Web Shell、面试准备接入、模拟面试闭环、算法练习 MVP、桌面壳集成补齐测试命令和可视化验收口径。
+  - 补齐 React Web Shell 显式验收标准，并明确长驻预览命令的人工观察与 `Ctrl-C` 退出口径。
+
 ## 2026-05-16 - Phase 10: 算法练习代码安全检测
 
 - 测试命令：`rtk uv run pytest tests/test_cli.py -k "algorithm_practice or inspect_code_safety or run_code"`
