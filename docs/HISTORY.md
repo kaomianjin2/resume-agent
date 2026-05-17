@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-05-17 - GUI Phase 2: React Web Shell
+
+- 测试命令：`rtk npm install`；`rtk npm run build`；`rtk npm run preview -- --port 4173`
+- reviewer 结论：未运行 reviewer；本次按用户要求在主 agent 内完成
+- 影响范围：`gui/`；`docs/GUI_DEVELOPMENT_PLAN.md`；`docs/HISTORY.md`
+- 变更摘要：
+  - 新增 React/Vite Web Shell 工程，使用 fixture view model 驱动面试准备、模拟面试、算法练习三个模块。
+  - 实现桌面三栏、移动端单列响应式布局，模块切换后主区域与检查面板同步更新。
+  - Web Shell 不接真实后端，不依赖真实 LLM、知识库或 SQLite。
+
 ## 2026-05-17 - GUI Phase 1: Runtime Facade
 
 - 测试命令：`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_executor.py tests/test_router_planner.py`

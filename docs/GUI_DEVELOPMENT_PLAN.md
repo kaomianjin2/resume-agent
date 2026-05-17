@@ -36,15 +36,15 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 
 ## 阶段总览
 
-| Phase | 状态 | Owner | 依赖 | 可并行 | Tracking ID | 完成证据 |
-| --- | --- | --- | --- | --- | --- | --- |
-| GUI Phase 0 设计与边界固化 | `[x]` | main agent | 当前草图 | 否 | `gui-phase-0-plan-boundary` | `39591b0`；Phase 0 静态验收命令通过；reviewer 可继续 |
-| GUI Phase 1 Runtime Facade | `[ ]` | implementer | Phase 0 | 否 | `gui-phase-1-runtime-facade` | 待填写 |
-| GUI Phase 2 React Web Shell | `[ ]` | implementer | Phase 0 | 可与 Phase 1 协调 | `gui-phase-2-web-shell` | 待填写 |
-| GUI Phase 3 面试准备真实接入 | `[ ]` | implementer | Phase 1、Phase 2 | 否 | `gui-phase-3-prep-integration` | 待填写 |
-| GUI Phase 4 模拟面试闭环 | `[ ]` | implementer | Phase 1、Phase 2 | 可在 Phase 3 后启动 | `gui-phase-4-mock-interview` | 待填写 |
-| GUI Phase 5 算法练习 MVP | `[ ]` | implementer | Phase 2 | 可与 Phase 3/4 并行 | `gui-phase-5-algorithm-mvp` | 待填写 |
-| GUI Phase 6 桌面壳集成 | `[ ]` | implementer | Phase 3、Phase 4、Phase 5 | 否 | `gui-phase-6-desktop-shell` | 待填写 |
+| Phase                       | 状态    | Owner       | 依赖                      | 可并行             | Tracking ID                    | 完成证据                                    |
+| --------------------------- | ----- | ----------- | ----------------------- | --------------- | ------------------------------ | --------------------------------------- |
+| GUI Phase 0 设计与边界固化         | `[x]` | main agent  | 当前草图                    | 否               | `gui-phase-0-plan-boundary`    | `39591b0`；Phase 0 静态验收命令通过；reviewer 可继续 |
+| GUI Phase 1 Runtime Facade  | `[ ]` | implementer | Phase 0                 | 否               | `gui-phase-1-runtime-facade`   | 待填写                                     |
+| GUI Phase 2 React Web Shell | `[x]` | implementer | Phase 0                 | 可与 Phase 1 协调   | `gui-phase-2-web-shell`        | `rtk npm run build`；`rtk npm run preview`；Playwright 桌面/移动验收通过 |
+| GUI Phase 3 面试准备真实接入        | `[ ]` | implementer | Phase 1、Phase 2         | 否               | `gui-phase-3-prep-integration` | 待填写                                     |
+| GUI Phase 4 模拟面试闭环          | `[ ]` | implementer | Phase 1、Phase 2         | 可在 Phase 3 后启动  | `gui-phase-4-mock-interview`   | 待填写                                     |
+| GUI Phase 5 算法练习 MVP        | `[ ]` | implementer | Phase 2                 | 可与 Phase 3/4 并行 | `gui-phase-5-algorithm-mvp`    | 待填写                                     |
+| GUI Phase 6 桌面壳集成           | `[ ]` | implementer | Phase 3、Phase 4、Phase 5 | 否               | `gui-phase-6-desktop-shell`    | 待填写                                     |
 
 ## 推荐顺序
 
@@ -161,14 +161,14 @@ get_session_state(session_id)
 
 ## GUI Phase 2：React Web Shell
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Owner:** implementer
 **Dependencies:** GUI Phase 0
 **Parallel:** 可与 Phase 1 协调
 **Tracking ID:** `gui-phase-2-web-shell`
 **Write Scope:** `gui/`、必要文档
-**完成证据:** 待填写
-**阻塞原因:** 需要用户确认允许新增前端依赖
+**完成证据:** `rtk npm install`；`rtk npm run build`；`rtk npm run preview -- --port 4173`；Playwright 点击 `面试准备 / 模拟面试 / 算法练习` 后主区域与检查面板同步；桌面视口 `1440x900` 为三栏 `240px 796px 340px`；移动视口 `390x844` 为单列 `370px`；浏览器控制台 0 errors / 0 warnings
+**阻塞原因:** none
 
 ### 目标
 
