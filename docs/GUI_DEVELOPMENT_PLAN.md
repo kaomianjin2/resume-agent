@@ -38,7 +38,7 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 
 | Phase | 状态 | Owner | 依赖 | 可并行 | Tracking ID | 完成证据 |
 | --- | --- | --- | --- | --- | --- | --- |
-| GUI Phase 0 设计与边界固化 | `[ ]` | main agent | 当前草图 | 否 | `gui-phase-0-plan-boundary` | 待填写 |
+| GUI Phase 0 设计与边界固化 | `[~]` | main agent | 当前草图 | 否 | `gui-phase-0-plan-boundary` | 待填写 |
 | GUI Phase 1 Runtime Facade | `[ ]` | implementer | Phase 0 | 否 | `gui-phase-1-runtime-facade` | 待填写 |
 | GUI Phase 2 React Web Shell | `[ ]` | implementer | Phase 0 | 可与 Phase 1 协调 | `gui-phase-2-web-shell` | 待填写 |
 | GUI Phase 3 面试准备真实接入 | `[ ]` | implementer | Phase 1、Phase 2 | 否 | `gui-phase-3-prep-integration` | 待填写 |
@@ -58,12 +58,12 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 
 ## GUI Phase 0：设计与边界固化
 
-**Status:** `[ ]`
+**Status:** `[~]`
 **Owner:** main agent
 **Dependencies:** 当前 GUI 草图
 **Parallel:** no
 **Tracking ID:** `gui-phase-0-plan-boundary`
-**Write Scope:** `docs/GUI_DEVELOPMENT_PLAN.md`、必要时 `docs/EVOLUTION_PLAN.md`
+**Write Scope:** `docs/GUI_DEVELOPMENT_PLAN.md`
 **完成证据:** 待填写
 **阻塞原因:** none
 
@@ -77,6 +77,19 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 2. [操作] 固化运行时边界 → verify: `rtk rg "不修改数据库结构|不在 GUI 启动时构建知识库|config/interview-agent.toml" docs/GUI_DEVELOPMENT_PLAN.md`
 3. [操作] 固化每阶段状态字段 → verify: `rtk rg "Status:|Tracking ID:|完成证据|阻塞原因" docs/GUI_DEVELOPMENT_PLAN.md`
 4. [操作] 静态检查文档 → verify: `rtk git diff --check -- docs/GUI_DEVELOPMENT_PLAN.md`
+
+### 测试命令
+
+- `rtk rg "面试准备|模拟面试|算法练习|检查面板" docs/GUI_DEVELOPMENT_PLAN.md`
+- `rtk rg "不修改数据库结构|不在 GUI 启动时构建知识库|config/interview-agent.toml" docs/GUI_DEVELOPMENT_PLAN.md`
+- `rtk rg "Status:|Tracking ID:|完成证据|阻塞原因|测试命令|可视化验收" docs/GUI_DEVELOPMENT_PLAN.md`
+- `rtk git diff --check -- docs/GUI_DEVELOPMENT_PLAN.md`
+
+### 可视化验收
+
+- 文档可直接看到阶段总览表、Phase 0 元数据块、测试命令和可视化验收字段。
+- 文档可直接看到 GUI 模块范围：面试准备、模拟面试、算法练习、检查面板。
+- 文档可直接看到 GUI 边界：不修改数据库结构、不在 GUI 启动时构建知识库、配置来自 `config/interview-agent.toml`。
 
 ### 验收标准
 
@@ -124,6 +137,16 @@ get_session_state(session_id)
 4. [操作] 封装 route、plan、execute 流程 → verify: 明确路由可执行节点并刷新 session state
 5. [操作] 覆盖缺输入和失败路径 → verify: 缺输入不写入成功 state，失败 node_run 不污染成功结果
 6. [操作] 运行最小回归 → verify: `rtk uv run pytest tests/test_gui_runtime.py tests/test_executor.py tests/test_router_planner.py`
+
+### 测试命令
+
+- `rtk uv run pytest tests/test_gui_runtime.py`
+- `rtk uv run pytest tests/test_gui_runtime.py tests/test_executor.py tests/test_router_planner.py`
+
+### 可视化验收
+
+- GUI 层可读取 runtime status、session 和节点执行结果，但界面不直接消费 CLI 文本输出。
+- 用户视角不展示内部节点名、执行计划或 `candidate_nodes`。
 
 ### 验收标准
 
@@ -194,6 +217,11 @@ gui/
 - 算法练习模块包含题目、语言、编辑器和评审面板。
 - 检查面板随当前模块变化。
 
+### 测试命令
+
+- `rtk npm run build`
+- `rtk npm run preview`
+
 ### 副作用
 
 - 新增前端工程目录。
@@ -222,6 +250,16 @@ gui/
 4. [操作] 接入 `jd_match` → verify: 展示匹配度、优势、风险、追问重点
 5. [操作] 覆盖缺输入状态 → verify: 未导入简历或 JD 时显示可操作提示
 6. [操作] 运行测试 → verify: `rtk uv run pytest tests/test_gui_runtime.py && rtk npm run build`
+
+### 测试命令
+
+- `rtk uv run pytest tests/test_gui_runtime.py`
+- `rtk npm run build`
+
+### 可视化验收
+
+- 面试准备页展示简历摘要、岗位重点、匹配度、优势、风险和追问重点，不展示原始结构化数据。
+- 页面不出现“生成题目”按钮，题目生成入口只保留在模拟面试模块。
 
 ### 验收标准
 
@@ -258,6 +296,16 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 5. [操作] 覆盖中断和空题集 → verify: 用户可结束当前模拟，空题集显示可读错误
 6. [操作] 运行测试 → verify: `rtk uv run pytest tests/test_cli.py -k "mock_interview" && rtk npm run build`
 
+### 测试命令
+
+- `rtk uv run pytest tests/test_cli.py -k "mock_interview"`
+- `rtk npm run build`
+
+### 可视化验收
+
+- 开始模拟后一次只展示当前问题，不一次性展示全部题目。
+- 提交回答后界面出现追问或下一题，并在回合结束后显示评分、风险和改进建议。
+
 ### 验收标准
 
 - 不一次性展示所有题目。
@@ -292,6 +340,15 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 4. [操作] 实现评审面板 fixture → verify: 正确性、复杂度、边界 case、建议列表可展示
 5. [操作] 运行构建 → verify: `rtk npm run build`
 
+### 测试命令
+
+- `rtk npm run build`
+
+### 可视化验收
+
+- 算法练习页可切换语言并保留题目、编辑器、运行结果和评审面板四个核心区域。
+- 空代码、错误代码、通过用例三种状态都能在界面中被区分。
+
 ### 验收标准
 
 - 算法练习不影响面试准备和模拟面试。
@@ -324,6 +381,16 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 3. [操作] 启动 Python runtime 进程 → verify: 桌面窗口打开后 GUI 可读取 KB ready 状态
 4. [操作] 关闭窗口清理进程 → verify: 关闭窗口后本地后端进程退出
 5. [操作] 打包桌面应用 → verify: `rtk npm run tauri build`
+
+### 测试命令
+
+- `rtk npm run tauri dev`
+- `rtk npm run tauri build`
+
+### 可视化验收
+
+- 桌面窗口启动后直接进入 GUI 工作台，并能显示 KB ready 状态。
+- 导入简历和 JD 使用本地文件选择，不修改 `/Users/cynicism/Desktop/面试` 原始资料。
 
 ### 验收标准
 
