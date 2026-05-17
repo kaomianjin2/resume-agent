@@ -207,7 +207,7 @@ gui/
 2. [操作] 实现三栏布局和响应式结构 → verify: 桌面左中右三栏，移动端纵向堆叠
 3. [操作] 实现模块切换 → verify: 点击 `面试准备 / 模拟面试 / 算法练习` 时主区域和检查面板同步变化
 4. [操作] 实现 fixture view model → verify: UI 不依赖真实 LLM、KB 或 SQLite
-5. [操作] 运行构建和预览 → verify: `rtk npm run build`、`rtk npm run preview`
+5. [操作] 运行构建和预览 → verify: `rtk npm run build`；`rtk npm run preview` 启动成功后人工访问预览页观察模块切换和布局，完成后 `Ctrl-C` 退出
 
 ### 可视化验收
 
@@ -220,12 +220,19 @@ gui/
 ### 测试命令
 
 - `rtk npm run build`
-- `rtk npm run preview`
+- `rtk npm run preview` 启动成功后人工访问预览页观察模块切换、检查面板同步和响应式布局，完成后 `Ctrl-C` 退出
 
 ### 副作用
 
 - 新增前端工程目录。
 - 引入依赖前必须获得用户确认。
+
+### 验收标准
+
+- Web Shell 仅使用 fixture 数据驱动，不接真实后端，不依赖真实 LLM、知识库或 SQLite。
+- 模块切换覆盖 `面试准备`、`模拟面试`、`算法练习`，且切换后主区域与检查面板同步更新。
+- 布局同时满足桌面三栏和移动端纵向堆叠的响应式要求。
+- 本阶段范围仅限已确认前端依赖下的 Web Shell 壳层实现，不新增未确认依赖，也不越界到 Phase 1、Phase 3、Phase 4、Phase 5、Phase 6 的真实接入或桌面壳实现。
 
 ## GUI Phase 3：面试准备真实接入
 
@@ -376,7 +383,7 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 
 ### 任务清单
 
-1. [操作] 新增桌面壳配置 → verify: `rtk npm run tauri dev`
+1. [操作] 新增桌面壳配置 → verify: `rtk npm run tauri dev` 启动成功后人工观察桌面窗口是否打开，完成后 `Ctrl-C` 退出
 2. [操作] 接入本地文件选择 → verify: 导入简历和 JD 不修改原始文件
 3. [操作] 启动 Python runtime 进程 → verify: 桌面窗口打开后 GUI 可读取 KB ready 状态
 4. [操作] 关闭窗口清理进程 → verify: 关闭窗口后本地后端进程退出
@@ -384,7 +391,7 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 
 ### 测试命令
 
-- `rtk npm run tauri dev`
+- `rtk npm run tauri dev` 启动成功后人工观察桌面窗口和 GUI 工作台，完成后 `Ctrl-C` 退出
 - `rtk npm run tauri build`
 
 ### 可视化验收
