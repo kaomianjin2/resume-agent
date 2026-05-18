@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-05-18 - GUI Phase 3: 面试准备真实接入
+
+- 测试命令：`rtk uv run pytest tests/test_gui_runtime.py`；`rtk npm run build`
+- reviewer 结论：未运行 reviewer；本次按用户要求在主 agent 内完成
+- 影响范围：`src/interview_agent/gui_runtime.py` / `prepare_interview_materials()`；`tests/test_gui_runtime.py`；`gui/src/modules/prep/PrepModule.tsx`；`gui/src/shared/api/prep.ts`；`gui/src/app/layout/Workspace.tsx`；`gui/src/app/layout/ReviewPanel.tsx`；`docs/GUI_DEVELOPMENT_PLAN.md`；`docs/architecture.md`；`docs/architecture.svg`
+- 变更摘要：
+  - GUI runtime facade 新增面试准备聚合入口，按既有节点契约串联 `resume_parse`、`jd_parse`、`jd_match`，并返回 GUI 可读 view model。
+  - 面试准备页改为展示简历摘要、岗位重点、匹配度、优势、风险和追问重点，不展示原始结构化数据。
+  - 准备页移除顶部动作按钮，题目生成入口继续只保留在模拟面试模块。
+
 ## 2026-05-17 - GUI Phase 2: React Web Shell
 
 - 测试命令：`rtk npm install`；`rtk npm run build`；`rtk npm run preview -- --port 4173`

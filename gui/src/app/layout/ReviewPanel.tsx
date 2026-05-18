@@ -32,7 +32,7 @@ export function ReviewPanel({ activeModule }: ReviewPanelProps) {
 
       <section className="review-note">
         <h3>当前边界</h3>
-        <p>本阶段只验证 Web Shell 壳层、模块切换和 fixture 数据展示。</p>
+        <p>{activeModule.id === "prep" ? "面试准备已对齐 runtime facade 的准备结果结构。" : "本模块仍使用 Web Shell fixture 数据展示。"}</p>
       </section>
     </aside>
   );

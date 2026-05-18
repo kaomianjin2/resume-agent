@@ -120,6 +120,97 @@ def test_missing_inputs_and_failed_nodes_do_not_write_success_state(tmp_path: Pa
     assert runtime.get_session_state("gui-session") == {}
 
 
+def test_runtime_prepares_interview_materials_as_gui_view_model(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("prep-session")
+
+    prep_view_model = runtime.prepare_interview_materials(
+        session_id="prep-session",
+        resume_text="Alice led Python retrieval services.",
+        jd_text="Need Backend engineer with Python, retrieval, and reliability.",
+    )
+
+    assert prep_view_model == {
+        "session_id": "prep-session",
+        "status": "ready",
+        "resume_summary": {
+            "name": "Alice",
+            "headline": "Python 检索服务负责人",
+            "highlights": ["Python", "检索系统", "可靠性治理"],
+        },
+        "jd_summary": {
+            "role": "后端工程师",
+            "focus": ["Python", "检索链路", "稳定性"],
+        },
+        "match_summary": {
+            "score": 91,
+            "strengths": ["Python 服务经验", "检索系统经验"],
+            "risks": ["补充压测案例"],
+            "follow_up_focus": ["SLA 取舍", "检索召回评估"],
+        },
+        "missing_inputs": [],
+    }
+    assert runtime.get_session_state("prep-session") == {
+        "candidate_profile": {
+            "name": "Alice",
+            "headline": "Python 检索服务负责人",
+            "skills": ["Python", "检索系统"],
+            "highlights": ["Python", "检索系统", "可靠性治理"],
+        },
+        "jd_requirements": {
+            "role": "后端工程师",
+            "must_have": ["Python", "检索链路", "稳定性"],
+        },
+        "match_report": {
+            "score": 91,
+            "strengths": ["Python 服务经验", "检索系统经验"],
+            "risks": ["补充压测案例"],
+            "follow_up_focus": ["SLA 取舍", "检索召回评估"],
+        },
+        "resume_profile": {
+            "name": "Alice",
+            "headline": "Python 检索服务负责人",
+            "skills": ["Python", "检索系统"],
+            "highlights": ["Python", "检索系统", "可靠性治理"],
+        },
+    }
+
+
+def test_runtime_preparation_reports_missing_inputs_without_writing_state(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("prep-session")
+
+    prep_view_model = runtime.prepare_interview_materials(session_id="prep-session", resume_text="", jd_text="   ")
+
+    assert prep_view_model == {
+        "session_id": "prep-session",
+        "status": "missing_inputs",
+        "resume_summary": {},
+        "jd_summary": {},
+        "match_summary": {},
+        "missing_inputs": ["resume_text", "jd_text"],
+    }
+    assert runtime.get_session_state("prep-session") == {}
+
+
 def build_registry() -> NodeRegistry:
     return NodeRegistry(
         [
@@ -151,6 +242,37 @@ def build_registry() -> NodeRegistry:
     )
 
 
+def build_prep_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="resume_parse",
+                description="Parse resume.",
+                required_inputs=("resume_text",),
+                optional_inputs=(),
+                outputs=("resume_profile", "candidate_profile"),
+                handler=resume_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_parse",
+                description="Parse JD.",
+                required_inputs=("jd_text",),
+                optional_inputs=(),
+                outputs=("jd_requirements",),
+                handler=jd_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_match",
+                description="Match resume and JD.",
+                required_inputs=("resume_profile", "jd_requirements"),
+                optional_inputs=(),
+                outputs=("match_report",),
+                handler=jd_match_handler,
+            ),
+        ]
+    )
+
+
 def build_services(config: object) -> dict[str, object]:
     del config
     return {"source": "fake"}
@@ -176,6 +298,41 @@ def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) ->
 def failing_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     del context, inputs
     raise RuntimeError("handler failed")
+
+
+def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    profile = {
+        "name": "Alice",
+        "headline": "Python 检索服务负责人",
+        "skills": ["Python", "检索系统"],
+        "highlights": ["Python", "检索系统", "可靠性治理"],
+    }
+    return {"resume_profile": profile, "candidate_profile": profile}
+
+
+def jd_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {
+        "jd_requirements": {
+            "role": "后端工程师",
+            "must_have": ["Python", "检索链路", "稳定性"],
+        }
+    }
+
+
+def jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context
+    assert inputs["resume_profile"]["name"] == "Alice"
+    assert inputs["jd_requirements"]["role"] == "后端工程师"
+    return {
+        "match_report": {
+            "score": 91,
+            "strengths": ["Python 服务经验", "检索系统经验"],
+            "risks": ["补充压测案例"],
+            "follow_up_focus": ["SLA 取舍", "检索召回评估"],
+        }
+    }
 
 
 def write_config(tmp_path: Path, database_path: Path) -> Path:

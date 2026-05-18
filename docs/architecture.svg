@@ -52,7 +52,7 @@
   <rect class="runtime" x="340" y="65" width="230" height="96"/>
   <text class="label" x="371" y="100">GUI Runtime Facade</text>
   <text class="small" x="365" y="126">gui_runtime.py</text>
-  <text class="tiny" x="370" y="146">结构化 status / route / plan / execute</text>
+  <text class="tiny" x="370" y="146">结构化 status / prep / route / execute</text>
 
   <rect class="runtime" x="340" y="495" width="230" height="82"/>
   <text class="label" x="394" y="528">结果展示层</text>
@@ -73,6 +73,10 @@
   <text class="label" x="704" y="195">对话路由器</text>
   <text class="small" x="693" y="222">router.py</text>
   <text class="tiny" x="677" y="242">输出 needs_user_choice</text>
+
+  <rect class="logic" x="650" y="70" width="230" height="70"/>
+  <text class="label" x="688" y="100">面试准备聚合</text>
+  <text class="small" x="676" y="124">prepare_interview_materials</text>
 
   <rect class="logic" x="650" y="310" width="230" height="108"/>
   <text class="label" x="696" y="346">节点规划器</text>
@@ -123,6 +127,9 @@
   <path class="line" d="M 270 226 C 300 170 315 113 340 113"/>
   <path class="soft-line" d="M 455 161 L 455 190"/>
   <path class="soft-line" d="M 570 113 C 620 113 620 195 650 195"/>
+  <path class="soft-line" d="M 570 104 L 650 104"/>
+  <path class="soft-line" d="M 880 104 C 925 104 925 270 960 270"/>
+  <path class="soft-line" d="M 765 140 L 765 530"/>
   <path class="soft-line" d="M 570 132 C 625 150 625 346 650 346"/>
   <path class="soft-line" d="M 570 151 C 650 240 850 260 960 282"/>
   <path class="soft-line" d="M 455 161 C 500 360 570 535 650 595"/>
@@ -149,6 +156,7 @@
   <text class="note" x="300" y="232">输入</text>
   <text class="note" x="506" y="436">结果展示</text>
   <text class="note" x="590" y="202">路由契约</text>
+  <text class="note" x="590" y="92">准备页 view model</text>
   <text class="note" x="592" y="354">生成内部步骤</text>
   <text class="note" x="600" y="448">模拟面试流程</text>
   <text class="note" x="892" y="258">按计划执行</text>
@@ -208,6 +216,6 @@
   <text class="note" x="1195" y="786">运行时只读检索</text>
 
   <rect class="panel" x="70" y="1040" width="1460" height="46"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；GUI Runtime Facade 只输出结构化数据；CLI 结果展示由 rendering.py 承接；节点输出校验后才写入 session_state。</text>
+  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；GUI Runtime Facade 只输出结构化数据；面试准备聚合复用既有节点契约；节点输出校验后才写入 session_state。</text>
   <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
 </svg>

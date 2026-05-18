@@ -33,8 +33,8 @@ export function Sidebar({ activeModuleId, onModuleChange }: SidebarProps) {
       <section className="runtime-strip">
         <span className="status-dot" aria-hidden="true" />
         <div>
-          <strong>Fixture mode</strong>
-          <p>未连接真实 LLM、知识库或 SQLite。</p>
+          <strong>Runtime facade</strong>
+          <p>面试准备已对齐真实会话数据形状。</p>
         </div>
       </section>
     </aside>
