@@ -8,6 +8,7 @@ from interview_agent.config import AppConfig, DEFAULT_CONFIG_PATH, load_config
 from interview_agent.executor import NodeExecutionResult, NodeExecutor
 from interview_agent.kb.retrieval import SQLiteHybridRetriever
 from interview_agent.llm import OpenAICompatibleClient
+from interview_agent.mock_interview import DEFAULT_MOCK_FOLLOWUP_ROUNDS, DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT
 from interview_agent.nodes.registry import NodeRegistry, build_default_registry
 from interview_agent.planner import ExecutionPlan, build_execution_plan
 from interview_agent.router import RouteResult, route_conversation
@@ -19,6 +20,8 @@ ServiceMap = Mapping[str, object]
 RegistryBuilder = Callable[[], NodeRegistry]
 ServicesBuilder = Callable[[AppConfig], ServiceMap]
 ExecutorBuilder = Callable[[Path, NodeRegistry, ServiceMap], NodeExecutor]
+MOCK_INTERVIEW_STATE_KEY = "mock_interview_state"
+MOCK_INTERVIEW_VIEW_KEY = "mock_interview_view"
 
 
 class GuiRuntimeError(RuntimeError):
@@ -125,6 +128,168 @@ class GuiRuntime:
         session_state = self.session_store.get_all_state(session_id)
         return _prep_view_model(session_id, session_state)
 
+    def start_mock_interview(
+        self,
+        *,
+        session_id: str,
+        target_role: str,
+        question_count: int = DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT,
+        followup_rounds: int = DEFAULT_MOCK_FOLLOWUP_ROUNDS,
+    ) -> dict[str, object]:
+        question_result = self.executor.execute_node(
+            session_id=session_id,
+            node_name="question_generate",
+            inputs={
+                "target_role": target_role,
+                "question_count": question_count,
+            },
+        )
+        if question_result.status != "success":
+            return self._write_mock_interview_state(
+                session_id,
+                _failed_mock_interview_state(session_id, question_result.error_message or "模拟面试启动失败。"),
+            )
+
+        questions = _read_mock_text_list(question_result.output.get("questions"))[:question_count]
+        if not questions:
+            return self._write_mock_interview_state(
+                session_id,
+                _failed_mock_interview_state(session_id, "还没有生成可用于模拟面试的问题。"),
+            )
+
+        return self._write_mock_interview_state(
+            session_id,
+            {
+                "session_id": session_id,
+                "status": "ready_for_answer",
+                "error_message": None,
+                "target_role": target_role,
+                "questions": questions,
+                "current_question_index": 0,
+                "followup_rounds": followup_rounds,
+                "pending_followups": [],
+                "current_followup_index": 0,
+                "total_followups": 0,
+                "current_prompt_kind": "question",
+                "current_prompt_text": questions[0],
+                "score_reports": [],
+                "transcript": [],
+                "review_panel": None,
+            },
+        )
+
+    def submit_mock_answer(self, *, session_id: str, answer: str) -> dict[str, object]:
+        state = self.session_store.get_state(session_id, MOCK_INTERVIEW_STATE_KEY)
+        if not isinstance(state, dict):
+            return _idle_mock_interview_view_model(session_id)
+        if not str(answer).strip():
+            return self._write_mock_interview_state(session_id, {**state, "status": "answer_required", "error_message": "请先输入当前题回答。"})
+
+        current_prompt_text = str(state.get("current_prompt_text", ""))
+        current_prompt_kind = str(state.get("current_prompt_kind", "question"))
+        transcript = list(state.get("transcript", []))
+        score_reports = list(state.get("score_reports", []))
+        score_report = _score_mock_answer(self.executor, session_id, current_prompt_text, str(answer).strip())
+        score_reports.append(score_report)
+        transcript.append(
+            {
+                "prompt_kind": current_prompt_kind,
+                "prompt_text": current_prompt_text,
+                "answer": str(answer).strip(),
+                "score": score_report.get("score"),
+            }
+        )
+
+        next_state = {
+            **state,
+            "status": "ready_for_answer",
+            "error_message": None,
+            "transcript": transcript,
+            "score_reports": score_reports,
+        }
+        if current_prompt_kind == "question":
+            followup_result = self.executor.execute_node(
+                session_id=session_id,
+                node_name="mock_followup",
+                inputs={"question": current_prompt_text, "answer": str(answer).strip()},
+            )
+            if followup_result.status == "success":
+                followups = _read_mock_text_list(followup_result.output.get("followup_questions"))[: int(state.get("followup_rounds", 0))]
+                if followups:
+                    return self._write_mock_interview_state(
+                        session_id,
+                        {
+                            **next_state,
+                            "pending_followups": followups[1:],
+                            "current_followup_index": 1,
+                            "total_followups": len(followups),
+                            "current_prompt_kind": "followup",
+                            "current_prompt_text": followups[0],
+                        },
+                    )
+
+        pending_followups = list(next_state.get("pending_followups", []))
+        if current_prompt_kind == "followup" and pending_followups:
+            return self._write_mock_interview_state(
+                session_id,
+                {
+                    **next_state,
+                    "pending_followups": pending_followups[1:],
+                    "current_followup_index": int(next_state.get("current_followup_index", 0)) + 1,
+                    "current_prompt_kind": "followup",
+                    "current_prompt_text": pending_followups[0],
+                },
+            )
+
+        questions = list(next_state.get("questions", []))
+        next_question_index = int(next_state.get("current_question_index", 0)) + 1
+        if next_question_index < len(questions):
+            return self._write_mock_interview_state(
+                session_id,
+                {
+                    **next_state,
+                    "current_question_index": next_question_index,
+                    "pending_followups": [],
+                    "current_followup_index": 0,
+                    "total_followups": 0,
+                    "current_prompt_kind": "question",
+                    "current_prompt_text": questions[next_question_index],
+                },
+            )
+
+        return self._write_mock_interview_state(
+            session_id,
+            {
+                **next_state,
+                "status": "completed",
+                "pending_followups": [],
+                "current_followup_index": 0,
+                "total_followups": 0,
+                "current_prompt_kind": "",
+                "current_prompt_text": "",
+                "review_panel": _build_mock_review_panel(score_reports),
+            },
+        )
+
+    def end_mock_interview(self, session_id: str) -> dict[str, object]:
+        ended_view_model = {
+            "session_id": session_id,
+            "status": "ended",
+            "error_message": None,
+            "current_prompt": None,
+            "progress": _empty_mock_progress(),
+            "review_panel": None,
+            "transcript": [],
+        }
+        self._write_mock_interview_state(session_id, _idle_mock_interview_state(session_id))
+        return ended_view_model
+
+    def _write_mock_interview_state(self, session_id: str, state: dict[str, object]) -> dict[str, object]:
+        self.session_store.set_state(session_id, MOCK_INTERVIEW_STATE_KEY, state)
+        view_model = _mock_interview_view_model(state)
+        self.session_store.set_state(session_id, MOCK_INTERVIEW_VIEW_KEY, view_model)
+        return view_model
+
 
 def load_runtime(
     config_path: Path | str = DEFAULT_CONFIG_PATH,
@@ -199,6 +364,30 @@ def prepare_interview_materials(
     return runtime.prepare_interview_materials(session_id=session_id, resume_text=resume_text, jd_text=jd_text)
 
 
+def start_mock_interview(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    target_role: str,
+    question_count: int = DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT,
+    followup_rounds: int = DEFAULT_MOCK_FOLLOWUP_ROUNDS,
+) -> dict[str, object]:
+    return runtime.start_mock_interview(
+        session_id=session_id,
+        target_role=target_role,
+        question_count=question_count,
+        followup_rounds=followup_rounds,
+    )
+
+
+def submit_mock_answer(runtime: GuiRuntime, *, session_id: str, answer: str) -> dict[str, object]:
+    return runtime.submit_mock_answer(session_id=session_id, answer=answer)
+
+
+def end_mock_interview(runtime: GuiRuntime, session_id: str) -> dict[str, object]:
+    return runtime.end_mock_interview(session_id)
+
+
 def _build_default_services(config: AppConfig) -> dict[str, object]:
     database_path = Path(config.storage.database_path)
     return {
@@ -257,6 +446,118 @@ def _missing_prep_inputs(*, resume_text: str, jd_text: str) -> list[str]:
     if not jd_text.strip():
         missing_inputs.append("jd_text")
     return missing_inputs
+
+
+def _read_mock_text_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _score_mock_answer(
+    executor: NodeExecutor,
+    session_id: str,
+    question: str,
+    answer: str,
+) -> dict[str, object]:
+    score_result = executor.execute_node(
+        session_id=session_id,
+        node_name="answer_score",
+        inputs={
+            "question": question,
+            "answer": answer,
+            "rubric": "按完整性、准确性、结构化表达和项目细节评分，并输出 gaps、suggestions、reference_answer。",
+        },
+    )
+    if score_result.status != "success":
+        return {"score": 0, "gaps": ["评分失败"], "suggestions": ["请重试本轮回答评分。"], "reference_answer": []}
+    score_report = score_result.output.get("score_report")
+    if isinstance(score_report, dict):
+        return score_report
+    return {"score": 0, "gaps": ["评分结果缺失"], "suggestions": ["请重试本轮回答评分。"], "reference_answer": []}
+
+
+def _build_mock_review_panel(score_reports: list[dict[str, object]]) -> dict[str, object]:
+    scores = [float(score_report["score"]) for score_report in score_reports if isinstance(score_report.get("score"), int | float)]
+    average_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+    risks: list[str] = []
+    suggestions: list[str] = []
+    for score_report in score_reports:
+        risks.extend(_read_mock_text_list(score_report.get("gaps")))
+        suggestions.extend(_read_mock_text_list(score_report.get("suggestions")))
+    return {
+        "average_score": average_score,
+        "risks": risks,
+        "suggestions": suggestions,
+    }
+
+
+def _mock_interview_view_model(state: dict[str, object]) -> dict[str, object]:
+    current_prompt_text = str(state.get("current_prompt_text", "")).strip()
+    current_prompt_kind = str(state.get("current_prompt_kind", "")).strip()
+    current_question_index = int(state.get("current_question_index", 0))
+    current_followup_index = int(state.get("current_followup_index", 0))
+    current_prompt = None
+    if current_prompt_text:
+        current_prompt = {
+            "kind": current_prompt_kind,
+            "label": f"第 {current_question_index + 1} 题" if current_prompt_kind == "question" else f"追问 {current_followup_index}",
+            "text": current_prompt_text,
+        }
+    return {
+        "session_id": state["session_id"],
+        "status": state["status"],
+        "error_message": state.get("error_message"),
+        "current_prompt": current_prompt,
+        "progress": {
+            "current_question_index": current_question_index + 1 if state["status"] not in {"idle", "ended", "failed"} and state.get("questions") else current_question_index,
+            "total_questions": len(list(state.get("questions", []))),
+            "current_followup_index": current_followup_index,
+            "total_followups": int(state.get("total_followups", 0)),
+        },
+        "review_panel": state.get("review_panel"),
+        "transcript": list(state.get("transcript", [])),
+    }
+
+
+def _failed_mock_interview_state(session_id: str, error_message: str) -> dict[str, object]:
+    return {
+        **_idle_mock_interview_state(session_id),
+        "status": "failed",
+        "error_message": error_message,
+    }
+
+
+def _idle_mock_interview_view_model(session_id: str) -> dict[str, object]:
+    return _mock_interview_view_model(_idle_mock_interview_state(session_id))
+
+
+def _idle_mock_interview_state(session_id: str) -> dict[str, object]:
+    return {
+        "session_id": session_id,
+        "status": "idle",
+        "error_message": None,
+        "questions": [],
+        "current_question_index": 0,
+        "followup_rounds": 0,
+        "pending_followups": [],
+        "current_followup_index": 0,
+        "total_followups": 0,
+        "current_prompt_kind": "",
+        "current_prompt_text": "",
+        "score_reports": [],
+        "transcript": [],
+        "review_panel": None,
+    }
+
+
+def _empty_mock_progress() -> dict[str, int]:
+    return {
+        "current_question_index": 0,
+        "total_questions": 0,
+        "current_followup_index": 0,
+        "total_followups": 0,
+    }
 
 
 def _prep_error_view_model(session_id: str, result: NodeExecutionResult) -> dict[str, object]:

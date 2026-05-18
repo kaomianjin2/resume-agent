@@ -27,7 +27,8 @@ body {
 }
 
 button,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -276,6 +277,41 @@ select {
   border-radius: 8px;
   color: var(--ink);
   background: #fffaf0;
+}
+
+.mock-answer-input {
+  width: 100%;
+  min-height: 160px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fffaf0;
+  resize: vertical;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.status-copy {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.error-text {
+  color: var(--red);
+}
+
+.transcript-list strong {
+  color: var(--steel);
 }
 
 .review-panel header {
