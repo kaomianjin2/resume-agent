@@ -42,7 +42,7 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 | GUI Phase 1 Runtime Facade  | `[x]` | implementer | Phase 0                 | 否               | `gui-phase-1-runtime-facade`   | `3bbd631`；`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_executor.py tests/test_router_planner.py`；reviewer 结论：可继续 |
 | GUI Phase 2 React Web Shell | `[x]` | implementer | Phase 0                 | 可与 Phase 1 协调   | `gui-phase-2-web-shell`        | `rtk npm run build`；`rtk npm run preview`；Playwright 桌面/移动验收通过 |
 | GUI Phase 3 面试准备真实接入        | `[x]` | implementer | Phase 1、Phase 2         | 否               | `gui-phase-3-prep-integration` | `rtk uv run pytest tests/test_gui_runtime.py`；`rtk npm run build`；Playwright 准备页快照验收通过 |
-| GUI Phase 4 模拟面试闭环          | `[ ]` | implementer | Phase 1、Phase 2         | 可在 Phase 3 后启动  | `gui-phase-4-mock-interview`   | 待填写                                                            |
+| GUI Phase 4 模拟面试闭环          | `[x]` | implementer | Phase 1、Phase 2         | 可在 Phase 3 后启动  | `gui-phase-4-mock-interview`   | `0e9005d`、`4300d1b`；`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_cli.py -k "mock_interview"`；`rtk npm run build`；reviewer 结论：可继续 |
 | GUI Phase 5 算法练习 MVP        | `[ ]` | implementer | Phase 2                 | 可与 Phase 3/4 并行 | `gui-phase-5-algorithm-mvp`    | 待填写                                                            |
 | GUI Phase 6 桌面壳集成           | `[ ]` | implementer | Phase 3、Phase 4、Phase 5 | 否               | `gui-phase-6-desktop-shell`    | 待填写                                                            |
 
@@ -281,13 +281,13 @@ gui/
 
 ## GUI Phase 4：模拟面试闭环
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Owner:** implementer
 **Dependencies:** GUI Phase 1、GUI Phase 2
 **Parallel:** 可在 Phase 3 后启动
 **Tracking ID:** `gui-phase-4-mock-interview`
 **Write Scope:** `gui/src/modules/mock/`、`gui/src/shared/api/`、必要 runtime facade 测试补充
-**完成证据:** 待填写
+**完成证据:** `0e9005d`、`4300d1b`；`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_cli.py -k "mock_interview"`；`rtk npm run build`；reviewer 结论：可继续
 **阻塞原因:** none
 
 ### 目标

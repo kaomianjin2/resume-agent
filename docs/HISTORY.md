@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-05-19 - GUI Phase 4: 模拟面试闭环
+
+- 测试命令：`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_cli.py -k "mock_interview"`；`rtk npm run build`
+- reviewer 结论：可继续
+- 影响范围：`src/interview_agent/gui_runtime.py` / `start_mock_interview()`、`submit_mock_answer()`、`end_mock_interview()`；`tests/test_gui_runtime.py`；`gui/src/modules/mock/MockModule.tsx`；`gui/src/shared/api/mock.ts`；`gui/src/shared/styles/global.css`；`docs/GUI_DEVELOPMENT_PLAN.md`；`docs/HISTORY.md`；`docs/architecture.md`；`docs/architecture.svg`
+- 变更摘要：
+  - GUI runtime facade 新增模拟面试闭环入口，按既有节点契约复用 `question_generate`、`mock_followup`、`answer_score`，并把当前轮次状态写入 SQLite `session_state`。
+  - 模拟面试页通过 runtime client interface 展示逐题回答、追问、空回答提示、空题集错误、结束操作和评分/风险/改进建议。
+  - 完成态和结束态阻断后续回答提交，避免污染后续会话状态；CLI 模拟面试回归保持通过。
+
 ## 2026-05-18 - GUI Phase 3: 面试准备真实接入
 
 - 测试命令：`rtk uv run pytest tests/test_gui_runtime.py`；`rtk npm run build`

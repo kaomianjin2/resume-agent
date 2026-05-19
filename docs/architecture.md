@@ -33,6 +33,9 @@ flowchart TD
     GUIRuntime --> PrepVM[面试准备聚合<br/>prepare_interview_materials<br/>resume_parse -> jd_parse -> jd_match]
     PrepVM --> Executor
     PrepVM --> State
+    GUIRuntime --> MockVM[GUI 模拟面试闭环<br/>start_mock_interview / submit_mock_answer / end_mock_interview<br/>question_generate -> mock_followup -> answer_score]
+    MockVM --> Executor
+    MockVM --> State
     CLI --> MockFlow[模拟面试流程<br/>src/interview_agent/mock_interview.py]
     CLI --> Rendering[结果展示层<br/>src/interview_agent/rendering.py]
     Orchestrator --> Router[Conversation Router<br/>src/interview_agent/router.py]
@@ -222,6 +225,7 @@ erDiagram
 - CLI 的普通请求路径委派给 `run_user_request()`；模拟面试专属流程委派给 `mock_interview.py`，并复用 CLI 提供的补输入、结果展示和取消异常回调。
 - 用户可见结果展示集中在 `rendering.py`；`cli.py` 仅保留 `_write_result()`、`_write_line()` 等兼容包装和回调装配。
 - GUI Runtime Facade 的面试准备入口通过 `prepare_interview_materials()` 串联 `resume_parse`、`jd_parse`、`jd_match`，返回简历摘要、岗位重点、匹配度、优势、风险和追问重点。
+- GUI Runtime Facade 的模拟面试入口通过 `start_mock_interview()`、`submit_mock_answer()`、`end_mock_interview()` 复用 `question_generate`、`mock_followup`、`answer_score`，并把当前题、追问、评分和终态 view model 写入 SQLite `session_state`。
 - 配置固定读取 `config/interview-agent.toml`。
 - 运行时只检查知识库 ready 状态，不构建知识库。
 - 知识库通过离线命令构建到 SQLite。
