@@ -36,14 +36,39 @@ export type MockInterviewViewModel = {
   }>;
 };
 
+export type StartMockInterviewRequest = {
+  sessionId: string;
+  targetRole: string;
+  questionCount?: number;
+  followupRounds?: number;
+  scenario?: MockInterviewScenario;
+};
+
+export type SubmitMockAnswerRequest = {
+  sessionId: string;
+  answer: string;
+};
+
+export type EndMockInterviewRequest = {
+  sessionId: string;
+};
+
+export type MockInterviewRuntimeClient = {
+  startMockInterview: (request: StartMockInterviewRequest) => MockInterviewViewModel;
+  submitMockAnswer: (request: SubmitMockAnswerRequest) => MockInterviewViewModel;
+  endMockInterview: (request: EndMockInterviewRequest) => MockInterviewViewModel;
+  getCurrentViewModel: () => MockInterviewViewModel;
+};
+
 type ScoreReport = {
   score: number;
   risks: string[];
   suggestions: string[];
 };
 
-export type MockInterviewSession = {
+type MockInterviewFallbackSession = {
   scenario: MockInterviewScenario;
+  sessionId: string;
   questions: string[];
   currentQuestionIndex: number;
   pendingFollowups: string[];
@@ -56,7 +81,7 @@ export type MockInterviewSession = {
   viewModel: MockInterviewViewModel;
 };
 
-const DEFAULT_SESSION_ID = "fixture-mock-session";
+const FALLBACK_SESSION_ID = "fallback-mock-session";
 const DEFAULT_QUESTIONS = [
   "介绍你最近一次线上延迟排查。",
   "如果延迟再次出现，你会如何设计预防机制？",
@@ -84,9 +109,31 @@ const SCORE_REPORT_BY_PROMPT: Record<string, ScoreReport> = {
   },
 };
 
-export function createIdleMockInterviewSession(): MockInterviewSession {
+export function createFallbackMockInterviewClient(): MockInterviewRuntimeClient {
+  let fallbackSession = createIdleFallbackSession(FALLBACK_SESSION_ID);
+
+  return {
+    startMockInterview(request: StartMockInterviewRequest) {
+      fallbackSession = startFallbackMockInterview(fallbackSession, request);
+      return fallbackSession.viewModel;
+    },
+    submitMockAnswer(request: SubmitMockAnswerRequest) {
+      fallbackSession = submitFallbackMockAnswer(fallbackSession, request.answer);
+      return fallbackSession.viewModel;
+    },
+    endMockInterview(request: EndMockInterviewRequest) {
+      fallbackSession = endFallbackMockInterview(fallbackSession, request.sessionId);
+      return fallbackSession.viewModel;
+    },
+    getCurrentViewModel() {
+      return fallbackSession.viewModel;
+    },
+  };
+}
+
+function createIdleFallbackSession(sessionId: string): MockInterviewFallbackSession {
   const viewModel: MockInterviewViewModel = {
-    sessionId: DEFAULT_SESSION_ID,
+    sessionId,
     status: "idle",
     errorMessage: null,
     currentPrompt: null,
@@ -102,6 +149,7 @@ export function createIdleMockInterviewSession(): MockInterviewSession {
 
   return {
     scenario: "default",
+    sessionId,
     questions: [],
     currentQuestionIndex: 0,
     pendingFollowups: [],
@@ -115,14 +163,15 @@ export function createIdleMockInterviewSession(): MockInterviewSession {
   };
 }
 
-export function startMockInterview(
-  _previousSession: MockInterviewSession,
-  scenario: MockInterviewScenario,
-): MockInterviewSession {
-  const idleSession = createIdleMockInterviewSession();
+function startFallbackMockInterview(
+  _previousSession: MockInterviewFallbackSession,
+  request: StartMockInterviewRequest,
+): MockInterviewFallbackSession {
+  const idleSession = createIdleFallbackSession(request.sessionId);
+  const scenario = request.scenario ?? "default";
 
   if (scenario === "empty") {
-    return buildMockInterviewSession({
+    return buildFallbackSession({
       ...idleSession,
       scenario,
       viewModel: {
@@ -133,10 +182,10 @@ export function startMockInterview(
     });
   }
 
-  return buildMockInterviewSession({
+  return buildFallbackSession({
     ...idleSession,
     scenario,
-    questions: DEFAULT_QUESTIONS,
+    questions: DEFAULT_QUESTIONS.slice(0, request.questionCount ?? DEFAULT_QUESTIONS.length),
     currentPromptKind: "question",
     currentPromptText: DEFAULT_QUESTIONS[0],
     viewModel: {
@@ -147,16 +196,21 @@ export function startMockInterview(
   });
 }
 
-export function submitMockInterviewAnswer(
-  previousSession: MockInterviewSession,
+function submitFallbackMockAnswer(
+  previousSession: MockInterviewFallbackSession,
   answer: string,
-): MockInterviewSession {
-  if (previousSession.viewModel.status === "idle" || previousSession.viewModel.status === "failed" || previousSession.viewModel.status === "ended") {
+): MockInterviewFallbackSession {
+  if (
+    previousSession.viewModel.status === "idle" ||
+    previousSession.viewModel.status === "failed" ||
+    previousSession.viewModel.status === "completed" ||
+    previousSession.viewModel.status === "ended"
+  ) {
     return previousSession;
   }
 
   if (!answer.trim()) {
-    return buildMockInterviewSession({
+    return buildFallbackSession({
       ...previousSession,
       viewModel: {
         ...previousSession.viewModel,
@@ -184,7 +238,7 @@ export function submitMockInterviewAnswer(
   if (promptKind === "question") {
     const followups = FOLLOWUP_BY_QUESTION[promptText] ?? [];
     if (followups.length > 0) {
-      return buildMockInterviewSession({
+      return buildFallbackSession({
         ...previousSession,
         transcript,
         scoreReports,
@@ -203,7 +257,7 @@ export function submitMockInterviewAnswer(
   }
 
   if (promptKind === "followup" && previousSession.pendingFollowups.length > 0) {
-    return buildMockInterviewSession({
+    return buildFallbackSession({
       ...previousSession,
       transcript,
       scoreReports,
@@ -221,7 +275,7 @@ export function submitMockInterviewAnswer(
 
   const nextQuestionIndex = previousSession.currentQuestionIndex + 1;
   if (nextQuestionIndex < previousSession.questions.length) {
-    return buildMockInterviewSession({
+    return buildFallbackSession({
       ...previousSession,
       transcript,
       scoreReports,
@@ -239,7 +293,7 @@ export function submitMockInterviewAnswer(
     });
   }
 
-  return buildMockInterviewSession({
+  return buildFallbackSession({
     ...previousSession,
     transcript,
     scoreReports,
@@ -257,9 +311,12 @@ export function submitMockInterviewAnswer(
   });
 }
 
-export function endMockInterview(previousSession: MockInterviewSession): MockInterviewSession {
-  const idleSession = createIdleMockInterviewSession();
-  return buildMockInterviewSession({
+function endFallbackMockInterview(
+  previousSession: MockInterviewFallbackSession,
+  sessionId: string,
+): MockInterviewFallbackSession {
+  const idleSession = createIdleFallbackSession(sessionId);
+  return buildFallbackSession({
     ...idleSession,
     scenario: previousSession.scenario,
     viewModel: {
@@ -269,7 +326,7 @@ export function endMockInterview(previousSession: MockInterviewSession): MockInt
   });
 }
 
-function buildMockInterviewSession(session: MockInterviewSession): MockInterviewSession {
+function buildFallbackSession(session: MockInterviewFallbackSession): MockInterviewFallbackSession {
   const currentPrompt =
     session.currentPromptKind && session.currentPromptText
       ? {
@@ -285,7 +342,7 @@ function buildMockInterviewSession(session: MockInterviewSession): MockInterview
   return {
     ...session,
     viewModel: {
-      sessionId: DEFAULT_SESSION_ID,
+      sessionId: session.sessionId,
       status: session.viewModel.status,
       errorMessage: session.viewModel.errorMessage,
       currentPrompt,

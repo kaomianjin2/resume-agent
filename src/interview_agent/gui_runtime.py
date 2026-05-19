@@ -182,6 +182,8 @@ class GuiRuntime:
         state = self.session_store.get_state(session_id, MOCK_INTERVIEW_STATE_KEY)
         if not isinstance(state, dict):
             return _idle_mock_interview_view_model(session_id)
+        if state.get("status") in {"completed", "failed", "ended", "idle"}:
+            return _mock_interview_view_model(state)
         if not str(answer).strip():
             return self._write_mock_interview_state(session_id, {**state, "status": "answer_required", "error_message": "请先输入当前题回答。"})
 

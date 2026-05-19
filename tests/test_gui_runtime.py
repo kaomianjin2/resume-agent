@@ -400,6 +400,36 @@ def test_runtime_submit_mock_answer_generates_followup_and_final_review(tmp_path
     }
 
 
+def test_runtime_submit_mock_answer_after_completed_keeps_completed_state(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_mock_runtime_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("mock-session")
+    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+    runtime.start_mock_interview(
+        session_id="mock-session",
+        target_role="后端工程师",
+        question_count=2,
+        followup_rounds=1,
+    )
+    runtime.submit_mock_answer(session_id="mock-session", answer="我会先看核心指标和慢查询。")
+    runtime.submit_mock_answer(session_id="mock-session", answer="我会对比调用链与数据库监控。")
+    completed_view_model = runtime.submit_mock_answer(session_id="mock-session", answer="我会补充熔断和容量预案。")
+
+    repeated_submit_view_model = runtime.submit_mock_answer(session_id="mock-session", answer="完成后追加的回答")
+
+    assert repeated_submit_view_model == completed_view_model
+    assert len(repeated_submit_view_model["transcript"]) == 3
+    assert runtime.get_session_state("mock-session")["mock_interview_view"] == completed_view_model
+
+
 def test_runtime_end_mock_interview_resets_view_state_without_writing_unrelated_success_state(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
 

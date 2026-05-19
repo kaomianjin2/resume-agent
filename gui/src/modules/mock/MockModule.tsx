@@ -1,33 +1,43 @@
 import { ChangeEvent, useState } from "react";
 import {
-  createIdleMockInterviewSession,
-  endMockInterview,
+  createFallbackMockInterviewClient,
   MockInterviewScenario,
-  startMockInterview,
-  submitMockInterviewAnswer,
+  MockInterviewRuntimeClient,
+  MockInterviewViewModel,
 } from "../../shared/api/mock";
+
+const MOCK_SESSION_ID = "gui-mock-session";
+const fallbackRuntimeClient = createFallbackMockInterviewClient();
 
 export function MockModule() {
   const [scenario, setScenario] = useState<MockInterviewScenario>("default");
   const [answerDraft, setAnswerDraft] = useState("");
-  const [session, setSession] = useState(() => createIdleMockInterviewSession());
-  const viewModel = session.viewModel;
+  const [runtimeClient] = useState<MockInterviewRuntimeClient>(() => fallbackRuntimeClient);
+  const [viewModel, setViewModel] = useState<MockInterviewViewModel>(() => runtimeClient.getCurrentViewModel());
   const canSubmit = viewModel.status === "ready_for_answer" || viewModel.status === "answer_required";
 
   const handleStart = () => {
-    setSession((previousSession) => startMockInterview(previousSession, scenario));
+    setViewModel(
+      runtimeClient.startMockInterview({
+        sessionId: MOCK_SESSION_ID,
+        targetRole: "后端工程师",
+        questionCount: 2,
+        followupRounds: 1,
+        scenario,
+      }),
+    );
     setAnswerDraft("");
   };
 
   const handleSubmit = () => {
-    setSession((previousSession) => submitMockInterviewAnswer(previousSession, answerDraft));
+    setViewModel(runtimeClient.submitMockAnswer({ sessionId: MOCK_SESSION_ID, answer: answerDraft }));
     if (answerDraft.trim()) {
       setAnswerDraft("");
     }
   };
 
   const handleEnd = () => {
-    setSession((previousSession) => endMockInterview(previousSession));
+    setViewModel(runtimeClient.endMockInterview({ sessionId: MOCK_SESSION_ID }));
     setAnswerDraft("");
   };
 
