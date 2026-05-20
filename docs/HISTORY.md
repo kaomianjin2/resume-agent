@@ -15,13 +15,23 @@
 ## YYYY-MM-DD - Task N: 功能名称
 
 - 测试命令：`rtk uv run pytest ...`
-- reviewer 结论：可继续
+- reviewer 结论：未运行 reviewer，外部审查工具返回 401；主 agent 已完成审计
 - 影响范围：文件 / 函数 / 接口
 - 变更摘要：
   - ...
 ```
 
 ## 历史记录
+
+## 2026-05-19 - GUI Phase 5: 算法练习 MVP
+
+- 测试命令：`rtk npm run build`
+- reviewer 结论：可继续
+- 影响范围：`gui/src/modules/algorithm/AlgorithmModule.tsx`；`gui/src/app/fixtureData.ts`；`docs/GUI_DEVELOPMENT_PLAN.md`；`docs/HISTORY.md`
+- 变更摘要：
+  - 算法练习页使用 fixture 数据展示题干、约束、示例、标签、语言选择、编辑器、运行结果和评审面板。
+  - 语言选择覆盖 Python、JavaScript、Go、Java、C、C++，切换后编辑区展示对应示例代码。
+  - 运行结果 fixture 覆盖空代码、错误代码、通过用例三种状态；评审面板展示正确性、复杂度、边界 case 和建议。
 
 ## 2026-05-19 - GUI Phase 4: 模拟面试闭环
 

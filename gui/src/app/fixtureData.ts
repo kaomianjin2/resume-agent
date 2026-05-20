@@ -56,9 +56,10 @@ export const moduleViewModels: ModuleViewModel[] = [
     primaryAction: "运行示例",
     secondaryAction: "提交评审",
     checks: [
-      { label: "题目", status: "ready", detail: "题干和约束已展示" },
-      { label: "语言", status: "ready", detail: "当前选择 Python" },
-      { label: "评审面板", status: "review", detail: "等待代码提交后生成反馈" },
+      { label: "题目", status: "ready", detail: "题干、约束、示例和标签已展示" },
+      { label: "语言", status: "ready", detail: "Python、JavaScript、Go、Java、C、C++ 可切换" },
+      { label: "运行结果", status: "ready", detail: "空代码、错误代码、通过用例三种状态可展示" },
+      { label: "评审面板", status: "review", detail: "正确性、复杂度、边界 case 和建议已展示" },
     ],
   },
 ];
