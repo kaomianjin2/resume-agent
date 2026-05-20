@@ -23,6 +23,17 @@
 
 ## 历史记录
 
+## 2026-05-20 - GUI Phase 6: 桌面壳集成
+
+- 测试命令：`rtk npm run test:desktop`；`rtk npm run build`；`rtk npm run tauri build`；`cargo test`；`rtk uv run pytest tests/test_gui_runtime.py`
+- reviewer 结论：可继续
+- 影响范围：`gui/src-tauri/`；`gui/src/shared/desktop/`；`gui/src/app/App.tsx`；`gui/src/app/layout/ShellLayout.tsx`；`gui/src/app/layout/Sidebar.tsx`；`gui/src/shared/styles/global.css`；`gui/tests/desktopSnapshot.test.mjs`；`docs/GUI_DEVELOPMENT_PLAN.md`；`docs/HISTORY.md`；`docs/architecture.md`；`docs/architecture.svg`
+- 变更摘要：
+  - 新增 Tauri v2 桌面壳配置和 macOS app 打包能力，桌面窗口直接承载 React Web Shell。
+  - 桌面桥接层展示 KB 状态、Python runtime 状态、简历/JD 本地文件选择和异常信息。
+  - Python runtime 以独立进程组启动，停止或关闭窗口时清理进程树，避免残留后端进程。
+  - 前端新增桌面错误快照测试，覆盖 Tauri invoke 或文件选择失败时的 `lastError` 回填。
+
 ## 2026-05-19 - GUI Phase 5: 算法练习 MVP
 
 - 测试命令：`rtk npm run build`

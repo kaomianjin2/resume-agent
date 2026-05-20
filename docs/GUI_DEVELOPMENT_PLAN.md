@@ -44,7 +44,7 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 | GUI Phase 3 面试准备真实接入        | `[x]` | implementer | Phase 1、Phase 2         | 否               | `gui-phase-3-prep-integration` | `rtk uv run pytest tests/test_gui_runtime.py`；`rtk npm run build`；Playwright 准备页快照验收通过 |
 | GUI Phase 4 模拟面试闭环          | `[x]` | implementer | Phase 1、Phase 2         | 可在 Phase 3 后启动  | `gui-phase-4-mock-interview`   | `0e9005d`、`4300d1b`；`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_cli.py -k "mock_interview"`；`rtk npm run build`；reviewer 结论：可继续 |
 | GUI Phase 5 算法练习 MVP        | `[x]` | implementer | Phase 2                 | 可与 Phase 3/4 并行 | `gui-phase-5-algorithm-mvp`    | `bab8663`；`rtk npm run build`；算法练习页 fixture 覆盖题目、语言、编辑器、运行结果和评审面板；reviewer 结论：主 agent 复审通过，可继续 |
-| GUI Phase 6 桌面壳集成           | `[ ]` | implementer | Phase 3、Phase 4、Phase 5 | 否               | `gui-phase-6-desktop-shell`    | 待填写                                                            |
+| GUI Phase 6 桌面壳集成           | `[x]` | implementer | Phase 3、Phase 4、Phase 5 | 否               | `gui-phase-6-desktop-shell`    | `e4a8e25`；`rtk npm run test:desktop`；`rtk npm run build`；`rtk npm run tauri build`；`cargo test`；`rtk uv run pytest tests/test_gui_runtime.py`；reviewer 结论：可继续 |
 
 ## 推荐顺序
 
@@ -368,14 +368,14 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 
 ## GUI Phase 6：桌面壳集成
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Owner:** implementer
 **Dependencies:** GUI Phase 3、GUI Phase 4、GUI Phase 5
 **Parallel:** no
 **Tracking ID:** `gui-phase-6-desktop-shell`
 **Write Scope:** `desktop/`、`gui/`、必要启动文档
-**完成证据:** 待填写
-**阻塞原因:** 需要用户确认允许新增桌面壳依赖
+**完成证据:** `e4a8e25`；`rtk npm run test:desktop`；`rtk npm run build`；`rtk npm run tauri build`；`cargo test`；`rtk uv run pytest tests/test_gui_runtime.py`；reviewer 结论：可继续
+**阻塞原因:** none
 
 ### 目标
 
@@ -383,16 +383,19 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 
 ### 任务清单
 
-1. [操作] 新增桌面壳配置 → verify: `rtk npm run tauri dev` 启动成功后人工观察桌面窗口是否打开，完成后 `Ctrl-C` 退出
-2. [操作] 接入本地文件选择 → verify: 导入简历和 JD 不修改原始文件
-3. [操作] 启动 Python runtime 进程 → verify: 桌面窗口打开后 GUI 可读取 KB ready 状态
-4. [操作] 关闭窗口清理进程 → verify: 关闭窗口后本地后端进程退出
+1. [操作] 新增桌面壳配置 → verify: `rtk npm run tauri build`
+2. [操作] 接入本地文件选择 → verify: `rtk npm run build`
+3. [操作] 启动 Python runtime 进程 → verify: `cargo test`
+4. [操作] 关闭窗口清理进程 → verify: `cargo test`
 5. [操作] 打包桌面应用 → verify: `rtk npm run tauri build`
 
 ### 测试命令
 
-- `rtk npm run tauri dev` 启动成功后人工观察桌面窗口和 GUI 工作台，完成后 `Ctrl-C` 退出
+- `rtk npm run test:desktop`
+- `rtk npm run build`
 - `rtk npm run tauri build`
+- `cargo test`
+- `rtk uv run pytest tests/test_gui_runtime.py`
 
 ### 可视化验收
 

@@ -15,12 +15,18 @@
 ```mermaid
 flowchart TD
     User[用户] --> CLI[Interactive CLI<br/>src/interview_agent/cli.py]
-    User --> GUIRuntime[GUI Runtime Facade<br/>src/interview_agent/gui_runtime.py]
+    User --> DesktopShell[Tauri Desktop Shell<br/>gui/src-tauri/src/main.rs]
+    DesktopShell --> ReactShell[React Web Shell<br/>gui/src/app/App.tsx]
+    ReactShell --> GUIRuntime[GUI Runtime Facade<br/>src/interview_agent/gui_runtime.py]
+    DesktopShell --> PythonProcess[Python Runtime Process<br/>uv run interview-agent --config config/interview-agent.toml]
+    PythonProcess --> CLI
 
     CLI --> Config[配置加载<br/>config/interview-agent.toml<br/>src/interview_agent/config.py]
     GUIRuntime --> Config
+    DesktopShell --> Config
     CLI --> KBReady[知识库 ready 检查<br/>get_knowledge_base_status]
     GUIRuntime --> KBReady
+    DesktopShell --> KBReady
     KBReady -->|not_ready| OfflineHint[输出离线构建命令并退出]
     KBReady -->|ready| Session[创建/读取会话<br/>SessionStore]
     GUIRuntime --> Session
@@ -226,6 +232,9 @@ erDiagram
 - 用户可见结果展示集中在 `rendering.py`；`cli.py` 仅保留 `_write_result()`、`_write_line()` 等兼容包装和回调装配。
 - GUI Runtime Facade 的面试准备入口通过 `prepare_interview_materials()` 串联 `resume_parse`、`jd_parse`、`jd_match`，返回简历摘要、岗位重点、匹配度、优势、风险和追问重点。
 - GUI Runtime Facade 的模拟面试入口通过 `start_mock_interview()`、`submit_mock_answer()`、`end_mock_interview()` 复用 `question_generate`、`mock_followup`、`answer_score`，并把当前题、追问、评分和终态 view model 写入 SQLite `session_state`。
+- Tauri Desktop Shell 位于 `gui/src-tauri/`，负责承载 React Web Shell、本地文件选择、Python runtime 进程启停和窗口关闭清理。
+- Desktop Shell 启动 Python runtime 时使用独立进程组；停止 runtime 或关闭窗口时清理整个进程树，避免残留 `uv` / Python 子进程。
+- React Web Shell 通过 `gui/src/shared/desktop/desktopBridge.ts` 读取桌面壳状态，展示 KB 状态、Python runtime 状态、简历/JD 路径和 `lastError`。
 - 配置固定读取 `config/interview-agent.toml`。
 - 运行时只检查知识库 ready 状态，不构建知识库。
 - 知识库通过离线命令构建到 SQLite。
