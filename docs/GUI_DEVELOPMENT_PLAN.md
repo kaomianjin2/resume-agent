@@ -43,7 +43,7 @@ GUI 开发按 7 个可追踪阶段推进：先固化设计与边界，再新增 
 | GUI Phase 2 React Web Shell | `[x]` | implementer | Phase 0                 | 可与 Phase 1 协调   | `gui-phase-2-web-shell`        | `rtk npm run build`；`rtk npm run preview`；Playwright 桌面/移动验收通过 |
 | GUI Phase 3 面试准备真实接入        | `[x]` | implementer | Phase 1、Phase 2         | 否               | `gui-phase-3-prep-integration` | `rtk uv run pytest tests/test_gui_runtime.py`；`rtk npm run build`；Playwright 准备页快照验收通过 |
 | GUI Phase 4 模拟面试闭环          | `[x]` | implementer | Phase 1、Phase 2         | 可在 Phase 3 后启动  | `gui-phase-4-mock-interview`   | `0e9005d`、`4300d1b`；`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_cli.py -k "mock_interview"`；`rtk npm run build`；reviewer 结论：可继续 |
-| GUI Phase 5 算法练习 MVP        | `[x]` | implementer | Phase 2                 | 可与 Phase 3/4 并行 | `gui-phase-5-algorithm-mvp`    | `rtk npm run build`；算法练习页 fixture 覆盖题目、语言、编辑器、运行结果和评审面板 |
+| GUI Phase 5 算法练习 MVP        | `[x]` | implementer | Phase 2                 | 可与 Phase 3/4 并行 | `gui-phase-5-algorithm-mvp`    | `bab8663`；`rtk npm run build`；算法练习页 fixture 覆盖题目、语言、编辑器、运行结果和评审面板；reviewer 结论：主 agent 复审通过，可继续 |
 | GUI Phase 6 桌面壳集成           | `[ ]` | implementer | Phase 3、Phase 4、Phase 5 | 否               | `gui-phase-6-desktop-shell`    | 待填写                                                            |
 
 ## 推荐顺序
@@ -332,7 +332,7 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 **Parallel:** 可与 Phase 3/4 并行
 **Tracking ID:** `gui-phase-5-algorithm-mvp`
 **Write Scope:** `gui/src/modules/algorithm/`、必要测试
-**完成证据:** `bab8663`；`rtk npm run build`；算法练习页 fixture 覆盖题干、约束、示例、标签、Python/JavaScript/Go/Java/C/C++ 语言切换、空代码/错误代码/通过用例状态、正确性/复杂度/边界 case/建议评审面板；reviewer 结论：未运行 reviewer，外部审查工具返回 401；主 agent 已完成审计
+**完成证据:** `bab8663`；`rtk npm run build`；算法练习页 fixture 覆盖题干、约束、示例、标签、Python/JavaScript/Go/Java/C/C++ 语言切换、空代码/错误代码/通过用例状态、正确性/复杂度/边界 case/建议评审面板；reviewer 结论：主 agent 复审通过，可继续
 **阻塞原因:** none
 
 ### 目标
