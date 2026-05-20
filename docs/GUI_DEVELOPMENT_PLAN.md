@@ -332,7 +332,7 @@ GUI 保持现有模拟面试行为：内部先生成层层递进的问题，再�
 **Parallel:** 可与 Phase 3/4 并行
 **Tracking ID:** `gui-phase-5-algorithm-mvp`
 **Write Scope:** `gui/src/modules/algorithm/`、必要测试
-**完成证据:** `rtk npm run build`；算法练习页 fixture 覆盖题干、约束、示例、标签、Python/JavaScript/Go/Java/C/C++ 语言切换、空代码/错误代码/通过用例状态、正确性/复杂度/边界 case/建议评审面板；reviewer 结论：未运行 reviewer，外部审查工具返回 401；主 agent 已完成审计；提交记录：待补 commit SHA
+**完成证据:** `bab8663`；`rtk npm run build`；算法练习页 fixture 覆盖题干、约束、示例、标签、Python/JavaScript/Go/Java/C/C++ 语言切换、空代码/错误代码/通过用例状态、正确性/复杂度/边界 case/建议评审面板；reviewer 结论：未运行 reviewer，外部审查工具返回 401；主 agent 已完成审计
 **阻塞原因:** none
 
 ### 目标
