@@ -1,0 +1,16 @@
+[package]
+name = "interview-agent-desktop"
+version = "0.1.0"
+description = "Desktop shell for the Interview Agent GUI."
+edition = "2021"
+build = "build.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"

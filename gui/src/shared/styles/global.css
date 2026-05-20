@@ -157,6 +157,36 @@ h3 {
   background: #eef8f1;
 }
 
+.runtime-strip > div {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.runtime-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.runtime-actions button {
+  min-height: 32px;
+  border: 1px solid #b7d7c6;
+  border-radius: 8px;
+  color: var(--steel);
+  background: #f8fff8;
+}
+
+.file-choice,
+.runtime-error {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.runtime-error {
+  color: var(--red);
+}
+
 .status-dot {
   flex: 0 0 auto;
   width: 10px;

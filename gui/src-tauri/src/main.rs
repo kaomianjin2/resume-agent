@@ -1,0 +1,345 @@
+use serde::{Deserialize, Serialize};
+use std::{
+    path::PathBuf,
+    process::{Child, Command, ExitStatus, Stdio},
+    sync::Mutex,
+    thread,
+    time::Duration,
+};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+use tauri::Manager;
+
+const CONFIG_PATH: &str = "config/interview-agent.toml";
+const PYTHON_STATUS_SCRIPT: &str = r#"
+from pathlib import Path
+import json
+from interview_agent.config import load_config
+from interview_agent.storage import get_knowledge_base_status
+
+config_path = Path("config/interview-agent.toml")
+config = load_config(config_path)
+print(json.dumps({
+    "config_path": str(config_path),
+    "knowledge_base_status": get_knowledge_base_status(config.storage.database_path),
+}))
+"#;
+
+#[derive(Default)]
+struct DesktopState {
+    runtime: Mutex<RuntimeState>,
+}
+
+#[derive(Default)]
+struct RuntimeState {
+    python_process: Option<Child>,
+    resume_path: Option<String>,
+    jd_path: Option<String>,
+    last_error: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeSnapshot {
+    is_desktop_shell: bool,
+    python_runtime_running: bool,
+    knowledge_base_status: String,
+    config_path: String,
+    resume_path: Option<String>,
+    jd_path: Option<String>,
+    last_error: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum MaterialKind {
+    Resume,
+    Jd,
+}
+
+#[derive(Deserialize)]
+struct PythonStatus {
+    knowledge_base_status: String,
+}
+
+impl Drop for DesktopState {
+    fn drop(&mut self) {
+        if let Ok(mut runtime_state) = self.runtime.lock() {
+            stop_process(&mut runtime_state);
+        }
+    }
+}
+
+#[tauri::command]
+fn runtime_snapshot(state: tauri::State<'_, DesktopState>) -> Result<RuntimeSnapshot, String> {
+    let mut runtime_state = state.runtime.lock().map_err(|_| "runtime state lock failed".to_string())?;
+    Ok(build_snapshot(&mut runtime_state))
+}
+
+#[tauri::command]
+fn remember_material_file(
+    kind: MaterialKind,
+    path: String,
+    state: tauri::State<'_, DesktopState>,
+) -> Result<RuntimeSnapshot, String> {
+    let mut runtime_state = state.runtime.lock().map_err(|_| "runtime state lock failed".to_string())?;
+    match kind {
+        MaterialKind::Resume => runtime_state.resume_path = Some(path),
+        MaterialKind::Jd => runtime_state.jd_path = Some(path),
+    }
+    runtime_state.last_error = None;
+    Ok(build_snapshot(&mut runtime_state))
+}
+
+#[tauri::command]
+fn start_python_runtime(state: tauri::State<'_, DesktopState>) -> Result<RuntimeSnapshot, String> {
+    let mut runtime_state = state.runtime.lock().map_err(|_| "runtime state lock failed".to_string())?;
+    if child_is_running(&mut runtime_state) {
+        return Ok(build_snapshot(&mut runtime_state));
+    }
+
+    let repo_root = repo_root()?;
+    let mut command = managed_command("uv");
+    let child_process = command
+        .args(["run", "interview-agent", "--config", CONFIG_PATH])
+        .current_dir(repo_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("failed to start Python runtime: {error}"))?;
+
+    runtime_state.python_process = Some(child_process);
+    thread::sleep(Duration::from_millis(300));
+    if !child_is_running(&mut runtime_state) {
+        runtime_state.last_error = Some("Python runtime exited during startup".to_string());
+    } else {
+        runtime_state.last_error = None;
+    }
+    Ok(build_snapshot(&mut runtime_state))
+}
+
+#[tauri::command]
+fn stop_python_runtime(state: tauri::State<'_, DesktopState>) -> Result<RuntimeSnapshot, String> {
+    let mut runtime_state = state.runtime.lock().map_err(|_| "runtime state lock failed".to_string())?;
+    stop_process(&mut runtime_state);
+    runtime_state.last_error = None;
+    Ok(build_snapshot(&mut runtime_state))
+}
+
+fn build_snapshot(runtime_state: &mut RuntimeState) -> RuntimeSnapshot {
+    let python_runtime_running = child_is_running(runtime_state);
+    let knowledge_base_status = match probe_knowledge_base_status() {
+        Ok(status) => status,
+        Err(error_message) => {
+            runtime_state.last_error = Some(error_message);
+            "unavailable".to_string()
+        }
+    };
+
+    RuntimeSnapshot {
+        is_desktop_shell: true,
+        python_runtime_running,
+        knowledge_base_status,
+        config_path: CONFIG_PATH.to_string(),
+        resume_path: runtime_state.resume_path.clone(),
+        jd_path: runtime_state.jd_path.clone(),
+        last_error: runtime_state.last_error.clone(),
+    }
+}
+
+fn child_is_running(runtime_state: &mut RuntimeState) -> bool {
+    let child_status = match runtime_state.python_process.as_mut() {
+        Some(child_process) => child_process.try_wait(),
+        None => return false,
+    };
+
+    match child_status {
+        Ok(None) => true,
+        Ok(Some(_)) => {
+            runtime_state.python_process = None;
+            false
+        }
+        Err(error) => {
+            runtime_state.last_error = Some(error.to_string());
+            runtime_state.python_process = None;
+            false
+        }
+    }
+}
+
+fn stop_process(runtime_state: &mut RuntimeState) {
+    if let Some(mut child_process) = runtime_state.python_process.take() {
+        terminate_child_process(&mut child_process);
+    }
+}
+
+fn terminate_child_process(child_process: &mut Child) -> Option<ExitStatus> {
+    terminate_process_group(child_process.id());
+    if let Some(exit_status) = wait_for_child_exit(child_process, Duration::from_millis(500)) {
+        return Some(exit_status);
+    }
+
+    let _ = child_process.kill();
+    child_process.wait().ok()
+}
+
+fn managed_command(program: &str) -> Command {
+    let mut command = Command::new(program);
+    #[cfg(unix)]
+    {
+        command.process_group(0);
+    }
+    command
+}
+
+fn wait_for_child_exit(child_process: &mut Child, timeout: Duration) -> Option<ExitStatus> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child_process.try_wait() {
+            Ok(Some(exit_status)) => return Some(exit_status),
+            Ok(None) if std::time::Instant::now() < deadline => thread::sleep(Duration::from_millis(20)),
+            Ok(None) => return None,
+            Err(_) => return None,
+        }
+    }
+}
+
+#[cfg(unix)]
+fn terminate_process_group(process_id: u32) {
+    let process_group_id = -(process_id as i32);
+    unsafe {
+        libc::kill(process_group_id, libc::SIGTERM);
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_process_group(_process_id: u32) {
+}
+
+fn cleanup_python_runtime(state: &DesktopState) {
+    if let Ok(mut runtime_state) = state.runtime.lock() {
+        stop_process(&mut runtime_state);
+    }
+}
+
+fn probe_knowledge_base_status() -> Result<String, String> {
+    let output = Command::new("uv")
+        .args(["run", "python", "-c", PYTHON_STATUS_SCRIPT])
+        .current_dir(repo_root()?)
+        .output()
+        .map_err(|error| format!("failed to probe Python runtime: {error}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+
+    let status: PythonStatus = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("failed to parse Python runtime status: {error}"))?;
+    Ok(status.knowledge_base_status)
+}
+
+fn repo_root() -> Result<PathBuf, String> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .parent()
+        .and_then(|gui_dir| gui_dir.parent())
+        .map(PathBuf::from)
+        .ok_or_else(|| "failed to resolve repository root".to_string())
+}
+
+fn main() {
+    tauri::Builder::default()
+        .manage(DesktopState::default())
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                cleanup_python_runtime(window.state::<DesktopState>().inner());
+            }
+        })
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            runtime_snapshot,
+            remember_material_file,
+            start_python_runtime,
+            stop_python_runtime,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Interview Agent desktop shell");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminate_child_process_stops_running_process() {
+        let mut child_process = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep process");
+
+        let process_id = child_process.id();
+        let _ = terminate_child_process(&mut child_process);
+        let process_still_running = Command::new("kill")
+            .args(["-0", &process_id.to_string()])
+            .status()
+            .expect("check process status")
+            .success();
+
+        assert!(!process_still_running);
+    }
+
+    #[test]
+    fn stop_process_clears_runtime_child() {
+        let child_process = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep process");
+        let mut runtime_state = RuntimeState {
+            python_process: Some(child_process),
+            ..RuntimeState::default()
+        };
+
+        stop_process(&mut runtime_state);
+
+        assert!(runtime_state.python_process.is_none());
+    }
+
+    #[test]
+    fn terminate_child_process_stops_process_tree() {
+        let pid_file = std::env::temp_dir().join(format!(
+            "interview-agent-desktop-child-{}.pid",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&pid_file);
+        let script = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
+        let mut child_process = managed_command("sh")
+            .args(["-c", &script])
+            .spawn()
+            .expect("spawn shell process");
+
+        for _ in 0..50 {
+            if pid_file.exists() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+
+        let grandchild_process_id = std::fs::read_to_string(&pid_file)
+            .expect("read grandchild pid")
+            .trim()
+            .to_string();
+
+        let _ = terminate_child_process(&mut child_process);
+        let process_still_running = Command::new("kill")
+            .args(["-0", &grandchild_process_id])
+            .status()
+            .expect("check process status")
+            .success();
+        if process_still_running {
+            let _ = Command::new("kill").arg(&grandchild_process_id).status();
+        }
+        let _ = std::fs::remove_file(&pid_file);
+
+        assert!(!process_still_running);
+    }
+}
