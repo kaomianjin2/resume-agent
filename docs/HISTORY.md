@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-05-21 - GUI UI 原型还原
+
+- 测试命令：`rtk npm run build`；`rtk npm run test:desktop`；`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_cli.py -k "mock_interview"`；`rtk npm run preview -- --port 4173`；Playwright 桌面截图和控制台验收
+- reviewer 结论：subagent 指出 UI 原型还原、prep 信息槽位和右侧检查面板需修复；主 agent 已按原型修复并完成浏览器复核
+- 影响范围：`gui/src/app/App.tsx`；`gui/src/app/fixtureData.ts`；`gui/src/app/layout/ShellLayout.tsx`；`gui/src/app/layout/Sidebar.tsx`；`gui/src/app/layout/Workspace.tsx`；`gui/src/app/layout/ReviewPanel.tsx`；`gui/src/modules/prep/PrepModule.tsx`；`gui/src/shared/styles/global.css`；`docs/HISTORY.md`
+- 变更摘要：
+  - 将 GUI 视觉主题从浅色纸张风格恢复为 `docs/gui-mvp-cyberpunk-mockup.html` 的深色赛博朋克三栏界面。
+  - 面试准备页恢复原型标题、摘要卡、导入按钮、准备包预览和 `简历摘要 / 岗位重点 / 匹配度 / 优势 / 风险 / 追问重点` 六个可见信息槽位。
+  - 准备检查面板恢复原型的大号准备完整度、匹配度、追问点、材料状态和建议卡片结构。
+
 ## 2026-05-20 - GUI Phase 6: 桌面壳集成
 
 - 测试命令：`rtk npm run test:desktop`；`rtk npm run build`；`rtk npm run tauri build`；`cargo test`；`rtk uv run pytest tests/test_gui_runtime.py`

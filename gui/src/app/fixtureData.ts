@@ -22,8 +22,8 @@ export const moduleViewModels: ModuleViewModel[] = [
     id: "prep",
     label: "面试准备",
     eyebrow: "Preparation",
-    title: "岗位材料整理台",
-    summary: "接入运行时准备结果，集中查看简历摘要、岗位重点、匹配报告和追问方向。",
+    title: "面试准备",
+    summary: "把简历、JD 和匹配报告整理成一页可读摘要，再进入模拟面试。",
     primaryAction: "查看摘要",
     secondaryAction: "查看匹配点",
     checks: [

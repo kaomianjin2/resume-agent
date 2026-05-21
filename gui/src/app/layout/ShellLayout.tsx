@@ -3,25 +3,24 @@ import { Sidebar } from "./Sidebar";
 import { Workspace } from "./Workspace";
 import { ReviewPanel } from "./ReviewPanel";
 import { DesktopRuntimeSnapshot, MaterialKind } from "../../shared/desktop/desktopBridge";
+import { PrepViewModel } from "../../shared/api/prep";
 
 type ShellLayoutProps = {
   activeModule: ModuleViewModel;
   activeModuleId: ModuleId;
   desktopSnapshot: DesktopRuntimeSnapshot | null;
+  prepViewModel: PrepViewModel;
   onModuleChange: (moduleId: ModuleId) => void;
   onSelectMaterialFile: (kind: MaterialKind) => void;
-  onStartPythonRuntime: () => void;
-  onStopPythonRuntime: () => void;
 };
 
 export function ShellLayout({
   activeModule,
   activeModuleId,
   desktopSnapshot,
+  prepViewModel,
   onModuleChange,
   onSelectMaterialFile,
-  onStartPythonRuntime,
-  onStopPythonRuntime,
 }: ShellLayoutProps) {
   return (
     <main className="shell-layout">
@@ -29,12 +28,13 @@ export function ShellLayout({
         activeModuleId={activeModuleId}
         desktopSnapshot={desktopSnapshot}
         onModuleChange={onModuleChange}
-        onSelectMaterialFile={onSelectMaterialFile}
-        onStartPythonRuntime={onStartPythonRuntime}
-        onStopPythonRuntime={onStopPythonRuntime}
       />
-      <Workspace activeModule={activeModule} />
-      <ReviewPanel activeModule={activeModule} />
+      <Workspace
+        activeModule={activeModule}
+        prepViewModel={prepViewModel}
+        onSelectMaterialFile={onSelectMaterialFile}
+      />
+      <ReviewPanel activeModule={activeModule} prepViewModel={prepViewModel} />
     </main>
   );
 }

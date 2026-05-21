@@ -1,0 +1,36 @@
+# Dependencies and virtual environments
+.venv/
+venv/
+node_modules/
+gui/node_modules/
+
+# Build and test outputs
+build/
+dist/
+htmlcov/
+output/
+gui/dist/
+gui/.test-build/
+gui/tsconfig.tsbuildinfo
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.playwright-cli/
+
+# Generated Python files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Local project state and large assets
+config/interview-agent.toml
+data/
+models/
+
+# Local editor, OS, and logs
+.DS_Store
+.idea/
+.vscode/
+*.log

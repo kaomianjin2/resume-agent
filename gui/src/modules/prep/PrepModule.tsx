@@ -7,8 +7,15 @@ type PrepModuleProps = {
 export function PrepModule({ viewModel }: PrepModuleProps) {
   if (viewModel.status === "missing_inputs") {
     return (
-      <div className="module-grid prep-module">
-        <section className="content-panel wide">
+      <div className="prep-module">
+        <section className="problem-card">
+          <div className="problem-card-body">
+            <p className="meta-label">准备摘要</p>
+            <h3>把材料先翻译成能直接使用的面试语言</h3>
+            <p className="body-copy">这一页只保留结论和追问方向，不展示原始结构化输出。</p>
+          </div>
+        </section>
+        <section className="prep-board">
           <p className="meta-label">材料状态</p>
           <h3>请先导入简历和 JD</h3>
           <p className="body-copy">缺少 {viewModel.missingInputs.join("、")}，补齐后展示匹配报告和准备摘要。</p>
@@ -18,56 +25,63 @@ export function PrepModule({ viewModel }: PrepModuleProps) {
   }
 
   return (
-    <div className="module-grid prep-module">
-      <section className="content-panel wide">
-        <p className="meta-label">匹配报告</p>
-        <h3>{viewModel.jdSummary.role}匹配度：{viewModel.matchSummary.score}</h3>
-        <div className="tag-row">
-          {viewModel.matchSummary.strengths.map((strengthItem) => (
-            <span className="tag" key={strengthItem}>{strengthItem}</span>
-          ))}
+    <div className="prep-module">
+      <section className="problem-card">
+        <div className="problem-card-body">
+          <p className="meta-label">准备摘要</p>
+          <h3>把材料先翻译成能直接使用的面试语言</h3>
+          <p className="body-copy">这一页只保留结论和追问方向，不展示原始结构化输出。</p>
+          <div className="summary-strip">
+            <span className="tag">简历强项</span>
+            <span className="tag">岗位重点</span>
+            <span className="tag">追问缺口</span>
+          </div>
         </div>
       </section>
 
-      <section className="content-panel">
-        <p className="meta-label">候选人画像</p>
-        <h3>{viewModel.resumeSummary.name}</h3>
-        <p className="body-copy">{viewModel.resumeSummary.headline}</p>
-        <ul className="clean-list">
-          {viewModel.resumeSummary.highlights.map((highlightItem) => (
-            <li key={highlightItem}>{highlightItem}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="content-panel">
-        <p className="meta-label">岗位重点</p>
-        <h3>{viewModel.jdSummary.role}</h3>
-        <ul className="clean-list">
-          {viewModel.jdSummary.focus.map((focusItem) => (
-            <li key={focusItem}>{focusItem}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="content-panel">
-        <p className="meta-label">风险</p>
-        <h3>面试前补强</h3>
-        <ul className="clean-list">
-          {viewModel.matchSummary.risks.map((riskItem) => (
-            <li key={riskItem}>{riskItem}</li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="content-panel">
-        <p className="meta-label">追问重点</p>
-        <h3>建议验证方向</h3>
-        <ul className="clean-list">
-          {viewModel.matchSummary.followUpFocus.map((followUpItem) => (
-            <li key={followUpItem}>{followUpItem}</li>
-          ))}
-        </ul>
+      <section className="prep-board">
+        <div className="prep-board-head">
+          <span className="meta-label">准备包预览</span>
+          <span className="body-copy">先看懂，再去模拟面试模块生成题目和追问</span>
+        </div>
+        <div className="prep-board-body">
+          <article className="prep-row">
+            <div className="prep-row-label">简历摘要</div>
+            <div className="prep-row-text">
+              <strong>{viewModel.resumeSummary.name}</strong>：{viewModel.resumeSummary.headline}；{viewModel.resumeSummary.highlights.join("、")}。
+            </div>
+          </article>
+          <article className="prep-row">
+            <div className="prep-row-label">岗位重点</div>
+            <div className="prep-row-text">
+              岗位关注 <strong>{viewModel.jdSummary.role}</strong> 的核心能力，包括 {viewModel.jdSummary.focus.join("、")}。
+            </div>
+          </article>
+          <article className="prep-row">
+            <div className="prep-row-label">匹配度</div>
+            <div className="prep-row-text">
+              整体匹配度 <strong>{viewModel.matchSummary.score} / 100</strong>，匹配报告可直接用于模拟面试。
+            </div>
+          </article>
+          <article className="prep-row">
+            <div className="prep-row-label">优势</div>
+            <div className="prep-row-text">
+              {viewModel.matchSummary.strengths.join("、")}
+            </div>
+          </article>
+          <article className="prep-row">
+            <div className="prep-row-label">风险</div>
+            <div className="prep-row-text">
+              {viewModel.matchSummary.risks.join("、")}
+            </div>
+          </article>
+          <article className="prep-row">
+            <div className="prep-row-label">追问重点</div>
+            <div className="prep-row-text">
+              {viewModel.matchSummary.followUpFocus.join("、")}
+            </div>
+          </article>
+        </div>
       </section>
     </div>
   );

@@ -7,26 +7,18 @@ import {
   MaterialKind,
   selectMaterialFile,
   snapshotWithDesktopError,
-  startPythonRuntime,
-  stopPythonRuntime,
 } from "../shared/desktop/desktopBridge";
+import { getPrepViewModel } from "../shared/api/prep";
 
 export function App() {
   const [activeModuleId, setActiveModuleId] = useState<ModuleId>("prep");
   const [desktopSnapshot, setDesktopSnapshot] = useState<DesktopRuntimeSnapshot | null>(null);
   const activeModule = getModuleViewModel(activeModuleId);
+  const prepViewModel = getPrepViewModel();
 
   useEffect(() => {
     void handleDesktopAction(loadDesktopSnapshot);
   }, []);
-
-  async function handleStartPythonRuntime() {
-    await handleDesktopAction(startPythonRuntime);
-  }
-
-  async function handleStopPythonRuntime() {
-    await handleDesktopAction(stopPythonRuntime);
-  }
 
   async function handleSelectMaterialFile(kind: MaterialKind) {
     await handleDesktopAction(() => selectMaterialFile(kind));
@@ -45,10 +37,9 @@ export function App() {
       activeModule={activeModule}
       activeModuleId={activeModuleId}
       desktopSnapshot={desktopSnapshot}
+      prepViewModel={prepViewModel}
       onModuleChange={setActiveModuleId}
       onSelectMaterialFile={handleSelectMaterialFile}
-      onStartPythonRuntime={handleStartPythonRuntime}
-      onStopPythonRuntime={handleStopPythonRuntime}
     />
   );
 }
