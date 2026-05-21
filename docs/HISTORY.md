@@ -23,6 +23,20 @@
 
 ## 历史记录
 
+## 2026-05-21 - GUI UI 原型视觉级完全还原
+
+- Tracking ID：`gui-ui-restore`
+- 测试命令：`rtk npm run build`；`rtk python3 -m http.server 4173`；`rtk python3 -m http.server 4174`；Playwright 采集 1440x900、1180x900、820x900 当前实现截图；Playwright 采集 1440x900 原型截图；Playwright DOM 量测三视口布局与关键组件样式
+- reviewer 结论：最终视觉验收通过；当前实现与 `docs/gui-mvp-cyberpunk-mockup.html` 在 1440x900 下无结构性差异，1180x900、820x900 断点行为一致；业务数据值保留动态来源
+- 影响范围：`docs/GUI_UI_RESTORE_PLAN.md`；`docs/HISTORY.md`
+- 完成证据：
+  - 当前实现截图：`.playwright-cli/page-2026-05-21T09-14-26-873Z.png`、`.playwright-cli/page-2026-05-21T09-14-46-503Z.png`、`.playwright-cli/page-2026-05-21T09-15-07-249Z.png`
+  - 原型截图：`.playwright-cli/page-2026-05-21T09-15-36-751Z.png`
+  - DOM 量测：1440x900 为 `220px 780px 360px`；1180x900 为 `200px 918px` 且右栏在第二列；820x900 为 `792px` 单列；三视口无横向滚动
+- 变更摘要：
+  - 完成 GUI UI 还原最终浏览器验收，确认深色霓虹主题、三栏布局、准备页结构、准备板密度和右侧检查面板结构达标。
+  - 保留真实业务文案和值的动态来源，不修改后端、配置、数据库、依赖和部署流程。
+
 ## 2026-05-21 - GUI UI 原型还原
 
 - 测试命令：`rtk npm run build`；`rtk npm run test:desktop`；`rtk uv run pytest tests/test_gui_runtime.py`；`rtk uv run pytest tests/test_cli.py -k "mock_interview"`；`rtk npm run preview -- --port 4173`；Playwright 桌面截图和控制台验收

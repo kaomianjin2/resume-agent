@@ -211,6 +211,10 @@ h3 {
   overflow: hidden;
 }
 
+.workspace:has(.prep-module) {
+  grid-template-rows: auto auto minmax(420px, 1fr);
+}
+
 .workspace-header {
   display: flex;
   gap: 14px;
@@ -258,11 +262,16 @@ select {
   min-height: 0;
 }
 
+.workspace:has(.prep-module) .prep-module {
+  display: contents;
+}
+
 .problem-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  margin-top: 18px;
   padding: 18px;
   border: 1px solid rgba(168, 85, 247, 0.34);
   border-radius: 8px;
@@ -302,11 +311,19 @@ select {
 .prep-board,
 .content-panel {
   display: grid;
-  gap: 10px;
   padding: 18px;
   border: 1px solid rgba(70, 246, 255, 0.22);
   border-radius: 8px;
   background: #070a18;
+}
+
+.prep-board {
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.content-panel {
+  gap: 10px;
 }
 
 .prep-board-head {
@@ -320,14 +337,14 @@ select {
 
 .prep-board-body {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .prep-row {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
   gap: 12px;
-  padding: 11px 16px;
+  padding: 14px 16px;
   border: 1px solid rgba(146, 151, 255, 0.18);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
@@ -340,8 +357,9 @@ select {
 }
 
 .prep-row-text {
+  color: var(--muted);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.7;
 }
 
 .prep-row-text strong,
@@ -357,7 +375,7 @@ select {
 
 .review-panel {
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 14px;
   padding: 18px;
 }

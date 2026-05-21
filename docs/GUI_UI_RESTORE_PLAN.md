@@ -47,21 +47,21 @@
 
 | Task | 状态 | Tracking ID | 依赖 | 影响范围 | 完成证据 |
 | --- | --- | --- | --- | --- | --- |
-| Task 0 审查基线固化 | `[ ]` | `gui-ui-restore-0-baseline` | 无 | 文档与截图 | 待填写 |
-| Task 1 中栏布局还原 | `[ ]` | `gui-ui-restore-1-workspace` | Task 0 | `global.css` | 待填写 |
-| Task 2 准备板密度还原 | `[ ]` | `gui-ui-restore-2-prep-board` | Task 1 | `global.css`、`PrepModule.tsx` | 待填写 |
-| Task 3 右侧检查面板还原 | `[ ]` | `gui-ui-restore-3-review-panel` | Task 1 | `global.css`、`ReviewPanel.tsx` | 待填写 |
-| Task 4 响应式还原 | `[ ]` | `gui-ui-restore-4-responsive` | Task 1-3 | `global.css` | 待填写 |
-| Task 5 最终视觉验收与记录 | `[ ]` | `gui-ui-restore-5-final-review` | Task 1-4 | `docs/HISTORY.md` | 待填写 |
+| Task 0 审查基线固化 | `[x]` | `gui-ui-restore-0-baseline` | 无 | 文档与截图 | `rtk npm run build` 通过；`.playwright-cli/page-2026-05-21T04-14-04-414Z.png`；`.playwright-cli/page-2026-05-21T04-14-05-309Z.png` |
+| Task 1 中栏布局还原 | `[x]` | `gui-ui-restore-1-workspace` | Task 0 | `global.css` | `rtk npm run build` 通过；`output/playwright/gui-ui-restore-task1-1440x900.png`；对照 `output/playwright/gui-ui-restore-task1-prototype-1440x900.png`，`problem-card` 高度 162px vs 164px，`prep-board` 起点 298px vs 293px |
+| Task 2 准备板密度还原 | `[x]` | `gui-ui-restore-2-prep-board` | Task 1 | `global.css`、`PrepModule.tsx` | `rtk npm run build` 通过；`output/playwright/gui-ui-restore-task2-1440x900.png`；DOM 量测 `.prep-board` gap `12px`、padding `18px`，`.prep-row` padding `14px 16px`、line-height `22.1px`，6 个业务槽位保留且无横向溢出 |
+| Task 3 右侧检查面板还原 | `[x]` | `gui-ui-restore-3-review-panel` | Task 1 | `global.css`、`ReviewPanel.tsx` | `rtk npm run build` 通过；`output/playwright/gui-ui-restore-task3-1440x900.png`；DOM 量测 `.review-panel` CSS 指定为 `grid-template-rows: auto auto 1fr`，分数卡为 `92`，metrics 为 `匹配度`、`追问点`、`材料状态`，suggestions 为 `补齐项目背景`、`优先准备弱项`、`保留常见问题`，动态匹配分显示 `91 / 100` |
+| Task 4 响应式还原 | `[x]` | `gui-ui-restore-4-responsive` | Task 1-3 | `global.css` | `rtk npm run build` 通过；`.playwright-cli/page-2026-05-21T04-51-34-727Z.png`；`.playwright-cli/page-2026-05-21T04-52-06-263Z.png`；`.playwright-cli/page-2026-05-21T04-52-38-223Z.png`；DOM 量测 1440x900 为 `220px 780px 360px`，1180x900 为 `200px 918px` 且 `.review-panel` 在第二列下方，820x900 为 `792px` 单列且无横向滚动 |
+| Task 5 最终视觉验收与记录 | `[x]` | `gui-ui-restore-5-final-review` | Task 1-4 | `docs/HISTORY.md` | `rtk npm run build` 通过；当前实现截图 `.playwright-cli/page-2026-05-21T09-14-26-873Z.png`、`.playwright-cli/page-2026-05-21T09-14-46-503Z.png`、`.playwright-cli/page-2026-05-21T09-15-07-249Z.png`；原型截图 `.playwright-cli/page-2026-05-21T09-15-36-751Z.png`；DOM 量测 1440x900 为 `220px 780px 360px`，1180x900 为 `200px 918px` 且右栏在第二列，820x900 为 `792px` 单列；三视口无横向滚动；`docs/HISTORY.md` 已记录 |
 
 ## Task 0：审查基线固化
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Tracking ID:** `gui-ui-restore-0-baseline`
 **Owner:** main agent
 **Dependencies:** none
 **Write Scope:** 无代码修改；只读审查
-**完成证据:** 待填写
+**完成证据:** `rtk npm run build` 通过；当前实现截图 `.playwright-cli/page-2026-05-21T04-14-04-414Z.png`；原型截图 `.playwright-cli/page-2026-05-21T04-14-05-309Z.png`；差异清单已固化，聚焦中栏布局高度、准备板密度、右侧 suggestions 数量、响应式行为。
 **阻塞原因:** none
 
 ### 目标
@@ -82,14 +82,21 @@
 - 不改任何源码。
 - 不把动态业务值列为必须逐字还原项。
 
+### 差异清单
+
+- 中栏布局高度：当前 `.workspace` 为 `grid-template-rows: auto minmax(0, 1fr)`，`PrepModule` 被放入第二行后拉伸，1440x900 下 `problem-card` 高度明显高于原型。
+- 准备板密度：当前保留 6 行真实业务槽位，行距和行高比原型 3 行预览更紧，后续必须保留业务槽位并还原行式预览观感。
+- 右侧 suggestions 数量：当前 prep 检查面板显示 2 条 suggestion，原型显示 3 条，缺少 `保留常见问题`。
+- 响应式行为：当前 CSS 有 1180px、820px 断点，后续 Task 4 需要补采 1180x900、820x900 截图验证结构差异。
+
 ## Task 1：中栏布局还原
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Tracking ID:** `gui-ui-restore-1-workspace`
 **Owner:** implementer
 **Dependencies:** Task 0
 **Write Scope:** `gui/src/shared/styles/global.css`
-**完成证据:** 待填写
+**完成证据:** `rtk npm run build` 通过；`output/playwright/gui-ui-restore-task1-1440x900.png`；对照 `output/playwright/gui-ui-restore-task1-prototype-1440x900.png`，`.workspace` 计算行高为 `57.7812px 179.531px 576.688px`，原型为 `49.7812px 182.188px 582.031px`；`problem-card` 高度 162px vs 164px；`prep-board` 起点 298px vs 293px；`导入简历`、`导入 JD` 保持右上角。
 **阻塞原因:** none
 
 ### 目标
@@ -113,12 +120,12 @@
 
 ## Task 2：准备板密度还原
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Tracking ID:** `gui-ui-restore-2-prep-board`
 **Owner:** implementer
 **Dependencies:** Task 1
 **Write Scope:** `gui/src/shared/styles/global.css`、`gui/src/modules/prep/PrepModule.tsx`
-**完成证据:** 待填写
+**完成证据:** `rtk npm run build` 通过；`output/playwright/gui-ui-restore-task2-1440x900.png`；DOM 量测 `.prep-board` gap `12px`、padding `18px`，`.prep-board-body` gap `12px`，`.prep-row` padding `14px 16px`、line-height `22.1px`、grid columns `180px 474px`；6 个业务槽位为 `简历摘要`、`岗位重点`、`匹配度`、`优势`、`风险`、`追问重点`；按钮列表仅含模块导航、`导入简历`、`导入 JD`；1440x900 下无横向溢出。
 **阻塞原因:** none
 
 ### 目标
@@ -142,12 +149,12 @@
 
 ## Task 3：右侧检查面板还原
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Tracking ID:** `gui-ui-restore-3-review-panel`
 **Owner:** implementer
 **Dependencies:** Task 1
 **Write Scope:** `gui/src/shared/styles/global.css`、`gui/src/app/layout/ReviewPanel.tsx`
-**完成证据:** 待填写
+**完成证据:** `rtk npm run build` 通过；`output/playwright/gui-ui-restore-task3-1440x900.png`；DOM 量测 `.review-panel` CSS 指定为 `grid-template-rows: auto auto 1fr`，分数卡为 `92`，metrics 为 `匹配度`、`追问点`、`材料状态`，suggestions 为 `补齐项目背景`、`优先准备弱项`、`保留常见问题`，动态匹配分显示 `91 / 100`。
 **阻塞原因:** none
 
 ### 目标
@@ -172,12 +179,12 @@
 
 ## Task 4：响应式还原
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Tracking ID:** `gui-ui-restore-4-responsive`
 **Owner:** implementer
 **Dependencies:** Task 1、Task 2、Task 3
 **Write Scope:** `gui/src/shared/styles/global.css`
-**完成证据:** 待填写
+**完成证据:** `rtk npm run build` 通过；截图 `.playwright-cli/page-2026-05-21T04-51-34-727Z.png`、`.playwright-cli/page-2026-05-21T04-52-06-263Z.png`、`.playwright-cli/page-2026-05-21T04-52-38-223Z.png`；DOM 量测 1440x900 `.shell-layout` 为 `220px 780px 360px`，1180x900 为 `200px 918px` 且 `.review-panel` `gridColumnStart` 为 `2`，820x900 为 `792px` 单列；三种视口 `scrollWidth` 等于 `clientWidth`。
 **阻塞原因:** none
 
 ### 目标
@@ -201,12 +208,12 @@
 
 ## Task 5：最终视觉验收与记录
 
-**Status:** `[ ]`
+**Status:** `[x]`
 **Tracking ID:** `gui-ui-restore-5-final-review`
 **Owner:** main agent
 **Dependencies:** Task 1、Task 2、Task 3、Task 4
 **Write Scope:** `docs/HISTORY.md`
-**完成证据:** 待填写
+**完成证据:** `rtk npm run build` 通过；当前实现截图 `.playwright-cli/page-2026-05-21T09-14-26-873Z.png`、`.playwright-cli/page-2026-05-21T09-14-46-503Z.png`、`.playwright-cli/page-2026-05-21T09-15-07-249Z.png`；原型截图 `.playwright-cli/page-2026-05-21T09-15-36-751Z.png`；DOM 量测 1440x900 `.shell-layout` 为 `220px 780px 360px`、`.workspace` 行高为 `57.7812px 179.531px 576.688px`、`.problem-card` 高度 `161.53125px`、`.prep-board` 起点 `298.3125px`、gap `12px`、padding `18px`、suggestions 为 `补齐项目背景`、`优先准备弱项`、`保留常见问题`；原型 1440x900 `.app` 为 `220px 780px 360px`、`.workspace` 行高为 `49.7812px 182.188px 582.031px`、`.problem-card` 高度 `164.1875px`、`.prep-board` 起点 `292.96875px`；1180x900 当前实现为 `200px 918px` 且 `.review-panel` `gridColumnStart` 为 `2`；820x900 当前实现为 `792px` 单列；三视口 `scrollWidth` 等于 `clientWidth`；浏览器会话与本地 HTTP 服务已关闭。
 **阻塞原因:** none
 
 ### 目标

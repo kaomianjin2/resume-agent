@@ -115,11 +115,14 @@
       align-items: center;
       justify-content: space-between;
       min-height: 44px;
+      width: 100%;
       padding: 0 12px;
       border: 1px solid transparent;
       border-radius: 8px;
       color: var(--muted);
       background: rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+      text-align: left;
     }
 
     .nav-item.active {
@@ -127,6 +130,11 @@
       border-color: rgba(70, 246, 255, 0.48);
       background: linear-gradient(90deg, rgba(70, 246, 255, 0.16), rgba(168, 85, 247, 0.18));
       box-shadow: 0 0 28px rgba(70, 246, 255, 0.12);
+    }
+
+    .nav-item:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 3px;
     }
 
     .status {
@@ -411,18 +419,18 @@
       </section>
 
       <nav class="nav" aria-label="主导航">
-        <div class="nav-item active">
+        <button class="nav-item active" type="button" data-module="prep" aria-current="page">
           <span>面试准备</span>
           <span>01</span>
-        </div>
-        <div class="nav-item">
+        </button>
+        <button class="nav-item" type="button" data-module="mock">
           <span>模拟面试</span>
           <span>02</span>
-        </div>
-        <div class="nav-item">
+        </button>
+        <button class="nav-item" type="button" data-module="algorithm">
           <span>算法练习</span>
           <span>03</span>
-        </div>
+        </button>
       </nav>
 
       <section class="status">
@@ -526,5 +534,180 @@
       </section>
     </aside>
   </main>
+  <script>
+    const workspace = document.querySelector(".workspace");
+    const reviewPanel = document.querySelector(".review-panel");
+    const navItems = document.querySelectorAll(".nav-item");
+
+    const modules = {
+      prep: {
+        workspace: workspace.innerHTML,
+        review: reviewPanel.innerHTML,
+      },
+      mock: {
+        workspace: `
+          <header class="topbar">
+            <div>
+              <h1>模拟面试</h1>
+              <p class="meta">围绕准备包生成主问题、追问和答题反馈。</p>
+            </div>
+            <div class="actions">
+              <button>切换题组</button>
+              <button class="primary">开始追问</button>
+            </div>
+          </header>
+          <section class="problem-card">
+            <div class="problem-card-body">
+              <p class="meta">当前问题</p>
+              <h2>你在最近一次后端项目中如何定位接口响应变慢的问题？</h2>
+              <p class="meta">回答后进入层层追问，重点覆盖排障过程、指标选择和复盘动作。</p>
+              <div class="summary-strip">
+                <span class="summary-chip">后端排障</span>
+                <span class="summary-chip">性能优化</span>
+                <span class="summary-chip">项目复盘</span>
+              </div>
+            </div>
+          </section>
+          <section class="prep-board">
+            <div class="prep-board-head">
+              <span class="meta">追问链路</span>
+              <span class="meta">根据回答质量继续深入</span>
+            </div>
+            <div class="prep-board-body">
+              <div class="prep-row">
+                <div class="prep-row-label">第一层</div>
+                <div class="prep-row-text">请先说明你观察到的现象、涉及接口和影响范围。</div>
+              </div>
+              <div class="prep-row">
+                <div class="prep-row-label">第二层</div>
+                <div class="prep-row-text">继续追问日志、监控指标、慢 SQL、缓存命中率和外部依赖。</div>
+              </div>
+              <div class="prep-row">
+                <div class="prep-row-label">反馈方向</div>
+                <div class="prep-row-text">从结构清晰度、证据链完整度和业务影响表达给出改进建议。</div>
+              </div>
+            </div>
+          </section>
+        `,
+        review: `
+          <header class="review-head">
+            <div>
+              <h2>面试反馈</h2>
+              <p class="tab-note">展示本轮回答质量和下一步追问重点。</p>
+            </div>
+          </header>
+          <section class="score-card">
+            <div class="metric-label">回答质量</div>
+            <div class="score">84</div>
+            <p class="hint">已覆盖问题背景和定位路径，缺少更具体的量化指标。</p>
+          </section>
+          <section class="metrics">
+            <div class="metric"><div class="metric-label">结构</div><div class="metric-value">清晰</div></div>
+            <div class="metric"><div class="metric-label">证据</div><div class="metric-value">需补充</div></div>
+            <div class="metric"><div class="metric-label">追问</div><div class="metric-value">3 个</div></div>
+          </section>
+          <section class="suggestions">
+            <div class="suggestion"><strong>补充指标</strong><span>回答中加入 P95、错误率、慢查询数量和恢复耗时。</span></div>
+            <div class="suggestion"><strong>说清取舍</strong><span>解释为什么先查监控，再进入日志和数据库层。</span></div>
+            <div class="suggestion"><strong>沉淀复盘</strong><span>把临时处置和长期治理分开表达。</span></div>
+          </section>
+        `,
+      },
+      algorithm: {
+        workspace: `
+          <header class="topbar">
+            <div>
+              <h1>算法练习</h1>
+              <p class="meta">选择语言，提交完整代码，查看本地运行结果。</p>
+            </div>
+            <div class="actions">
+              <select aria-label="选择语言">
+                <option>Python</option>
+                <option>JavaScript</option>
+                <option>Go</option>
+              </select>
+              <button class="primary">运行代码</button>
+            </div>
+          </header>
+          <section class="problem-card">
+            <div class="problem-card-body">
+              <p class="meta">当前题目</p>
+              <h2>两数之和：返回数组中两个数的下标，使它们相加等于目标值。</h2>
+              <p class="meta">输入 nums = [2, 7, 11, 15], target = 9；输出 [0, 1]。</p>
+              <div class="summary-strip">
+                <span class="summary-chip">哈希表</span>
+                <span class="summary-chip">数组</span>
+                <span class="summary-chip">边界检查</span>
+              </div>
+            </div>
+          </section>
+          <section class="prep-board">
+            <div class="prep-board-head">
+              <span class="meta">代码运行区</span>
+              <span class="meta">空行提交整段代码</span>
+            </div>
+            <div class="prep-board-body">
+              <div class="prep-row">
+                <div class="prep-row-label">输入</div>
+                <div class="prep-row-text">nums = [2, 7, 11, 15], target = 9</div>
+              </div>
+              <div class="prep-row">
+                <div class="prep-row-label">预期输出</div>
+                <div class="prep-row-text">[0, 1]</div>
+              </div>
+              <div class="prep-row">
+                <div class="prep-row-label">边界提示</div>
+                <div class="prep-row-text">处理空数组、重复数字和不存在答案的输入。</div>
+              </div>
+            </div>
+          </section>
+        `,
+        review: `
+          <header class="review-head">
+            <div>
+              <h2>运行结果</h2>
+              <p class="tab-note">展示样例、边界和复杂度反馈。</p>
+            </div>
+          </header>
+          <section class="score-card">
+            <div class="metric-label">通过率</div>
+            <div class="score">3/4</div>
+            <p class="hint">样例通过，空数组边界未返回明确结果。</p>
+          </section>
+          <section class="metrics">
+            <div class="metric"><div class="metric-label">时间复杂度</div><div class="metric-value">O(n)</div></div>
+            <div class="metric"><div class="metric-label">空间复杂度</div><div class="metric-value">O(n)</div></div>
+            <div class="metric"><div class="metric-label">失败用例</div><div class="metric-value">1 个</div></div>
+          </section>
+          <section class="suggestions">
+            <div class="suggestion"><strong>补齐空输入</strong><span>nums 为空时返回空列表，避免运行异常。</span></div>
+            <div class="suggestion"><strong>保留下标</strong><span>哈希表记录值到下标的映射，不要只记录值。</span></div>
+            <div class="suggestion"><strong>说明复杂度</strong><span>提交答案时补充一次遍历的时间和空间成本。</span></div>
+          </section>
+        `,
+      },
+    };
+
+    function activateModule(moduleName) {
+      const selectedModule = modules[moduleName];
+
+      if (!selectedModule) {
+        return;
+      }
+
+      workspace.innerHTML = selectedModule.workspace;
+      reviewPanel.innerHTML = selectedModule.review;
+
+      navItems.forEach((navItem) => {
+        const isActive = navItem.dataset.module === moduleName;
+        navItem.classList.toggle("active", isActive);
+        navItem.toggleAttribute("aria-current", isActive);
+      });
+    }
+
+    navItems.forEach((navItem) => {
+      navItem.addEventListener("click", () => activateModule(navItem.dataset.module));
+    });
+  </script>
 </body>
 </html>

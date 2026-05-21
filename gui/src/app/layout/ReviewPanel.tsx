@@ -53,6 +53,10 @@ export function ReviewPanel({ activeModule, prepViewModel }: ReviewPanelProps) {
             <strong>优先准备弱项</strong>
             <span>围绕匹配度最低的知识点做重点复习，避免模拟面试只覆盖强项。</span>
           </article>
+          <article className="suggestion">
+            <strong>保留常见问题</strong>
+            <span>生成 10 到 15 个高频追问即可，正式题目留到模拟面试模块处理。</span>
+          </article>
         </section>
       </aside>
     );
