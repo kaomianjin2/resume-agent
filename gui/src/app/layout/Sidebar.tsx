@@ -24,11 +24,10 @@ export function Sidebar({
       <section className="brand-block">
         <img className="brand-mark" src={brandLogo} alt="Interview Agent Logo" />
         <h1>Interview Agent</h1>
-        <p className="brand-subtitle">本地桌面面试工作台</p>
       </section>
 
       <nav className="module-nav">
-        {visibleModuleViewModels.map((moduleViewModel, moduleIndex) => (
+        {visibleModuleViewModels.map((moduleViewModel) => (
           <button
             className={moduleViewModel.id === activeModuleId ? "nav-button active" : "nav-button"}
             key={moduleViewModel.id}
@@ -36,7 +35,6 @@ export function Sidebar({
             onClick={() => onModuleChange(moduleViewModel.id)}
           >
             <span>{moduleViewModel.label}</span>
-            <small>{String(moduleIndex + 1).padStart(2, "0")}</small>
           </button>
         ))}
       </nav>
@@ -46,7 +44,6 @@ export function Sidebar({
           <span>{statusLabel}</span>
           <span className="status-dot" aria-hidden="true" />
         </div>
-        <p>桌面壳调用现有 Python 后端，不改知识库构建和会话存储边界。</p>
         {desktopSnapshot?.lastError && <p className="runtime-error">{desktopSnapshot.lastError}</p>}
       </section>
     </aside>
