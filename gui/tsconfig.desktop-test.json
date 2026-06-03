@@ -7,5 +7,10 @@
     "noEmit": false,
     "outDir": ".test-build"
   },
-  "include": ["src/shared/desktop/desktopSnapshot.ts"]
+  "include": [
+    "src/app/fixtureData.ts",
+    "src/shared/desktop/desktopSnapshot.ts",
+    "src/modules/algorithm/AlgorithmModule.tsx",
+    "src/modules/users/UserModule.tsx"
+  ]
 }

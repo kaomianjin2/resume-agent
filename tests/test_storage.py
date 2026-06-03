@@ -6,11 +6,15 @@ from pathlib import Path
 import pytest
 
 from interview_agent.storage import (
+    create_user,
     get_connection,
     get_knowledge_base_status,
     initialize_database,
+    list_users,
     set_knowledge_base_status,
+    set_user_status,
     transaction,
+    verify_login,
 )
 
 
@@ -21,6 +25,7 @@ EXPECTED_TABLES = {
     "node_runs",
     "session_state",
     "sessions",
+    "users",
 }
 
 
@@ -139,3 +144,41 @@ def test_transaction_rolls_back_when_commit_fails(tmp_path: Path) -> None:
     assert session_state_rows[0] == 0
 
     connection.close()
+
+
+def test_user_create_list_and_login(tmp_path: Path) -> None:
+    database_path = tmp_path / "storage.sqlite3"
+    initialize_database(database_path)
+
+    created_user = create_user(
+        database_path,
+        username="admin1",
+        password="pass123",
+        role="admin",
+    )
+    users = list_users(database_path)
+    login_result = verify_login(database_path, username="admin1", password="pass123")
+
+    assert created_user["username"] == "admin1"
+    assert created_user["role"] == "admin"
+    assert created_user["status"] == "enabled"
+    assert len(users) == 1
+    assert users[0]["username"] == "admin1"
+    assert users[0]["role"] == "admin"
+    assert login_result is not None
+    assert login_result["username"] == "admin1"
+    assert login_result["role"] == "admin"
+
+
+def test_disabled_user_cannot_login(tmp_path: Path) -> None:
+    database_path = tmp_path / "storage.sqlite3"
+    initialize_database(database_path)
+    create_user(
+        database_path,
+        username="member1",
+        password="pass123",
+        role="member",
+    )
+
+    assert set_user_status(database_path, username="member1", status="disabled") is True
+    assert verify_login(database_path, username="member1", password="pass123") is None

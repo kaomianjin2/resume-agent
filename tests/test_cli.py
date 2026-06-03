@@ -20,7 +20,7 @@ from interview_agent.llm import OpenAICompatibleClient
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, NodeSpec
 from interview_agent.session import SessionStore
-from interview_agent.storage import initialize_database, set_knowledge_base_status
+from interview_agent.storage import create_user, initialize_database, set_knowledge_base_status
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -146,6 +146,54 @@ def test_does_not_build_knowledge_base_on_startup(tmp_path: Path) -> None:
     assert "知识库未就绪" in output.getvalue()
 
 
+def test_user_commands_and_login_flow(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
+                "/user add admin1 pass123 admin",
+                "/user list",
+                "/login admin1 pass123",
+                "/logout",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    output_text = output.getvalue()
+    assert "用户已创建: admin1 (admin)" in output_text
+    assert "admin1 | 角色: admin | 状态: enabled" in output_text
+    assert "登录成功：admin1 (admin)" in output_text
+    assert "已退出登录：admin1" in output_text
+
+
+def test_login_rejects_disabled_user(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    create_user(database_path, username="member1", password="pass123", role="member", status="disabled")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
+                "/login member1 pass123",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    assert "登录失败：用户名或密码错误，或用户已禁用。" in output.getvalue()
+
+
 def test_interactive_entry_prompts_for_user_input(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
@@ -160,6 +208,23 @@ def test_interactive_entry_prompts_for_user_input(tmp_path: Path) -> None:
     assert exit_code == 0
     assert "请输入需求" in output.getvalue()
     assert SessionStore(database_path).get_all_state(DEFAULT_SESSION_ID) == {}
+
+
+def test_chinese_exit_keyword_exits_without_processing(tmp_path: Path) -> None:
+    _, config_path = prepare_ready_runtime(tmp_path)
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(["退出"]),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    output_text = output.getvalue()
+    assert exit_code == 0
+    assert "已退出。" in output_text
+    assert "已收到需求，我来处理。" not in output_text
 
 
 def test_ctrl_c_exits_interactive_entry_without_traceback(tmp_path: Path) -> None:

@@ -253,6 +253,32 @@ def test_runtime_starts_mock_interview_and_returns_first_question_only(tmp_path:
     assert runtime.get_session_state("mock-session")["mock_interview_view"]["current_prompt"]["text"] == "介绍你最近一次线上延迟排查。"
 
 
+def test_runtime_start_mock_interview_passes_question_type_to_generation(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_mock_runtime_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("mock-session")
+    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+
+    runtime.start_mock_interview(
+        session_id="mock-session",
+        target_role="后端工程师",
+        question_count=2,
+        followup_rounds=1,
+        question_type="项目深挖",
+    )
+
+    mock_state = runtime.get_session_state("mock-session")["mock_interview_state"]
+    assert mock_state["question_type"] == "项目深挖"
+
+
 def test_runtime_start_mock_interview_reports_empty_question_set(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
 
@@ -551,7 +577,7 @@ def build_mock_runtime_registry() -> NodeRegistry:
                 name="question_generate",
                 description="generate progressive questions",
                 required_inputs=("candidate_profile", "target_role"),
-                optional_inputs=("jd_requirements", "question_count"),
+                optional_inputs=("jd_requirements", "question_count", "question_type"),
                 outputs=("questions",),
                 handler=mock_runtime_question_generate_handler,
             ),
@@ -582,7 +608,7 @@ def build_empty_mock_runtime_registry() -> NodeRegistry:
                 name="question_generate",
                 description="generate empty questions",
                 required_inputs=("candidate_profile", "target_role"),
-                optional_inputs=("jd_requirements", "question_count"),
+                optional_inputs=("jd_requirements", "question_count", "question_type"),
                 outputs=("questions",),
                 handler=empty_mock_runtime_question_generate_handler,
             ),
@@ -673,6 +699,7 @@ def mock_runtime_question_generate_handler(context: NodeContext, inputs: dict[st
     assert inputs["candidate_profile"] == {"name": "Alice"}
     assert inputs["target_role"] == "后端工程师"
     assert inputs["question_count"] == 2
+    assert inputs["question_type"] in {"行为面试", "项目深挖"}
     return {
         "questions": [
             "介绍你最近一次线上延迟排查。",
