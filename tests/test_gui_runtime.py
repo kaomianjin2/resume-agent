@@ -185,6 +185,111 @@ def test_runtime_prepares_interview_materials_as_gui_view_model(tmp_path: Path) 
     }
 
 
+def test_runtime_preparation_keeps_synonym_fields_in_summary_and_report(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_synonym_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("prep-session")
+
+    prep_view_model = runtime.prepare_interview_materials(
+        session_id="prep-session",
+        resume_text="Alice led Python retrieval services.",
+        jd_text="Need Backend engineer with Python, retrieval, and reliability.",
+    )
+
+    assert prep_view_model["resume_summary"] == {
+        "name": "Alice",
+        "headline": "后端检索工程师，负责 SLA 和召回评估",
+        "highlights": ["Python", "检索系统", "SLA"],
+    }
+    assert prep_view_model["jd_summary"] == {
+        "role": "后端工程师",
+        "focus": ["Python", "检索链路", "稳定性"],
+    }
+    assert prep_view_model["match_summary"] == {
+        "score": 88,
+        "strengths": ["检索经验贴合", "Python 服务经验"],
+        "risks": ["压测案例不足"],
+        "follow_up_focus": ["SLA 取舍", "召回评估"],
+    }
+
+
+def test_runtime_preparation_keeps_detailed_resume_summary_fields(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_detailed_resume_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("prep-session")
+
+    prep_view_model = runtime.prepare_interview_materials(
+        session_id="prep-session",
+        resume_text="Alice led Golang services and payment reliability.",
+        jd_text="   ",
+    )
+
+    assert prep_view_model["resume_summary"] == {
+        "name": "Alice",
+        "headline": "Golang 后端工程师，6 年服务端与稳定性治理经验",
+        "highlights": [
+            "Golang",
+            "支付链路",
+            "MySQL",
+            "Redis",
+            "主导交易服务重构",
+            "CDN 授权版",
+            "P95 延迟从 900ms 降到 180ms",
+            "SLA 治理",
+            "容量压测",
+        ],
+    }
+
+
+def test_runtime_preparation_maps_nested_chinese_resume_jd_and_match_fields(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_nested_chinese_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("prep-session")
+
+    prep_view_model = runtime.prepare_interview_materials(
+        session_id="prep-session",
+        resume_text="罗天 Golang 6 年经验。",
+        jd_text="golang开发工程师，需要高并发和分布式。",
+    )
+
+    assert prep_view_model["resume_summary"]["name"] == "罗天"
+    assert prep_view_model["resume_summary"]["headline"] == "Golang，6 年经验，本科"
+    assert prep_view_model["jd_summary"] == {
+        "role": "golang开发工程师",
+        "focus": ["负责后端设计开发", "Golang", "高并发", "分布式"],
+    }
+    assert prep_view_model["match_summary"] == {
+        "score": 92,
+        "strengths": ["Golang 后端经验充足"],
+        "risks": ["出差适配不明确"],
+        "follow_up_focus": ["追问高并发项目"],
+    }
+
+
 def test_runtime_preparation_reports_missing_inputs_without_writing_state(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
 
@@ -206,9 +311,108 @@ def test_runtime_preparation_reports_missing_inputs_without_writing_state(tmp_pa
         "resume_summary": {},
         "jd_summary": {},
         "match_summary": {},
-        "missing_inputs": ["resume_text", "jd_text"],
+        "missing_inputs": ["resume_text"],
     }
     assert runtime.get_session_state("prep-session") == {}
+
+
+def test_runtime_prepares_materials_with_resume_only(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("prep-session")
+
+    prep_view_model = runtime.prepare_interview_materials(
+        session_id="prep-session",
+        resume_text="Alice led Python retrieval services.",
+        jd_text="   ",
+    )
+
+    assert prep_view_model == {
+        "session_id": "prep-session",
+        "status": "ready",
+        "resume_summary": {
+            "name": "Alice",
+            "headline": "Python 检索服务负责人",
+            "highlights": ["Python", "检索系统", "可靠性治理"],
+        },
+        "jd_summary": {},
+        "match_summary": {
+            "score": "未评分",
+            "strengths": [],
+            "risks": [],
+            "follow_up_focus": [],
+        },
+        "missing_inputs": [],
+    }
+    assert runtime.get_session_state("prep-session") == {
+        "candidate_profile": {
+            "name": "Alice",
+            "headline": "Python 检索服务负责人",
+            "skills": ["Python", "检索系统"],
+            "highlights": ["Python", "检索系统", "可靠性治理"],
+        },
+        "resume_profile": {
+            "name": "Alice",
+            "headline": "Python 检索服务负责人",
+            "skills": ["Python", "检索系统"],
+            "highlights": ["Python", "检索系统", "可靠性治理"],
+        },
+    }
+
+
+def test_runtime_prepares_jd_after_resume_import_without_reparsing_resume(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_flaky_resume_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("prep-session")
+
+    resume_view_model = runtime.prepare_interview_materials(
+        session_id="prep-session",
+        resume_text="Alice led Python retrieval services.",
+        jd_text="   ",
+    )
+    jd_view_model = runtime.prepare_interview_materials(
+        session_id="prep-session",
+        resume_text="Alice led Python retrieval services.",
+        jd_text="Need Backend engineer with Python, retrieval, and reliability.",
+    )
+
+    assert resume_view_model["status"] == "ready"
+    assert jd_view_model == {
+        "session_id": "prep-session",
+        "status": "ready",
+        "resume_summary": {
+            "name": "Alice",
+            "headline": "Python 检索服务负责人",
+            "highlights": ["Python", "检索系统", "可靠性治理"],
+        },
+        "jd_summary": {
+            "role": "后端工程师",
+            "focus": ["Python", "检索链路", "稳定性"],
+        },
+        "match_summary": {
+            "score": 91,
+            "strengths": ["Python 服务经验", "检索系统经验"],
+            "risks": ["补充压测案例"],
+            "follow_up_focus": ["SLA 取舍", "检索召回评估"],
+        },
+        "missing_inputs": [],
+    }
 
 
 def test_runtime_starts_mock_interview_and_returns_first_question_only(tmp_path: Path) -> None:
@@ -223,7 +427,7 @@ def test_runtime_starts_mock_interview_and_returns_first_question_only(tmp_path:
         services_builder=build_services,
     )
     runtime.create_or_open_session("mock-session")
-    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+    write_prepared_mock_materials(runtime, "mock-session")
 
     view_model = runtime.start_mock_interview(
         session_id="mock-session",
@@ -265,7 +469,7 @@ def test_runtime_start_mock_interview_passes_question_type_to_generation(tmp_pat
         services_builder=build_services,
     )
     runtime.create_or_open_session("mock-session")
-    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+    write_prepared_mock_materials(runtime, "mock-session")
 
     runtime.start_mock_interview(
         session_id="mock-session",
@@ -291,7 +495,7 @@ def test_runtime_start_mock_interview_reports_empty_question_set(tmp_path: Path)
         services_builder=build_services,
     )
     runtime.create_or_open_session("mock-session")
-    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+    write_prepared_mock_materials(runtime, "mock-session")
 
     view_model = runtime.start_mock_interview(
         session_id="mock-session",
@@ -314,7 +518,41 @@ def test_runtime_start_mock_interview_reports_empty_question_set(tmp_path: Path)
     }
 
 
-def test_runtime_submit_mock_answer_requires_non_blank_answer(tmp_path: Path) -> None:
+def test_runtime_start_mock_interview_requires_prepared_materials(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_mock_runtime_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("mock-session")
+
+    view_model = runtime.start_mock_interview(
+        session_id="mock-session",
+        target_role="后端工程师",
+    )
+
+    assert view_model == {
+        "session_id": "mock-session",
+        "status": "failed",
+        "error_message": "请先导入简历，并完成面试准备。",
+        "current_prompt": None,
+        "progress": {
+            "current_question_index": 0,
+            "total_questions": 0,
+            "current_followup_index": 0,
+            "total_followups": 0,
+        },
+        "review_panel": None,
+        "transcript": [],
+    }
+
+
+def test_runtime_start_mock_interview_accepts_resume_only_prepared_materials(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
 
     database_path = tmp_path / "runtime.sqlite3"
@@ -327,6 +565,31 @@ def test_runtime_submit_mock_answer_requires_non_blank_answer(tmp_path: Path) ->
     )
     runtime.create_or_open_session("mock-session")
     runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+
+    view_model = runtime.start_mock_interview(
+        session_id="mock-session",
+        target_role="后端工程师",
+        question_count=2,
+        followup_rounds=1,
+    )
+
+    assert view_model["status"] == "ready_for_answer"
+    assert view_model["current_prompt"]["text"] == "介绍你最近一次线上延迟排查。"
+
+
+def test_runtime_submit_mock_answer_requires_non_blank_answer(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_mock_runtime_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("mock-session")
+    write_prepared_mock_materials(runtime, "mock-session")
     runtime.start_mock_interview(
         session_id="mock-session",
         target_role="后端工程师",
@@ -358,7 +621,7 @@ def test_runtime_submit_mock_answer_generates_followup_and_final_review(tmp_path
         services_builder=build_services,
     )
     runtime.create_or_open_session("mock-session")
-    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+    write_prepared_mock_materials(runtime, "mock-session")
     runtime.start_mock_interview(
         session_id="mock-session",
         target_role="后端工程师",
@@ -438,7 +701,7 @@ def test_runtime_submit_mock_answer_after_completed_keeps_completed_state(tmp_pa
         services_builder=build_services,
     )
     runtime.create_or_open_session("mock-session")
-    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+    write_prepared_mock_materials(runtime, "mock-session")
     runtime.start_mock_interview(
         session_id="mock-session",
         target_role="后端工程师",
@@ -468,7 +731,7 @@ def test_runtime_end_mock_interview_resets_view_state_without_writing_unrelated_
         services_builder=build_services,
     )
     runtime.create_or_open_session("mock-session")
-    runtime.session_store.set_state("mock-session", "candidate_profile", {"name": "Alice"})
+    write_prepared_mock_materials(runtime, "mock-session")
     runtime.start_mock_interview(
         session_id="mock-session",
         target_role="后端工程师",
@@ -570,6 +833,130 @@ def build_prep_registry() -> NodeRegistry:
     )
 
 
+def build_synonym_prep_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="resume_parse",
+                description="Parse resume with alternative field names.",
+                required_inputs=("resume_text",),
+                optional_inputs=(),
+                outputs=("resume_profile", "candidate_profile"),
+                handler=synonym_resume_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_parse",
+                description="Parse JD with alternative field names.",
+                required_inputs=("jd_text",),
+                optional_inputs=(),
+                outputs=("jd_requirements",),
+                handler=synonym_jd_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_match",
+                description="Match resume and JD with alternative field names.",
+                required_inputs=("resume_profile", "jd_requirements"),
+                optional_inputs=(),
+                outputs=("match_report",),
+                handler=synonym_jd_match_handler,
+            ),
+        ]
+    )
+
+
+def build_flaky_resume_prep_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="resume_parse",
+                description="Parse resume once.",
+                required_inputs=("resume_text",),
+                optional_inputs=(),
+                outputs=("resume_profile", "candidate_profile"),
+                handler=flaky_resume_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_parse",
+                description="Parse JD.",
+                required_inputs=("jd_text",),
+                optional_inputs=(),
+                outputs=("jd_requirements",),
+                handler=jd_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_match",
+                description="Match resume and JD.",
+                required_inputs=("resume_profile", "jd_requirements"),
+                optional_inputs=(),
+                outputs=("match_report",),
+                handler=jd_match_handler,
+            ),
+        ]
+    )
+
+
+def build_detailed_resume_prep_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="resume_parse",
+                description="Parse detailed resume.",
+                required_inputs=("resume_text",),
+                optional_inputs=(),
+                outputs=("resume_profile", "candidate_profile"),
+                handler=detailed_resume_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_parse",
+                description="Parse JD.",
+                required_inputs=("jd_text",),
+                optional_inputs=(),
+                outputs=("jd_requirements",),
+                handler=jd_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_match",
+                description="Match resume and JD.",
+                required_inputs=("resume_profile", "jd_requirements"),
+                optional_inputs=(),
+                outputs=("match_report",),
+                handler=jd_match_handler,
+            ),
+        ]
+    )
+
+
+def build_nested_chinese_prep_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="resume_parse",
+                description="Parse nested Chinese resume.",
+                required_inputs=("resume_text",),
+                optional_inputs=(),
+                outputs=("resume_profile", "candidate_profile"),
+                handler=nested_chinese_resume_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_parse",
+                description="Parse nested Chinese JD.",
+                required_inputs=("jd_text",),
+                optional_inputs=(),
+                outputs=("jd_requirements",),
+                handler=nested_chinese_jd_parse_handler,
+            ),
+            NodeSpec(
+                name="jd_match",
+                description="Match nested Chinese materials.",
+                required_inputs=("resume_profile", "jd_requirements"),
+                optional_inputs=(),
+                outputs=("match_report",),
+                handler=nested_chinese_jd_match_handler,
+            ),
+        ]
+    )
+
+
 def build_mock_runtime_registry() -> NodeRegistry:
     return NodeRegistry(
         [
@@ -637,6 +1024,11 @@ def build_services(config: object) -> dict[str, object]:
     return {"source": "fake"}
 
 
+def write_prepared_mock_materials(runtime: object, session_id: str) -> None:
+    runtime.session_store.set_state(session_id, "candidate_profile", {"name": "Alice"})
+    runtime.session_store.set_state(session_id, "jd_requirements", {"role": "后端工程师"})
+
+
 def algorithm_practice_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     assert context.services["source"] == "fake"
     practice_topic = str(inputs.get("practice_topic", "算法"))
@@ -670,6 +1062,15 @@ def resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dic
     return {"resume_profile": profile, "candidate_profile": profile}
 
 
+def flaky_resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del inputs
+    invocation_count = int(context.services.get("resume_parse_invocation_count", 0)) + 1
+    context.services["resume_parse_invocation_count"] = invocation_count
+    if invocation_count > 1:
+        raise RuntimeError("resume parser should not run again when importing JD")
+    return resume_parse_handler(context, {})
+
+
 def jd_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
     del context, inputs
     return {
@@ -690,6 +1091,99 @@ def jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[st
             "strengths": ["Python 服务经验", "检索系统经验"],
             "risks": ["补充压测案例"],
             "follow_up_focus": ["SLA 取舍", "检索召回评估"],
+        }
+    }
+
+
+def synonym_resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    profile = {
+        "name": "Alice",
+        "summary": "后端检索工程师，负责 SLA 和召回评估",
+        "core_skills": ["Python", "检索系统", "SLA"],
+    }
+    return {"resume_profile": profile, "candidate_profile": profile}
+
+
+def detailed_resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    profile = {
+        "name": "Alice",
+        "headline": "Golang 后端工程师，6 年服务端与稳定性治理经验",
+        "skills": ["Golang", "支付链路", "MySQL", "Redis"],
+        "projects": ["主导交易服务重构"],
+        "project_experience": [
+            {
+                "project_name": "CDN 授权版",
+                "responsibilities": ["P95 延迟从 900ms 降到 180ms"],
+            }
+        ],
+        "achievements": ["P95 延迟从 900ms 降到 180ms"],
+        "responsibilities": ["SLA 治理", "容量压测"],
+    }
+    return {"resume_profile": profile, "candidate_profile": profile}
+
+
+def nested_chinese_resume_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    profile = {
+        "basic_info": {
+            "name": "罗天",
+            "primary_position": "Golang",
+            "years_of_experience": 6,
+            "education_level": "本科",
+        },
+        "skills": ["Golang", "MySQL"],
+    }
+    return {"resume_profile": profile, "candidate_profile": profile}
+
+
+def nested_chinese_jd_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {
+        "jd_requirements": {
+            "岗位名称": "golang开发工程师",
+            "岗位职责": ["负责后端设计开发"],
+            "任职资格": {
+                "技能要求": ["Golang", "高并发"],
+                "优先条件": ["分布式"],
+            },
+        }
+    }
+
+
+def nested_chinese_jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {
+        "match_report": {
+            "overall_match_score": 92,
+            "strengths": ["Golang 后端经验充足"],
+            "potential_gaps": ["出差适配不明确"],
+            "interview_focus_suggestions": ["追问高并发项目"],
+        }
+    }
+
+
+def synonym_jd_parse_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {
+        "jd_requirements": {
+            "title": "后端工程师",
+            "requirements": ["Python", "检索链路", "稳定性"],
+        }
+    }
+
+
+def synonym_jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context
+    assert inputs["resume_profile"]["name"] == "Alice"
+    assert inputs["jd_requirements"]["title"] == "后端工程师"
+    return {
+        "match_report": {
+            "score": 88,
+            "matched_points": ["检索经验贴合", "Python 服务经验"],
+            "weaknesses": ["压测案例不足"],
+            "interview_focus": ["SLA 取舍", "召回评估"],
         }
     }
 

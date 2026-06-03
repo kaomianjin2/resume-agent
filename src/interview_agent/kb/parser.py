@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import unescape
 from pathlib import Path
 import re
+import subprocess
 import xml.etree.ElementTree as ET
 import zlib
 import zipfile
@@ -13,6 +14,16 @@ PDF_STREAM_PATTERN = re.compile(
     re.DOTALL,
 )
 MAX_PDF_BYTES = 8_000_000
+IMAGE_MATERIAL_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+IMAGE_OCR_SCRIPT = Path(__file__).with_name("image_ocr.swift")
+IMAGE_OCR_TIMEOUT_SECONDS = 90
+IMAGE_OCR_NOISE_LINES = {
+    "BOSS 直聘",
+    "5G",
+    "<",
+    "不感兴趣",
+    "继续沟通",
+}
 
 
 def extract_text(file_path: Path | str) -> str:
@@ -27,6 +38,8 @@ def extract_text(file_path: Path | str) -> str:
         return _extract_pdf_text(path)
     if suffix == ".docx":
         return _extract_docx_text(path)
+    if suffix in IMAGE_MATERIAL_SUFFIXES:
+        return _run_image_ocr(path)
 
     raise ValueError(f"不支持的文件类型: {path.suffix}")
 
@@ -277,3 +290,36 @@ def _extract_docx_text(path: Path) -> str:
     root = ET.fromstring(document_xml)
     text_nodes = [unescape(node.text or "") for node in root.iter() if node.tag.endswith("}t")]
     return "\n".join(text for text in text_nodes if text).strip()
+
+
+def _run_image_ocr(path: Path) -> str:
+    if not IMAGE_OCR_SCRIPT.exists():
+        raise ValueError("图片 OCR 脚本缺失")
+
+    result = subprocess.run(
+        ["/usr/bin/swift", str(IMAGE_OCR_SCRIPT), str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=IMAGE_OCR_TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        error_message = result.stderr.strip() or result.stdout.strip() or "图片 OCR 失败"
+        raise ValueError(error_message)
+
+    extracted_text = _clean_image_ocr_text(result.stdout)
+    if not extracted_text:
+        raise ValueError("图片 OCR 未识别到文字")
+    return extracted_text
+
+
+def _clean_image_ocr_text(raw_text: str) -> str:
+    cleaned_lines: list[str] = []
+    for line in raw_text.splitlines():
+        cleaned_line = line.strip()
+        if not cleaned_line or cleaned_line in IMAGE_OCR_NOISE_LINES:
+            continue
+        if cleaned_line.isdigit() and len(cleaned_line) <= 2:
+            continue
+        cleaned_lines.append(cleaned_line)
+    return "\n".join(cleaned_lines).strip()

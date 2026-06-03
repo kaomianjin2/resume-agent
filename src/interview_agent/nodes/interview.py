@@ -97,10 +97,6 @@ def jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[st
             "resume_profile": inputs["resume_profile"],
             "jd_requirements": inputs["jd_requirements"],
         },
-        rag_query=_join_query_parts(
-            _read_profile_name(inputs.get("resume_profile")),
-            _read_role_name(inputs.get("jd_requirements")),
-        ),
     )
     return _normalize_node_output(result, {"match_report": dict})
 
@@ -225,6 +221,8 @@ def _normalize_node_output(
         output_value = output[output_key]
         if not isinstance(output_value, expected_type):
             raise RuntimeError(f"节点输出字段类型错误: {output_key}")
+        if isinstance(output_value, dict) and not output_value:
+            raise RuntimeError(f"节点输出字段为空: {output_key}")
         normalized_output[output_key] = output_value
     return normalized_output
 

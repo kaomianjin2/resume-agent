@@ -3,12 +3,14 @@ import { AlgorithmModule } from "../../modules/algorithm/AlgorithmModule";
 import { MockModule } from "../../modules/mock/MockModule";
 import { PrepModule } from "../../modules/prep/PrepModule";
 import { UserModule } from "../../modules/users/UserModule";
+import { MockInterviewRuntimeClient } from "../../shared/api/mock";
 import { PrepViewModel } from "../../shared/api/prep";
 import { DesktopRuntimeSnapshot, MaterialKind, UserRecord } from "../../shared/desktop/desktopBridge";
 
 type WorkspaceProps = {
   activeModule: ModuleViewModel;
   prepViewModel: PrepViewModel;
+  prepIsLoading: boolean;
   desktopSnapshot: DesktopRuntimeSnapshot | null;
   users: UserRecord[];
   newUsername: string;
@@ -16,6 +18,7 @@ type WorkspaceProps = {
   newRole: "admin" | "member";
   userErrorMessage: string;
   currentUserRole: UserRole | null;
+  mockRuntimeClient: MockInterviewRuntimeClient;
   onSelectMaterialFile: (kind: MaterialKind) => void;
   onNewUsernameChange: (value: string) => void;
   onNewPasswordChange: (value: string) => void;
@@ -29,6 +32,7 @@ type WorkspaceProps = {
 export function Workspace({
   activeModule,
   prepViewModel,
+  prepIsLoading,
   desktopSnapshot,
   users,
   newUsername,
@@ -36,6 +40,7 @@ export function Workspace({
   newRole,
   userErrorMessage,
   currentUserRole,
+  mockRuntimeClient,
   onSelectMaterialFile,
   onNewUsernameChange,
   onNewPasswordChange,
@@ -47,6 +52,7 @@ export function Workspace({
 }: WorkspaceProps) {
   const currentUserName = desktopSnapshot?.currentUser ?? "未登录";
   const canManageUsers = currentUserRole === "admin";
+  const materialsReady = prepViewModel.status === "ready";
 
   return (
     <section className="workspace" aria-labelledby="workspace-title">
@@ -78,8 +84,8 @@ export function Workspace({
         )}
       </header>
 
-      {activeModule.id === "prep" && <PrepModule viewModel={prepViewModel} />}
-      {activeModule.id === "mock" && <MockModule />}
+      {activeModule.id === "prep" && <PrepModule viewModel={prepViewModel} isLoading={prepIsLoading} />}
+      {activeModule.id === "mock" && <MockModule materialsReady={materialsReady} runtimeClient={mockRuntimeClient} />}
       {activeModule.id === "algorithm" && <AlgorithmModule />}
       {activeModule.id === "users" && canManageUsers && (
         <UserModule

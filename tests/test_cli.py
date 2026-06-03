@@ -20,7 +20,7 @@ from interview_agent.llm import OpenAICompatibleClient
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, NodeSpec
 from interview_agent.session import SessionStore
-from interview_agent.storage import create_user, initialize_database, set_knowledge_base_status
+from interview_agent.storage import create_user, initialize_database, list_users, set_knowledge_base_status
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -146,7 +146,7 @@ def test_does_not_build_knowledge_base_on_startup(tmp_path: Path) -> None:
     assert "知识库未就绪" in output.getvalue()
 
 
-def test_user_commands_and_login_flow(tmp_path: Path) -> None:
+def test_user_commands_are_not_supported_in_cli(tmp_path: Path) -> None:
     database_path, config_path = prepare_ready_runtime(tmp_path)
     output = StringIO()
 
@@ -154,8 +154,31 @@ def test_user_commands_and_login_flow(tmp_path: Path) -> None:
         ["--config", str(config_path)],
         input_func=build_input(
             [
+                "/user",
                 "/user add admin1 pass123 admin",
                 "/user list",
+                "exit",
+            ]
+        ),
+        output=output,
+        registry_builder=build_cli_registry,
+    )
+
+    assert exit_code == 0
+    output_text = output.getvalue()
+    assert output_text.count("CLI 不支持用户管理操作，请在桌面 GUI 中操作用户。") == 3
+    assert list_users(database_path) == []
+
+
+def test_login_and_logout_flow(tmp_path: Path) -> None:
+    database_path, config_path = prepare_ready_runtime(tmp_path)
+    create_user(database_path, username="admin1", password="pass123", role="admin")
+    output = StringIO()
+
+    exit_code = cli.main(
+        ["--config", str(config_path)],
+        input_func=build_input(
+            [
                 "/login admin1 pass123",
                 "/logout",
                 "exit",
@@ -167,8 +190,6 @@ def test_user_commands_and_login_flow(tmp_path: Path) -> None:
 
     assert exit_code == 0
     output_text = output.getvalue()
-    assert "用户已创建: admin1 (admin)" in output_text
-    assert "admin1 | 角色: admin | 状态: enabled" in output_text
     assert "登录成功：admin1 (admin)" in output_text
     assert "已退出登录：admin1" in output_text
 

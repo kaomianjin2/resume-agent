@@ -389,6 +389,33 @@ def test_interview_runtime_nodes_fail_when_declared_output_has_invalid_type(
         assert session_store.get_state(f"session-invalid-{node_name}", output_key) is None
 
 
+def test_jd_parse_fails_with_clear_error_when_llm_returns_empty_requirements(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={
+            "llm": RecordingLLM({"你是 JD 解析助手": '{"jd_requirements":{}}'}),
+            "retriever": RecordingRetriever([]),
+        },
+    )
+
+    result = executor.execute_node(
+        session_id="session-empty-jd",
+        node_name="jd_parse",
+        inputs={"jd_text": "已导入 JD 图片文件：backend-jd.png"},
+    )
+
+    assert result.status == "failed"
+    assert result.output == {}
+    assert result.error_message == "节点输出字段为空: jd_requirements"
+    assert session_store.get_state("session-empty-jd", "jd_requirements") is None
+
+
 def test_resume_parse_output_can_drive_question_generate_via_sqlite_session_state(
     tmp_path: Path,
 ) -> None:
@@ -734,6 +761,30 @@ def test_run_structured_node_preserves_rag_source_metadata_from_retriever(
     assert result.output["search_results"][0]["score"] == 0.8
     assert result.output["search_results"][0]["content"] == "RAG chunk content for interview preparation."
     assert result.output["search_results"][0]["summary"] == "RAG summary"
+
+
+def test_jd_match_does_not_require_retriever_for_imported_resume_and_jd(tmp_path: Path) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    llm = RecordingLLM(
+        {
+            "你是 JD 匹配助手": '{"match_report":{"score":82,"strengths":["Golang"],"risks":["数据库经验需追问"],"follow_up_focus":["高并发项目"]}}'
+        }
+    )
+    executor = NodeExecutor(database_path, build_default_registry(), services={"llm": llm})
+
+    result = executor.execute_node(
+        session_id="session-jd-match-no-retriever",
+        node_name="jd_match",
+        inputs={
+            "resume_profile": {"name": "罗天", "skills": ["Golang", "MySQL"]},
+            "jd_requirements": {"role": "golang开发工程师", "skills": ["golang", "高并发"]},
+        },
+    )
+
+    assert result.status == "success"
+    assert result.output["match_report"]["score"] == 82
+    assert "rag_context:\n[]" in llm.prompts[0]
 
 
 def test_knowledge_search_returns_empty_results_without_extra_output_keys_when_retriever_has_no_hits(

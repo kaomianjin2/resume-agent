@@ -14,6 +14,7 @@ const statusText = {
 
 export function ReviewPanel({ activeModule, prepViewModel }: ReviewPanelProps) {
   if (activeModule.id === "prep") {
+    const reviewState = buildPrepReviewState(prepViewModel);
     return (
       <aside className="review-panel" aria-label="检查面板">
         <header className="review-head">
@@ -25,22 +26,22 @@ export function ReviewPanel({ activeModule, prepViewModel }: ReviewPanelProps) {
 
         <section className="score-card">
           <div className="metric-label">准备完整度</div>
-          <div className="score">92</div>
-          <p className="body-copy">简历 / JD 已完成解析，匹配报告可直接用于模拟面试。</p>
+          <div className="score">{reviewState.completeness}</div>
+          <p className="body-copy">{reviewState.summary}</p>
         </section>
 
         <section className="metrics">
           <div className="metric">
             <div className="metric-label">匹配度</div>
-            <div className="metric-value">{prepViewModel.matchSummary.score} / 100</div>
+            <div className="metric-value">{reviewState.matchScore}</div>
           </div>
           <div className="metric">
             <div className="metric-label">追问点</div>
-            <div className="metric-value">6 个</div>
+            <div className="metric-value">{reviewState.followUpCount} 个</div>
           </div>
           <div className="metric">
             <div className="metric-label">材料状态</div>
-            <div className="metric-value">已整理</div>
+            <div className="metric-value">{reviewState.materialStatus}</div>
           </div>
         </section>
 
@@ -107,4 +108,45 @@ export function ReviewPanel({ activeModule, prepViewModel }: ReviewPanelProps) {
       </section>
     </aside>
   );
+}
+
+function buildPrepReviewState(prepViewModel: PrepViewModel) {
+  const hasResumeSummary = Boolean(
+    prepViewModel.resumeSummary.name ||
+    prepViewModel.resumeSummary.headline ||
+    prepViewModel.resumeSummary.highlights.length > 0
+  );
+  const hasJdSummary = Boolean(prepViewModel.jdSummary.role || prepViewModel.jdSummary.focus.length > 0);
+  const hasMatchSummary = prepViewModel.matchSummary.score !== "未评分" ||
+    prepViewModel.matchSummary.strengths.length > 0 ||
+    prepViewModel.matchSummary.risks.length > 0 ||
+    prepViewModel.matchSummary.followUpFocus.length > 0;
+
+  if (prepViewModel.status === "failed") {
+    return {
+      completeness: 0,
+      summary: prepViewModel.errorMessage || "材料解析失败，请重新导入。",
+      matchScore: "未评分",
+      followUpCount: 0,
+      materialStatus: "解析失败",
+    };
+  }
+
+  const completedStepCount = [hasResumeSummary, hasJdSummary, hasMatchSummary].filter(Boolean).length;
+  const completeness = Math.round((completedStepCount / 3) * 100);
+  const matchScore = typeof prepViewModel.matchSummary.score === "number"
+    ? `${prepViewModel.matchSummary.score} / 100`
+    : prepViewModel.matchSummary.score;
+  const followUpCount = prepViewModel.matchSummary.followUpFocus.length;
+  const materialStatus = hasMatchSummary ? "已整理" : hasResumeSummary || hasJdSummary ? "解析中" : "待导入";
+
+  return {
+    completeness,
+    summary: hasMatchSummary
+      ? "简历 / JD 已完成解析，匹配报告可直接用于模拟面试。"
+      : "导入简历和 JD 后展示匹配报告与可追问点。",
+    matchScore,
+    followUpCount,
+    materialStatus,
+  };
 }

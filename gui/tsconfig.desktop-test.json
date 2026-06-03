@@ -2,15 +2,22 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "declaration": false,
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Node",
     "noEmit": false,
     "outDir": ".test-build"
   },
   "include": [
+    "src/vite-env.d.ts",
+    "src/app/LoginPasswordInput.tsx",
     "src/app/fixtureData.ts",
+    "src/app/layout/ReviewPanel.tsx",
+    "src/shared/api/mock.ts",
+    "src/shared/api/prep.ts",
     "src/shared/desktop/desktopSnapshot.ts",
     "src/modules/algorithm/AlgorithmModule.tsx",
+    "src/modules/mock/MockModule.tsx",
+    "src/modules/prep/PrepModule.tsx",
     "src/modules/users/UserModule.tsx"
   ]
 }

@@ -101,29 +101,32 @@ class GuiRuntime:
                 "missing_inputs": missing_inputs,
             }
 
-        resume_result = self.executor.execute_node(
-            session_id=session_id,
-            node_name="resume_parse",
-            inputs={"resume_text": resume_text},
-        )
-        if resume_result.status != "success":
-            return _prep_error_view_model(session_id, resume_result)
+        session_state = self.session_store.get_all_state(session_id)
+        if not _has_prepared_interview_materials(session_state):
+            resume_result = self.executor.execute_node(
+                session_id=session_id,
+                node_name="resume_parse",
+                inputs={"resume_text": resume_text},
+            )
+            if resume_result.status != "success":
+                return _prep_error_view_model(session_id, resume_result)
 
-        jd_result = self.executor.execute_node(
-            session_id=session_id,
-            node_name="jd_parse",
-            inputs={"jd_text": jd_text},
-        )
-        if jd_result.status != "success":
-            return _prep_error_view_model(session_id, jd_result)
+        if jd_text.strip():
+            jd_result = self.executor.execute_node(
+                session_id=session_id,
+                node_name="jd_parse",
+                inputs={"jd_text": jd_text},
+            )
+            if jd_result.status != "success":
+                return _prep_error_view_model(session_id, jd_result)
 
-        match_result = self.executor.execute_node(
-            session_id=session_id,
-            node_name="jd_match",
-            inputs={},
-        )
-        if match_result.status != "success":
-            return _prep_error_view_model(session_id, match_result)
+            match_result = self.executor.execute_node(
+                session_id=session_id,
+                node_name="jd_match",
+                inputs={},
+            )
+            if match_result.status != "success":
+                return _prep_error_view_model(session_id, match_result)
 
         session_state = self.session_store.get_all_state(session_id)
         return _prep_view_model(session_id, session_state)
@@ -137,6 +140,12 @@ class GuiRuntime:
         followup_rounds: int = DEFAULT_MOCK_FOLLOWUP_ROUNDS,
         question_type: str = "行为面试",
     ) -> dict[str, object]:
+        if not _has_prepared_interview_materials(self.session_store.get_all_state(session_id)):
+            return self._write_mock_interview_state(
+                session_id,
+                _failed_mock_interview_state(session_id, "请先导入简历，并完成面试准备。"),
+            )
+
         question_result = self.executor.execute_node(
             session_id=session_id,
             node_name="question_generate",
@@ -448,12 +457,15 @@ def _execution_result_to_dict(result: NodeExecutionResult) -> dict[str, object]:
 
 
 def _missing_prep_inputs(*, resume_text: str, jd_text: str) -> list[str]:
+    del jd_text
     missing_inputs = []
     if not resume_text.strip():
         missing_inputs.append("resume_text")
-    if not jd_text.strip():
-        missing_inputs.append("jd_text")
     return missing_inputs
+
+
+def _has_prepared_interview_materials(session_state: dict[str, object]) -> bool:
+    return isinstance(session_state.get("candidate_profile"), dict) or isinstance(session_state.get("resume_profile"), dict)
 
 
 def _read_mock_text_list(value: object) -> list[str]:
@@ -588,7 +600,7 @@ def _prep_view_model(session_id: str, session_state: dict[str, object]) -> dict[
         "status": "ready",
         "resume_summary": _resume_summary(session_state.get("resume_profile")),
         "jd_summary": _jd_summary(session_state.get("jd_requirements")),
-        "match_summary": _match_summary(session_state.get("match_report")),
+        "match_summary": _match_summary(session_state.get("match_report"), include_empty=True),
         "missing_inputs": [],
     }
 
@@ -596,31 +608,89 @@ def _prep_view_model(session_id: str, session_state: dict[str, object]) -> dict[
 def _resume_summary(resume_profile: object) -> dict[str, object]:
     if not isinstance(resume_profile, dict):
         return {}
+    basic_info = _dict_value(resume_profile.get("basic_info"))
     return {
-        "name": _text_value(resume_profile.get("name"), "未命名候选人"),
-        "headline": _text_value(resume_profile.get("headline"), "暂无简历摘要"),
-        "highlights": _list_value(resume_profile.get("highlights") or resume_profile.get("skills")),
+        "name": _text_value(_first_present_value(resume_profile, ("name",)) or basic_info.get("name"), "未命名候选人"),
+        "headline": _resume_headline(resume_profile, basic_info),
+        "highlights": _merged_list_values(
+            resume_profile,
+            (
+                "highlights",
+                "core_skills",
+                "skills",
+                "strengths",
+                "projects",
+                "project_experience",
+                "project_experiences",
+                "achievements",
+                "responsibilities",
+                "experience",
+            ),
+        ),
     }
 
 
 def _jd_summary(jd_requirements: object) -> dict[str, object]:
     if not isinstance(jd_requirements, dict):
         return {}
+    qualification = _dict_value(jd_requirements.get("任职资格"))
     return {
-        "role": _text_value(jd_requirements.get("role"), "未命名岗位"),
-        "focus": _list_value(jd_requirements.get("focus") or jd_requirements.get("must_have") or jd_requirements.get("skills")),
+        "role": _text_value(
+            _first_present_value(jd_requirements, ("role", "title", "position", "job_title", "岗位名称")),
+            "未命名岗位",
+        ),
+        "focus": _merged_nested_list_values(
+            jd_requirements,
+            qualification,
+            (
+                "focus",
+                "must_have",
+                "requirements",
+                "required_skills",
+                "skills",
+                "responsibilities",
+                "岗位职责",
+                "技能要求",
+                "经验要求",
+                "优先条件",
+            ),
+        ),
     }
 
 
-def _match_summary(match_report: object) -> dict[str, object]:
+def _match_summary(match_report: object, *, include_empty: bool = False) -> dict[str, object]:
     if not isinstance(match_report, dict):
+        if include_empty:
+            return {
+                "score": "未评分",
+                "strengths": [],
+                "risks": [],
+                "follow_up_focus": [],
+            }
         return {}
     return {
-        "score": match_report.get("score", "未评分"),
-        "strengths": _list_value(match_report.get("strengths") or match_report.get("matched_skills")),
-        "risks": _list_value(match_report.get("risks") or match_report.get("gaps")),
-        "follow_up_focus": _list_value(match_report.get("follow_up_focus") or match_report.get("followups")),
+        "score": _first_present_value(match_report, ("score", "overall_match_score")) or "未评分",
+        "strengths": _list_value(_first_present_value(match_report, ("strengths", "matched_points", "matched_skills", "matches"))),
+        "risks": _list_value(_first_present_value(match_report, ("risks", "weaknesses", "gaps", "missing_skills", "potential_gaps"))),
+        "follow_up_focus": _list_value(
+            _first_present_value(
+                match_report,
+                ("follow_up_focus", "interview_focus", "followups", "follow_up_questions", "interview_focus_suggestions"),
+            )
+        ),
     }
+
+
+def _first_present_value(mapping: dict[str, object], keys: tuple[str, ...]) -> object:
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+        if isinstance(value, list) and value:
+            return value
+        if isinstance(value, int | float):
+            return value
+    return None
 
 
 def _text_value(value: object, fallback: str) -> str:
@@ -630,6 +700,80 @@ def _text_value(value: object, fallback: str) -> str:
 
 
 def _list_value(value: object) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value]
     if not isinstance(value, list):
         return []
-    return [str(item) for item in value if str(item).strip()]
+    values: list[str] = []
+    for item in value:
+        values.extend(_flatten_summary_item(item))
+    return values
+
+
+def _merged_list_values(mapping: dict[str, object], keys: tuple[str, ...]) -> list[str]:
+    values: list[str] = []
+    seen_values: set[str] = set()
+    for key in keys:
+        for item in _list_value(mapping.get(key)):
+            if item in seen_values:
+                continue
+            seen_values.add(item)
+            values.append(item)
+    return values
+
+
+def _dict_value(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def _resume_headline(resume_profile: dict[str, object], basic_info: dict[str, object]) -> str:
+    explicit_headline = _first_present_value(resume_profile, ("headline", "summary", "profile_summary", "title", "role"))
+    if isinstance(explicit_headline, str) and explicit_headline.strip():
+        return explicit_headline
+
+    headline_parts = [
+        _text_value(basic_info.get("primary_position"), ""),
+        _format_years_of_experience(basic_info.get("years_of_experience")),
+        _text_value(basic_info.get("education_level"), ""),
+    ]
+    headline = "，".join(part for part in headline_parts if part)
+    return headline or "暂无简历摘要"
+
+
+def _format_years_of_experience(value: object) -> str:
+    if isinstance(value, int | float):
+        return f"{value:g} 年经验"
+    if isinstance(value, str) and value.strip():
+        return value
+    return ""
+
+
+def _merged_nested_list_values(
+    first_mapping: dict[str, object],
+    second_mapping: dict[str, object],
+    keys: tuple[str, ...],
+) -> list[str]:
+    values = _merged_list_values(first_mapping, keys)
+    seen_values = set(values)
+    for item in _merged_list_values(second_mapping, keys):
+        if item in seen_values:
+            continue
+        seen_values.add(item)
+        values.append(item)
+    return values
+
+
+def _flatten_summary_item(value: object) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value]
+    if not isinstance(value, dict):
+        return []
+
+    flattened_values: list[str] = []
+    for key in ("project_name", "name", "description", "impact"):
+        text = _text_value(value.get(key), "")
+        if text:
+            flattened_values.append(text)
+    for key in ("responsibilities", "achievements", "technologies"):
+        flattened_values.extend(_list_value(value.get(key)))
+    return flattened_values

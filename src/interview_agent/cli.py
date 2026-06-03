@@ -31,10 +31,7 @@ from interview_agent import rendering
 from interview_agent.router import RouteResult, route_conversation
 from interview_agent.session import SessionStore
 from interview_agent.storage import (
-    create_user,
     get_knowledge_base_status,
-    list_users,
-    set_user_status,
     verify_login,
 )
 
@@ -241,59 +238,8 @@ def _handle_user_command(
     output: TextIO,
     current_user: dict[str, str] | None,
 ) -> dict[str, str] | None:
-    if normalized_message.startswith("/user "):
-        command_segments = normalized_message.split()
-        if len(command_segments) < 2:
-            _write_line(output, "用法: /user list|add|enable|disable ...")
-            return current_user
-        action = command_segments[1]
-        if action == "list":
-            users = list_users(database_path)
-            if not users:
-                _write_line(output, "当前没有用户。")
-                return current_user
-            for index, user_info in enumerate(users, start=1):
-                _write_line(
-                    output,
-                    f"{index}. {user_info['username']} | 角色: {user_info['role']} | 状态: {user_info['status']}",
-                )
-            return current_user
-        if action == "add":
-            if len(command_segments) != 5:
-                _write_line(output, "用法: /user add <username> <password> <admin|member>")
-                return current_user
-            _, _, username, password, role = command_segments
-            try:
-                created_user = create_user(
-                    database_path,
-                    username=username,
-                    password=password,
-                    role=role,
-                )
-            except (ValueError, Exception) as error:
-                _write_line(output, f"创建用户失败: {error}")
-                return current_user
-            _write_line(output, f"用户已创建: {created_user['username']} ({created_user['role']})")
-            return current_user
-        if action in {"enable", "disable"}:
-            if len(command_segments) != 3:
-                _write_line(output, "用法: /user enable|disable <username>")
-                return current_user
-            username = command_segments[2]
-            updated = set_user_status(
-                database_path,
-                username=username,
-                status="enabled" if action == "enable" else "disabled",
-            )
-            if not updated:
-                _write_line(output, "未找到该用户。")
-                return current_user
-            _write_line(output, f"用户状态已更新: {username} -> {'enabled' if action == 'enable' else 'disabled'}")
-            if current_user and current_user.get("username") == username and action == "disable":
-                _write_line(output, "当前登录用户已被禁用，已自动退出登录。")
-                return None
-            return current_user
-        _write_line(output, "未知用户命令。用法: /user list|add|enable|disable ...")
+    if normalized_message == "/user" or normalized_message.startswith("/user "):
+        _write_line(output, "CLI 不支持用户管理操作，请在桌面 GUI 中操作用户。")
         return current_user
 
     if normalized_message.startswith("/login "):

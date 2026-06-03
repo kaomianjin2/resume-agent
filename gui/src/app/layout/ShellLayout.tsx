@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar";
 import { Workspace } from "./Workspace";
 import { ReviewPanel } from "./ReviewPanel";
 import { DesktopRuntimeSnapshot, MaterialKind, UserRecord } from "../../shared/desktop/desktopBridge";
+import { MockInterviewRuntimeClient } from "../../shared/api/mock";
 import { PrepViewModel } from "../../shared/api/prep";
 
 type ShellLayoutProps = {
@@ -10,12 +11,14 @@ type ShellLayoutProps = {
   activeModuleId: ModuleId;
   desktopSnapshot: DesktopRuntimeSnapshot | null;
   prepViewModel: PrepViewModel;
+  prepIsLoading: boolean;
   users: UserRecord[];
   newUsername: string;
   newPassword: string;
   newRole: "admin" | "member";
   userErrorMessage: string;
   currentUserRole: UserRole | null;
+  mockRuntimeClient: MockInterviewRuntimeClient;
   onModuleChange: (moduleId: ModuleId) => void;
   onSelectMaterialFile: (kind: MaterialKind) => void;
   onNewUsernameChange: (value: string) => void;
@@ -32,12 +35,14 @@ export function ShellLayout({
   activeModuleId,
   desktopSnapshot,
   prepViewModel,
+  prepIsLoading,
   users,
   newUsername,
   newPassword,
   newRole,
   userErrorMessage,
   currentUserRole,
+  mockRuntimeClient,
   onModuleChange,
   onSelectMaterialFile,
   onNewUsernameChange,
@@ -61,6 +66,7 @@ export function ShellLayout({
       <Workspace
         activeModule={activeModule}
         prepViewModel={prepViewModel}
+        prepIsLoading={prepIsLoading}
         desktopSnapshot={desktopSnapshot}
         users={users}
         newUsername={newUsername}
@@ -68,6 +74,7 @@ export function ShellLayout({
         newRole={newRole}
         userErrorMessage={userErrorMessage}
         currentUserRole={currentUserRole}
+        mockRuntimeClient={mockRuntimeClient}
         onSelectMaterialFile={onSelectMaterialFile}
         onNewUsernameChange={onNewUsernameChange}
         onNewPasswordChange={onNewPasswordChange}

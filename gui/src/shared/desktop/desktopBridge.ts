@@ -1,6 +1,14 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  EndMockInterviewRequest,
+  MockInterviewViewModel,
+  normalizeMockInterviewViewModel,
+  StartMockInterviewRequest,
+  SubmitMockAnswerRequest,
+} from "../api/mock";
+import { normalizePrepViewModel, PrepViewModel } from "../api/prep";
+import {
   DesktopRuntimeSnapshot,
   snapshotWithDesktopError as buildSnapshotWithDesktopError,
   webSnapshot,
@@ -54,7 +62,9 @@ export async function selectMaterialFile(kind: MaterialKind): Promise<DesktopRun
     filters: [
       {
         name: "Interview material",
-        extensions: ["pdf", "docx", "doc", "md", "txt"],
+        extensions: kind === "jd"
+          ? ["pdf", "docx", "doc", "md", "txt", "png", "jpg", "jpeg", "webp", "bmp", "gif"]
+          : ["pdf", "docx", "doc", "md", "txt"],
       },
     ],
   });
@@ -66,6 +76,38 @@ export async function selectMaterialFile(kind: MaterialKind): Promise<DesktopRun
     kind,
     path: selectedPath,
   });
+}
+
+export async function prepareInterviewMaterials(sessionId: string): Promise<PrepViewModel> {
+  if (!isTauri()) {
+    return normalizePrepViewModel(null);
+  }
+  const rawViewModel = await invoke("prepare_interview_materials", { sessionId });
+  return normalizePrepViewModel(rawViewModel);
+}
+
+export async function startMockInterview(request: StartMockInterviewRequest): Promise<MockInterviewViewModel> {
+  if (!isTauri()) {
+    throw new Error("仅桌面模式支持使用导入材料启动模拟面试");
+  }
+  const rawViewModel = await invoke("start_mock_interview", { payload: request });
+  return normalizeMockInterviewViewModel(rawViewModel);
+}
+
+export async function submitMockAnswer(request: SubmitMockAnswerRequest): Promise<MockInterviewViewModel> {
+  if (!isTauri()) {
+    throw new Error("仅桌面模式支持提交真实模拟面试回答");
+  }
+  const rawViewModel = await invoke("submit_mock_answer", { payload: request });
+  return normalizeMockInterviewViewModel(rawViewModel);
+}
+
+export async function endMockInterview(request: EndMockInterviewRequest): Promise<MockInterviewViewModel> {
+  if (!isTauri()) {
+    throw new Error("仅桌面模式支持结束真实模拟面试");
+  }
+  const rawViewModel = await invoke("end_mock_interview", { sessionId: request.sessionId });
+  return normalizeMockInterviewViewModel(rawViewModel);
 }
 
 export async function listUsers(): Promise<UserRecord[]> {

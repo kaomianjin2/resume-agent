@@ -37,6 +37,8 @@ export type MockInterviewViewModel = {
   }>;
 };
 
+export const MATERIALS_REQUIRED_ERROR = "请先导入简历，并完成面试准备。";
+
 export type StartMockInterviewRequest = {
   sessionId: string;
   targetRole: string;
@@ -56,11 +58,41 @@ export type EndMockInterviewRequest = {
 };
 
 export type MockInterviewRuntimeClient = {
-  startMockInterview: (request: StartMockInterviewRequest) => MockInterviewViewModel;
-  submitMockAnswer: (request: SubmitMockAnswerRequest) => MockInterviewViewModel;
-  endMockInterview: (request: EndMockInterviewRequest) => MockInterviewViewModel;
+  startMockInterview: (request: StartMockInterviewRequest) => Promise<MockInterviewViewModel>;
+  submitMockAnswer: (request: SubmitMockAnswerRequest) => Promise<MockInterviewViewModel>;
+  endMockInterview: (request: EndMockInterviewRequest) => Promise<MockInterviewViewModel>;
   getCurrentViewModel: () => MockInterviewViewModel;
 };
+
+export function normalizeMockInterviewViewModel(rawViewModel: unknown): MockInterviewViewModel {
+  const rawRecord = isRecord(rawViewModel) ? rawViewModel : {};
+  const currentPrompt = recordValue(rawRecord.currentPrompt ?? rawRecord.current_prompt);
+  const progress = recordValue(rawRecord.progress);
+  const reviewPanel = rawRecord.reviewPanel ?? rawRecord.review_panel;
+
+  return {
+    sessionId: stringValue(rawRecord.sessionId ?? rawRecord.session_id, FALLBACK_SESSION_ID),
+    status: mockInterviewStatusValue(rawRecord.status),
+    errorMessage: rawRecord.errorMessage === null || rawRecord.error_message === null
+      ? null
+      : stringValue(rawRecord.errorMessage ?? rawRecord.error_message, ""),
+    currentPrompt: currentPrompt.text
+      ? {
+          kind: currentPrompt.kind === "followup" ? "followup" : "question",
+          label: stringValue(currentPrompt.label, ""),
+          text: stringValue(currentPrompt.text, ""),
+        }
+      : null,
+    progress: {
+      currentQuestionIndex: numberValue(progress.currentQuestionIndex ?? progress.current_question_index),
+      totalQuestions: numberValue(progress.totalQuestions ?? progress.total_questions),
+      currentFollowupIndex: numberValue(progress.currentFollowupIndex ?? progress.current_followup_index),
+      totalFollowups: numberValue(progress.totalFollowups ?? progress.total_followups),
+    },
+    reviewPanel: normalizeReviewPanel(reviewPanel),
+    transcript: normalizeTranscript(rawRecord.transcript),
+  };
+}
 
 type ScoreReport = {
   score: number;
@@ -127,15 +159,15 @@ export function createFallbackMockInterviewClient(): MockInterviewRuntimeClient 
   let fallbackSession = createIdleFallbackSession(FALLBACK_SESSION_ID);
 
   return {
-    startMockInterview(request: StartMockInterviewRequest) {
+    async startMockInterview(request: StartMockInterviewRequest) {
       fallbackSession = startFallbackMockInterview(fallbackSession, request);
       return fallbackSession.viewModel;
     },
-    submitMockAnswer(request: SubmitMockAnswerRequest) {
+    async submitMockAnswer(request: SubmitMockAnswerRequest) {
       fallbackSession = submitFallbackMockAnswer(fallbackSession, request.answer);
       return fallbackSession.viewModel;
     },
-    endMockInterview(request: EndMockInterviewRequest) {
+    async endMockInterview(request: EndMockInterviewRequest) {
       fallbackSession = endFallbackMockInterview(fallbackSession, request.sessionId);
       return fallbackSession.viewModel;
     },
@@ -177,6 +209,65 @@ function createIdleFallbackSession(sessionId: string): MockInterviewFallbackSess
     scoreReports: [],
     viewModel,
   };
+}
+
+function mockInterviewStatusValue(value: unknown): MockInterviewStatus {
+  if (
+    value === "ready_for_answer" ||
+    value === "answer_required" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "ended"
+  ) {
+    return value;
+  }
+  return "idle";
+}
+
+function normalizeReviewPanel(value: unknown): MockInterviewViewModel["reviewPanel"] {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    averageScore: numberValue(value.averageScore ?? value.average_score),
+    risks: stringListValue(value.risks),
+    suggestions: stringListValue(value.suggestions),
+  };
+}
+
+function normalizeTranscript(value: unknown): MockInterviewViewModel["transcript"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord).map((transcriptItem) => ({
+    promptKind: transcriptItem.promptKind === "followup" || transcriptItem.prompt_kind === "followup" ? "followup" : "question",
+    promptText: stringValue(transcriptItem.promptText ?? transcriptItem.prompt_text, ""),
+    answer: stringValue(transcriptItem.answer, ""),
+    score: numberValue(transcriptItem.score),
+  }));
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function stringListValue(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item).trim()).filter(Boolean);
 }
 
 function startFallbackMockInterview(

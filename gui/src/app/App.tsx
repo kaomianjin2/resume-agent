@@ -9,17 +9,23 @@ import {
 import {
   addUser,
   DesktopRuntimeSnapshot,
+  endMockInterview,
   listUsers,
   loginUser,
   loadDesktopSnapshot,
   MaterialKind,
   logoutUser,
+  prepareInterviewMaterials,
   selectMaterialFile,
   snapshotWithDesktopError,
+  startMockInterview,
+  submitMockAnswer,
   updateUserStatus,
   UserRecord,
 } from "../shared/desktop/desktopBridge";
-import { getPrepViewModel } from "../shared/api/prep";
+import { createFallbackMockInterviewClient, MockInterviewRuntimeClient } from "../shared/api/mock";
+import { failedPrepViewModel, getPrepViewModel, missingInputsPrepViewModel } from "../shared/api/prep";
+import { LoginPasswordInput } from "./LoginPasswordInput";
 
 export function App() {
   const [activeModuleId, setActiveModuleId] = useState<ModuleId>(DEFAULT_ACTIVE_MODULE_ID);
@@ -31,14 +37,25 @@ export function App() {
   const [userErrorMessage, setUserErrorMessage] = useState("");
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [loginPasswordVisible, setLoginPasswordVisible] = useState(false);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<"admin" | "member">("member");
+  const [prepViewModel, setPrepViewModel] = useState(getPrepViewModel);
+  const [prepIsLoading, setPrepIsLoading] = useState(false);
+  const [fallbackMockRuntimeClient] = useState(createFallbackMockInterviewClient);
   const activeModule = getModuleViewModel(activeModuleId);
-  const prepViewModel = getPrepViewModel();
   const effectiveCurrentUser = desktopSnapshot?.currentUser ?? webPreviewUser;
   const effectiveCurrentUserRole = desktopSnapshot?.currentUserRole ?? webPreviewRole;
   const isLoggedIn = Boolean(effectiveCurrentUser);
+  const mockRuntimeClient: MockInterviewRuntimeClient = desktopSnapshot?.isDesktopShell
+    ? {
+        startMockInterview,
+        submitMockAnswer,
+        endMockInterview,
+        getCurrentViewModel: fallbackMockRuntimeClient.getCurrentViewModel,
+      }
+    : fallbackMockRuntimeClient;
 
   useEffect(() => {
     if (activeModuleId === "users" && effectiveCurrentUserRole !== "admin") {
@@ -52,14 +69,31 @@ export function App() {
   }, []);
 
   async function handleSelectMaterialFile(kind: MaterialKind) {
-    await handleDesktopAction(() => selectMaterialFile(kind));
+    const nextSnapshot = await handleDesktopAction(() => selectMaterialFile(kind));
+    if (!nextSnapshot?.resumePath && !nextSnapshot?.jdPath) {
+      return;
+    }
+    const missingInputs = nextSnapshot.resumePath ? [] : ["resume_text"];
+    setPrepViewModel(missingInputsPrepViewModel(missingInputs));
+    setPrepIsLoading(true);
+    try {
+      setPrepViewModel(await prepareInterviewMaterials("gui-mock-session"));
+    } catch (error) {
+      setPrepViewModel(failedPrepViewModel(error instanceof Error ? error.message : String(error)));
+    } finally {
+      setPrepIsLoading(false);
+    }
   }
 
   async function handleDesktopAction(action: () => Promise<DesktopRuntimeSnapshot>) {
     try {
-      setDesktopSnapshot(await action());
+      const nextSnapshot = await action();
+      setDesktopSnapshot(nextSnapshot);
+      return nextSnapshot;
     } catch (error) {
-      setDesktopSnapshot((currentSnapshot) => snapshotWithDesktopError(error, currentSnapshot));
+      const nextSnapshot = snapshotWithDesktopError(error, desktopSnapshot);
+      setDesktopSnapshot(nextSnapshot);
+      return nextSnapshot;
     }
   }
 
@@ -80,6 +114,7 @@ export function App() {
       setActiveModuleId(DEFAULT_ACTIVE_MODULE_ID);
       setLoginError("");
       setLoginPassword("");
+      setLoginPasswordVisible(false);
       return;
     }
 
@@ -92,6 +127,7 @@ export function App() {
       setActiveModuleId(DEFAULT_ACTIVE_MODULE_ID);
       setLoginError("");
       setLoginPassword("");
+      setLoginPasswordVisible(false);
       await handleDesktopAction(loadDesktopSnapshot);
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : String(error));
@@ -144,11 +180,11 @@ export function App() {
               onChange={(event) => setLoginUsername(event.target.value)}
               placeholder="用户名"
             />
-            <input
+            <LoginPasswordInput
               value={loginPassword}
-              onChange={(event) => setLoginPassword(event.target.value)}
-              placeholder="密码"
-              type="password"
+              visible={loginPasswordVisible}
+              onChange={setLoginPassword}
+              onVisibleChange={setLoginPasswordVisible}
             />
           </div>
           <div className="login-form-row">
@@ -176,12 +212,14 @@ export function App() {
         currentUserRole: null,
       }), currentUser: effectiveCurrentUser, currentUserRole: effectiveCurrentUserRole }}
       prepViewModel={prepViewModel}
+      prepIsLoading={prepIsLoading}
       users={users}
       newUsername={newUsername}
       newPassword={newPassword}
       newRole={newRole}
       userErrorMessage={userErrorMessage}
       currentUserRole={effectiveCurrentUserRole}
+      mockRuntimeClient={mockRuntimeClient}
       onModuleChange={setActiveModuleId}
       onSelectMaterialFile={handleSelectMaterialFile}
       onNewUsernameChange={setNewUsername}

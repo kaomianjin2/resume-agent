@@ -87,6 +87,23 @@ struct LoginPayload {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartMockInterviewPayload {
+    session_id: String,
+    target_role: String,
+    question_count: Option<i32>,
+    question_type: Option<String>,
+    followup_rounds: Option<i32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SubmitMockAnswerPayload {
+    session_id: String,
+    answer: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum MaterialKind {
     Resume,
@@ -125,6 +142,50 @@ fn remember_material_file(
     }
     runtime_state.last_error = None;
     Ok(build_snapshot(&mut runtime_state))
+}
+
+#[tauri::command]
+fn prepare_interview_materials(session_id: String, state: tauri::State<'_, DesktopState>) -> Result<Value, String> {
+    let (resume_path, jd_path) = {
+        let runtime_state = state.runtime.lock().map_err(|_| "runtime state lock failed".to_string())?;
+        (runtime_state.resume_path.clone(), runtime_state.jd_path.clone())
+    };
+    let resume_path = resume_path.unwrap_or_default();
+    let jd_path = jd_path.unwrap_or_default();
+    run_python_json(&format!(
+        "from pathlib import Path; from interview_agent.gui_runtime import load_runtime; from interview_agent.kb.parser import extract_text; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); resume_text=extract_text(Path({:?})) if {:?} else ''; jd_text=extract_text(Path({:?})) if {:?} else ''; print_json(runtime.prepare_interview_materials(session_id={:?}, resume_text=resume_text, jd_text=jd_text))",
+        CONFIG_PATH, session_id, resume_path, resume_path, jd_path, jd_path, session_id
+    ))
+}
+
+#[tauri::command]
+fn start_mock_interview(payload: StartMockInterviewPayload) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.start_mock_interview(session_id={:?}, target_role={:?}, question_count={:?}, followup_rounds={:?}, question_type={:?}))",
+        CONFIG_PATH,
+        payload.session_id,
+        payload.session_id,
+        payload.target_role,
+        payload.question_count.unwrap_or(5),
+        payload.followup_rounds.unwrap_or(1),
+        payload.question_type.unwrap_or_else(|| "行为面试".to_string())
+    ))
+}
+
+#[tauri::command]
+fn submit_mock_answer(payload: SubmitMockAnswerPayload) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.submit_mock_answer(session_id={:?}, answer={:?}))",
+        CONFIG_PATH, payload.session_id, payload.session_id, payload.answer
+    ))
+}
+
+#[tauri::command]
+fn end_mock_interview(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.end_mock_interview({:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
 }
 
 #[tauri::command]
@@ -387,6 +448,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             runtime_snapshot,
             remember_material_file,
+            prepare_interview_materials,
+            start_mock_interview,
+            submit_mock_answer,
+            end_mock_interview,
             start_python_runtime,
             stop_python_runtime,
             list_users,

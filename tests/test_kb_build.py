@@ -373,6 +373,24 @@ def test_build_knowledge_base_extracts_text_from_flate_pdf_tj_arrays(tmp_path: P
     assert "Alpha Beta Gamma" in chunk_row[0]
 
 
+def test_extract_text_reads_image_material_with_local_ocr(monkeypatch, tmp_path: Path) -> None:
+    from interview_agent.kb import parser
+
+    image_path = tmp_path / "backend-jd.png"
+    image_path.write_bytes(b"png fixture")
+    monkeypatch.setattr(parser, "_run_image_ocr", lambda path: f"岗位职责: {path.name}\n任职资格: Golang")
+
+    assert parser.extract_text(image_path) == "岗位职责: backend-jd.png\n任职资格: Golang"
+
+
+def test_image_ocr_text_cleaner_removes_mobile_app_noise() -> None:
+    from interview_agent.kb.parser import _clean_image_ocr_text
+
+    raw_text = "22:20\nBOSS 直聘\n5G\ngolang开发工程师\n岗位职责\n继续沟通\n不感兴趣"
+
+    assert _clean_image_ocr_text(raw_text) == "22:20\ngolang开发工程师\n岗位职责"
+
+
 def test_pdf_text_segment_extraction_ignores_large_non_text_arrays_quickly() -> None:
     def raise_timeout(*_: object) -> None:
         raise TimeoutError("PDF stream scan timed out")

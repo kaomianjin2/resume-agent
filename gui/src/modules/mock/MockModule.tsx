@@ -1,11 +1,12 @@
 import { ChangeEvent, useState } from "react";
 import {
   createFallbackMockInterviewClient,
+  MATERIALS_REQUIRED_ERROR,
   MockInterviewQuestionType,
   MockInterviewScenario,
   MockInterviewRuntimeClient,
   MockInterviewViewModel,
-} from "../../shared/api/mock";
+} from "../../shared/api/mock.js";
 
 const MOCK_SESSION_ID = "gui-mock-session";
 const fallbackRuntimeClient = createFallbackMockInterviewClient();
@@ -13,19 +14,31 @@ const QUESTION_COUNT_OPTIONS = [3, 5, 8];
 const QUESTION_TYPE_OPTIONS: MockInterviewQuestionType[] = ["行为面试", "项目深挖", "技术基础", "系统设计"];
 const FOLLOWUP_ROUND_OPTIONS = [0, 1, 2, 3];
 
-export function MockModule() {
+type MockModuleProps = {
+  materialsReady: boolean;
+  runtimeClient?: MockInterviewRuntimeClient;
+};
+
+export function MockModule({ materialsReady, runtimeClient = fallbackRuntimeClient }: MockModuleProps) {
   const [scenario, setScenario] = useState<MockInterviewScenario>("default");
   const [questionCount, setQuestionCount] = useState(5);
   const [questionType, setQuestionType] = useState<MockInterviewQuestionType>("行为面试");
   const [followupRounds, setFollowupRounds] = useState(1);
   const [answerDraft, setAnswerDraft] = useState("");
-  const [runtimeClient] = useState<MockInterviewRuntimeClient>(() => fallbackRuntimeClient);
   const [viewModel, setViewModel] = useState<MockInterviewViewModel>(() => runtimeClient.getCurrentViewModel());
   const canSubmit = viewModel.status === "ready_for_answer" || viewModel.status === "answer_required";
 
-  const handleStart = () => {
+  const handleStart = async () => {
+    if (!materialsReady) {
+      setViewModel({
+        ...runtimeClient.getCurrentViewModel(),
+        status: "failed",
+        errorMessage: MATERIALS_REQUIRED_ERROR,
+      });
+      return;
+    }
     setViewModel(
-      runtimeClient.startMockInterview({
+      await runtimeClient.startMockInterview({
         sessionId: MOCK_SESSION_ID,
         targetRole: "后端工程师",
         questionCount,
@@ -37,15 +50,15 @@ export function MockModule() {
     setAnswerDraft("");
   };
 
-  const handleSubmit = () => {
-    setViewModel(runtimeClient.submitMockAnswer({ sessionId: MOCK_SESSION_ID, answer: answerDraft }));
+  const handleSubmit = async () => {
+    setViewModel(await runtimeClient.submitMockAnswer({ sessionId: MOCK_SESSION_ID, answer: answerDraft }));
     if (answerDraft.trim()) {
       setAnswerDraft("");
     }
   };
 
-  const handleEnd = () => {
-    setViewModel(runtimeClient.endMockInterview({ sessionId: MOCK_SESSION_ID }));
+  const handleEnd = async () => {
+    setViewModel(await runtimeClient.endMockInterview({ sessionId: MOCK_SESSION_ID }));
     setAnswerDraft("");
   };
 
@@ -86,6 +99,7 @@ export function MockModule() {
           <span className="tag">追问进度 {viewModel.progress.currentFollowupIndex}/{viewModel.progress.totalFollowups}</span>
           <span className="tag">状态 {getStatusLabel(viewModel.status)}</span>
         </div>
+        {!materialsReady && <p className="status-copy error-text">{MATERIALS_REQUIRED_ERROR}</p>}
         {viewModel.errorMessage && <p className="status-copy error-text">{viewModel.errorMessage}</p>}
         </div>
       </section>
@@ -135,7 +149,7 @@ export function MockModule() {
               </select>
             </div>
             <div className="action-row mock-action-row">
-              <button className="primary-button" type="button" onClick={handleStart}>
+              <button className="primary-button" type="button" onClick={handleStart} disabled={!materialsReady}>
                 开始模拟
               </button>
               <button className="quiet-button" type="button" onClick={handleEnd}>

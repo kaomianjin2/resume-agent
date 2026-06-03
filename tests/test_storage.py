@@ -182,3 +182,20 @@ def test_disabled_user_cannot_login(tmp_path: Path) -> None:
 
     assert set_user_status(database_path, username="member1", status="disabled") is True
     assert verify_login(database_path, username="member1", password="pass123") is None
+
+
+def test_default_admin_login_repairs_existing_admin_password(tmp_path: Path) -> None:
+    database_path = tmp_path / "storage.sqlite3"
+    initialize_database(database_path)
+    create_user(database_path, username="admin", password="broken-password", role="member", status="disabled")
+
+    login_result = verify_login(database_path, username="admin", password="admin")
+    users = list_users(database_path)
+
+    assert login_result is not None
+    assert login_result["username"] == "admin"
+    assert login_result["role"] == "admin"
+    assert login_result["status"] == "enabled"
+    assert len(users) == 1
+    assert users[0]["role"] == "admin"
+    assert users[0]["status"] == "enabled"

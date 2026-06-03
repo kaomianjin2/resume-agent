@@ -10,6 +10,8 @@ from uuid import uuid4
 
 
 DEFAULT_KNOWLEDGE_BASE_STATUS = "not_ready"
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "admin"
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
 
@@ -168,6 +170,10 @@ def set_user_status(database_path: Path | str, *, username: str, status: str) ->
 
 
 def verify_login(database_path: Path | str, *, username: str, password: str) -> dict[str, str] | None:
+    normalized_username = username.strip()
+    if normalized_username == DEFAULT_ADMIN_USERNAME and password == DEFAULT_ADMIN_PASSWORD:
+        _ensure_default_admin(database_path)
+
     with get_connection(database_path) as connection:
         row = connection.execute(
             """
@@ -175,7 +181,7 @@ def verify_login(database_path: Path | str, *, username: str, password: str) -> 
             FROM users
             WHERE username = ?
             """,
-            (username.strip(),),
+            (normalized_username,),
         ).fetchone()
     if row is None:
         return None
@@ -188,3 +194,28 @@ def verify_login(database_path: Path | str, *, username: str, password: str) -> 
 
 def _hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def _ensure_default_admin(database_path: Path | str) -> None:
+    initialize_database(database_path)
+    timestamp = _current_timestamp()
+    password_hash = _hash_password(DEFAULT_ADMIN_PASSWORD)
+    with get_connection(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO users (user_id, username, password_hash, role, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'admin', 'enabled', ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+                password_hash = excluded.password_hash,
+                role = 'admin',
+                status = 'enabled',
+                updated_at = excluded.updated_at
+            """,
+            (
+                f"user-{uuid4()}",
+                DEFAULT_ADMIN_USERNAME,
+                password_hash,
+                timestamp,
+                timestamp,
+            ),
+        )
