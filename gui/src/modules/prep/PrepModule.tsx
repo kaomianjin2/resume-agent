@@ -16,9 +16,20 @@ export function PrepModule({ viewModel }: PrepModuleProps) {
           </div>
         </section>
         <section className="prep-board">
-          <p className="meta-label">材料状态</p>
-          <h3>请先导入简历和 JD</h3>
-          <p className="body-copy">缺少 {viewModel.missingInputs.join("、")}，补齐后展示匹配报告和准备摘要。</p>
+          <div className="prep-board-head">
+            <span className="meta-label">材料状态</span>
+            <span className="body-copy">补齐材料后展示准备包预览</span>
+          </div>
+          <div className="prep-board-body">
+            <article className="prep-row">
+              <div className="prep-row-label">缺失材料</div>
+              <div className="prep-row-text">缺少 <strong>{viewModel.missingInputs.join("、")}</strong>。</div>
+            </article>
+            <article className="prep-row">
+              <div className="prep-row-label">下一步</div>
+              <div className="prep-row-text">请先导入简历和 JD，补齐后展示匹配报告和准备摘要。</div>
+            </article>
+          </div>
         </section>
       </div>
     );

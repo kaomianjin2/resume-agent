@@ -1,30 +1,34 @@
-import { ModuleId, moduleViewModels } from "../fixtureData";
+import { getVisibleModuleViewModels, ModuleId, UserRole } from "../fixtureData";
 import { DesktopRuntimeSnapshot } from "../../shared/desktop/desktopBridge";
+import brandLogo from "../../../src-tauri/icons/logo.jpg";
 
 type SidebarProps = {
   activeModuleId: ModuleId;
   desktopSnapshot: DesktopRuntimeSnapshot | null;
+  currentUserRole: UserRole | null;
   onModuleChange: (moduleId: ModuleId) => void;
 };
 
 export function Sidebar({
   activeModuleId,
   desktopSnapshot,
+  currentUserRole,
   onModuleChange,
 }: SidebarProps) {
   const knowledgeBaseStatus = desktopSnapshot?.knowledgeBaseStatus ?? "checking";
   const statusLabel = knowledgeBaseStatus === "ready" ? "知识库 ready" : `知识库 ${knowledgeBaseStatus}`;
+  const visibleModuleViewModels = getVisibleModuleViewModels(currentUserRole);
 
   return (
     <aside className="sidebar" aria-label="模块导航">
       <section className="brand-block">
-        <span className="brand-mark" aria-hidden="true" />
+        <img className="brand-mark" src={brandLogo} alt="Interview Agent Logo" />
         <h1>Interview Agent</h1>
         <p className="brand-subtitle">本地桌面面试工作台</p>
       </section>
 
       <nav className="module-nav">
-        {moduleViewModels.map((moduleViewModel, moduleIndex) => (
+        {visibleModuleViewModels.map((moduleViewModel, moduleIndex) => (
           <button
             className={moduleViewModel.id === activeModuleId ? "nav-button active" : "nav-button"}
             key={moduleViewModel.id}

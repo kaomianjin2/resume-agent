@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, ReactNode, UIEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type LanguageId = "python" | "javascript" | "go" | "java" | "c" | "cpp";
 type RunStateId = "empty" | "error" | "passed";
@@ -38,7 +38,9 @@ export function AlgorithmModule() {
   const [runStateId, setRunStateId] = useState<RunStateId>("empty");
   const selectedLanguage = languageOptions.find((languageOption) => languageOption.id === selectedLanguageId) ?? languageOptions[0];
   const runState = runStates[runStateId];
-  const editorCode = runStateId === "empty" ? "" : selectedLanguage.code;
+  const [editorCode, setEditorCode] = useState("");
+  const editorInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const highlightedCode = useMemo(() => buildHighlightedCode(editorCode, selectedLanguageId), [editorCode, selectedLanguageId]);
 
   const handleLanguageChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setSelectedLanguageId(event.target.value as LanguageId);
@@ -47,6 +49,35 @@ export function AlgorithmModule() {
   const handleRunStateChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setRunStateId(event.target.value as RunStateId);
   };
+
+  const handleEditorInput = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    setEditorCode(event.target.value);
+  };
+
+  const handleEditorScroll = (event: UIEvent<HTMLTextAreaElement>) => {
+    const target = event.currentTarget;
+    const overlay = target.previousElementSibling as HTMLElement | null;
+    if (!overlay) {
+      return;
+    }
+    overlay.scrollTop = target.scrollTop;
+    overlay.scrollLeft = target.scrollLeft;
+  };
+
+  useEffect(() => {
+    if (runStateId === "empty") {
+      setEditorCode("");
+      return;
+    }
+    setEditorCode(selectedLanguage.code);
+  }, [selectedLanguage.code, runStateId]);
+
+  useEffect(() => {
+    if (!editorInputRef.current) {
+      return;
+    }
+    editorInputRef.current.focus();
+  }, [selectedLanguageId, runStateId]);
 
   return (
     <div className="module-grid algorithm-module">
@@ -83,7 +114,24 @@ export function AlgorithmModule() {
 
       <section className="content-panel editor-panel">
         <p className="meta-label">编辑器</p>
-        <pre>{editorCode}</pre>
+        <div className="code-editor-shell">
+          <pre className="code-editor-highlight" aria-hidden="true">
+            <code>{highlightedCode}</code>
+          </pre>
+          <textarea
+            id="algorithm-editor"
+            ref={editorInputRef}
+            className="code-editor-input"
+            value={editorCode}
+            onChange={handleEditorInput}
+            onScroll={handleEditorScroll}
+            spellCheck={false}
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            placeholder="请输入算法代码，空行提交。"
+          />
+        </div>
       </section>
 
       <section className="content-panel">
@@ -112,4 +160,53 @@ ${runState.stderr || "无"}`}</pre>
       </section>
     </div>
   );
+}
+
+export function buildHighlightedCode(code: string, languageId: LanguageId): ReactNode[] {
+  const keywordByLanguage: Record<LanguageId, string[]> = {
+    python: ["def", "return", "for", "while", "if", "else", "elif", "in", "len", "max"],
+    javascript: ["function", "const", "let", "return", "if", "else", "for", "while", "new", "class"],
+    go: ["func", "return", "for", "if", "else", "var", "const", "range", "int"],
+    java: ["class", "int", "return", "if", "else", "for", "while", "new", "public", "static"],
+    c: ["int", "return", "if", "else", "for", "while", "void"],
+    cpp: ["int", "return", "if", "else", "for", "while", "vector", "class", "auto"],
+  };
+  const keywords = new Set(keywordByLanguage[languageId]);
+  const lines = code.split("\n");
+  const highlightedNodes: ReactNode[] = [];
+
+  lines.forEach((line, lineIndex) => {
+    const commentIndex = line.indexOf("//");
+    const pythonCommentIndex = line.indexOf("#");
+    const activeCommentIndex = pythonCommentIndex >= 0 && (commentIndex < 0 || pythonCommentIndex < commentIndex)
+      ? pythonCommentIndex
+      : commentIndex;
+    const codePart = activeCommentIndex >= 0 ? line.slice(0, activeCommentIndex) : line;
+    const commentPart = activeCommentIndex >= 0 ? line.slice(activeCommentIndex) : "";
+    const tokens = codePart.split(/(\b[A-Za-z_][A-Za-z0-9_]*\b|\d+|[()[\]{}.,;:+\-*/<>=!&|]+)/g);
+
+    tokens.forEach((token, tokenIndex) => {
+      if (!token) {
+        return;
+      }
+      if (keywords.has(token)) {
+        highlightedNodes.push(<span key={`k-${lineIndex}-${tokenIndex}`} className="token-keyword">{token}</span>);
+        return;
+      }
+      if (/^\d+$/.test(token)) {
+        highlightedNodes.push(<span key={`n-${lineIndex}-${tokenIndex}`} className="token-number">{token}</span>);
+        return;
+      }
+      highlightedNodes.push(<span key={`t-${lineIndex}-${tokenIndex}`}>{token}</span>);
+    });
+
+    if (commentPart) {
+      highlightedNodes.push(<span key={`c-${lineIndex}`} className="token-comment">{commentPart}</span>);
+    }
+    if (lineIndex < lines.length - 1) {
+      highlightedNodes.push("\n");
+    }
+  });
+
+  return highlightedNodes;
 }

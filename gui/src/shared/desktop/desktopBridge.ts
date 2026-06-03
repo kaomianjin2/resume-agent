@@ -8,6 +8,12 @@ import {
 
 export type MaterialKind = "resume" | "jd";
 export type { DesktopRuntimeSnapshot };
+export type UserRecord = {
+  userId: string;
+  username: string;
+  role: "admin" | "member";
+  status: "enabled" | "disabled";
+};
 
 export async function loadDesktopSnapshot(): Promise<DesktopRuntimeSnapshot> {
   if (!isTauri()) {
@@ -60,4 +66,45 @@ export async function selectMaterialFile(kind: MaterialKind): Promise<DesktopRun
     kind,
     path: selectedPath,
   });
+}
+
+export async function listUsers(): Promise<UserRecord[]> {
+  if (!isTauri()) {
+    return [];
+  }
+  return invoke<UserRecord[]>("list_users");
+}
+
+export async function addUser(username: string, password: string, role: "admin" | "member"): Promise<UserRecord> {
+  if (!isTauri()) {
+    throw new Error("仅桌面模式支持新增用户");
+  }
+  return invoke<UserRecord>("add_user", {
+    payload: { username, password, role },
+  });
+}
+
+export async function updateUserStatus(username: string, status: "enabled" | "disabled"): Promise<boolean> {
+  if (!isTauri()) {
+    return false;
+  }
+  return invoke<boolean>("update_user_status", {
+    payload: { username, status },
+  });
+}
+
+export async function loginUser(username: string, password: string): Promise<UserRecord | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  return invoke<UserRecord | null>("login_user", {
+    payload: { username, password },
+  });
+}
+
+export async function logoutUser(): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
+  await invoke("logout_user");
 }

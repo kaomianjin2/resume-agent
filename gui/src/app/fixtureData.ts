@@ -1,4 +1,6 @@
-export type ModuleId = "prep" | "mock" | "algorithm";
+export type ModuleId = "prep" | "mock" | "algorithm" | "users";
+export type UserRole = "admin" | "member";
+export const DEFAULT_ACTIVE_MODULE_ID: ModuleId = "prep";
 
 export type CheckItem = {
   label: string;
@@ -62,7 +64,28 @@ export const moduleViewModels: ModuleViewModel[] = [
       { label: "评审面板", status: "review", detail: "正确性、复杂度、边界 case 和建议已展示" },
     ],
   },
+  {
+    id: "users",
+    label: "用户管理",
+    eyebrow: "User Management",
+    title: "本地账号管理",
+    summary: "管理本地登录账号、角色和启用状态。",
+    primaryAction: "新增用户",
+    secondaryAction: "刷新列表",
+    checks: [
+      { label: "账号列表", status: "ready", detail: "可查看用户名、角色和状态" },
+      { label: "新增账号", status: "ready", detail: "支持 admin/member 角色" },
+      { label: "状态切换", status: "ready", detail: "支持启用与禁用账号" },
+    ],
+  },
 ];
+
+export function getVisibleModuleViewModels(currentUserRole: UserRole | null): ModuleViewModel[] {
+  if (currentUserRole === "admin") {
+    return moduleViewModels;
+  }
+  return moduleViewModels.filter((moduleViewModel) => moduleViewModel.id !== "users");
+}
 
 export function getModuleViewModel(moduleId: ModuleId): ModuleViewModel {
   return moduleViewModels.find((moduleViewModel) => moduleViewModel.id === moduleId) ?? moduleViewModels[0];

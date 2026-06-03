@@ -106,6 +106,7 @@ def jd_match_handler(context: NodeContext, inputs: dict[str, object]) -> dict[st
 
 
 def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    question_type = _optional_text(inputs, "question_type", "行为面试")
     result = run_structured_node(
         "question_generate",
         services=_mutable_services(context),
@@ -115,7 +116,8 @@ def question_generate_handler(context: NodeContext, inputs: dict[str, object]) -
         }
         | _optional_prompt_input(inputs, "jd_requirements")
         | _optional_prompt_input(inputs, "difficulty")
-        | _optional_prompt_input(inputs, "question_count"),
+        | _optional_prompt_input(inputs, "question_count")
+        | {"question_type": question_type},
         rag_query=_join_query_parts(
             _require_text(inputs, "target_role"),
             _read_profile_name(inputs.get("candidate_profile")),

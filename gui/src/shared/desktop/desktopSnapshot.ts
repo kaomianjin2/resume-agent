@@ -6,6 +6,8 @@ export type DesktopRuntimeSnapshot = {
   resumePath: string | null;
   jdPath: string | null;
   lastError: string | null;
+  currentUser: string | null;
+  currentUserRole: "admin" | "member" | null;
 };
 
 export const webSnapshot: DesktopRuntimeSnapshot = {
@@ -16,6 +18,8 @@ export const webSnapshot: DesktopRuntimeSnapshot = {
   resumePath: null,
   jdPath: null,
   lastError: null,
+  currentUser: null,
+  currentUserRole: null,
 };
 
 export function snapshotWithDesktopError(

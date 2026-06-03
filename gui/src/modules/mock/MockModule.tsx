@@ -1,6 +1,7 @@
 import { ChangeEvent, useState } from "react";
 import {
   createFallbackMockInterviewClient,
+  MockInterviewQuestionType,
   MockInterviewScenario,
   MockInterviewRuntimeClient,
   MockInterviewViewModel,
@@ -8,9 +9,15 @@ import {
 
 const MOCK_SESSION_ID = "gui-mock-session";
 const fallbackRuntimeClient = createFallbackMockInterviewClient();
+const QUESTION_COUNT_OPTIONS = [3, 5, 8];
+const QUESTION_TYPE_OPTIONS: MockInterviewQuestionType[] = ["行为面试", "项目深挖", "技术基础", "系统设计"];
+const FOLLOWUP_ROUND_OPTIONS = [0, 1, 2, 3];
 
 export function MockModule() {
   const [scenario, setScenario] = useState<MockInterviewScenario>("default");
+  const [questionCount, setQuestionCount] = useState(5);
+  const [questionType, setQuestionType] = useState<MockInterviewQuestionType>("行为面试");
+  const [followupRounds, setFollowupRounds] = useState(1);
   const [answerDraft, setAnswerDraft] = useState("");
   const [runtimeClient] = useState<MockInterviewRuntimeClient>(() => fallbackRuntimeClient);
   const [viewModel, setViewModel] = useState<MockInterviewViewModel>(() => runtimeClient.getCurrentViewModel());
@@ -21,8 +28,9 @@ export function MockModule() {
       runtimeClient.startMockInterview({
         sessionId: MOCK_SESSION_ID,
         targetRole: "后端工程师",
-        questionCount: 2,
-        followupRounds: 1,
+        questionCount,
+        followupRounds,
+        questionType,
         scenario,
       }),
     );
@@ -45,9 +53,22 @@ export function MockModule() {
     setScenario(event.target.value as MockInterviewScenario);
   };
 
+  const handleQuestionCountChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setQuestionCount(Number(event.target.value));
+  };
+
+  const handleQuestionTypeChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setQuestionType(event.target.value as MockInterviewQuestionType);
+  };
+
+  const handleFollowupRoundsChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setFollowupRounds(Number(event.target.value));
+  };
+
   return (
-    <div className="module-grid mock-module">
-      <section className="content-panel wide">
+    <div className="mock-module">
+      <section className="problem-card mock-current-card">
+        <div className="problem-card-body">
         <p className="meta-label">当前回合</p>
         {viewModel.currentPrompt ? (
           <>
@@ -60,39 +81,94 @@ export function MockModule() {
             <p className="body-copy">{getSessionDescription(viewModel.status)}</p>
           </>
         )}
-        <div className="tag-row">
+        <div className="tag-row mock-status-row">
           <span className="tag">题目进度 {viewModel.progress.currentQuestionIndex}/{viewModel.progress.totalQuestions}</span>
           <span className="tag">追问进度 {viewModel.progress.currentFollowupIndex}/{viewModel.progress.totalFollowups}</span>
           <span className="tag">状态 {getStatusLabel(viewModel.status)}</span>
         </div>
         {viewModel.errorMessage && <p className="status-copy error-text">{viewModel.errorMessage}</p>}
-      </section>
-
-      <section className="content-panel answer-pad">
-        <p className="meta-label">开始与作答</p>
-        <label className="field-label" htmlFor="mock-scenario">题集场景</label>
-        <select id="mock-scenario" value={scenario} onChange={handleScenarioChange}>
-          <option value="default">正常题集</option>
-          <option value="empty">空题集</option>
-        </select>
-        <label className="field-label" htmlFor="mock-answer">当前题回答</label>
-        <textarea
-          id="mock-answer"
-          className="mock-answer-input"
-          value={answerDraft}
-          onChange={(event) => setAnswerDraft(event.target.value)}
-          placeholder={canSubmit ? "输入当前题回答，提交后继续追问或进入下一题。" : "点击开始模拟后输入回答。"}
-        />
-        <div className="action-row">
-          <button className="primary-button" type="button" onClick={handleStart}>开始模拟</button>
-          <button className="quiet-button" type="button" onClick={handleSubmit} disabled={!canSubmit}>提交回答</button>
-          <button className="quiet-button" type="button" onClick={handleEnd}>结束当前模拟</button>
         </div>
       </section>
 
-      <section className="content-panel followup-panel">
+      <div className="mock-workbench-grid">
+        <section className="prep-board mock-config-panel">
+          <div className="prep-board-head">
+            <span className="meta-label">配置区</span>
+            <span className="meta-label">启动前选择题集</span>
+          </div>
+          <div className="mock-config-body">
+            <div className="mock-config-row">
+              <label className="field-label" htmlFor="mock-scenario">题集场景</label>
+              <select id="mock-scenario" value={scenario} onChange={handleScenarioChange}>
+                <option value="default">正常题集</option>
+                <option value="empty">空题集</option>
+              </select>
+            </div>
+            <div className="mock-config-row">
+              <label className="field-label" htmlFor="mock-question-count">题目数</label>
+              <select id="mock-question-count" value={questionCount} onChange={handleQuestionCountChange}>
+                {QUESTION_COUNT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mock-config-row">
+              <label className="field-label" htmlFor="mock-question-type">题型</label>
+              <select id="mock-question-type" value={questionType} onChange={handleQuestionTypeChange}>
+                {QUESTION_TYPE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="mock-config-row">
+              <label className="field-label" htmlFor="mock-followup-rounds">追问轮数</label>
+              <select id="mock-followup-rounds" value={followupRounds} onChange={handleFollowupRoundsChange}>
+                {FOLLOWUP_ROUND_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="action-row mock-action-row">
+              <button className="primary-button" type="button" onClick={handleStart}>
+                开始模拟
+              </button>
+              <button className="quiet-button" type="button" onClick={handleEnd}>
+                结束当前模拟
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="prep-board mock-answer-panel">
+          <div className="prep-board-head">
+            <span className="meta-label">作答区</span>
+            <span className="meta-label">{canSubmit ? "等待提交" : "等待开始"}</span>
+          </div>
+          <label className="field-label" htmlFor="mock-answer">当前题回答</label>
+          <textarea
+            id="mock-answer"
+            className="mock-answer-input"
+            value={answerDraft}
+            onChange={(event) => setAnswerDraft(event.target.value)}
+            placeholder={canSubmit ? "输入当前题回答，提交后继续追问或进入下一题。" : "点击开始模拟后输入回答。"}
+          />
+          <div className="action-row mock-action-row">
+            <button className="quiet-button" type="button" onClick={handleSubmit} disabled={!canSubmit}>提交回答</button>
+          </div>
+        </section>
+      </div>
+
+      <section className="prep-board mock-record-panel">
+        <div className="prep-board-head">
         <p className="meta-label">回答记录</p>
         <h3>{viewModel.transcript.length > 0 ? "已完成轮次" : "等待首轮回答"}</h3>
+        </div>
         {viewModel.transcript.length > 0 ? (
           <ul className="clean-list transcript-list">
             {viewModel.transcript.map((transcriptItem) => (
@@ -111,7 +187,7 @@ export function MockModule() {
         )}
       </section>
 
-      <section className="content-panel">
+      <section className="content-panel mock-review-summary">
         <p className="meta-label">评审面板</p>
         {viewModel.reviewPanel ? (
           <>

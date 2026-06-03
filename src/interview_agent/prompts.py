@@ -47,6 +47,7 @@ PROMPT_TEMPLATES: dict[str, str] = {
         "你是面试题生成助手。\n"
         "候选人画像：{candidate_profile}\n"
         "目标岗位：{target_role}\n"
+        "题型：{question_type}\n"
         "请输出面试题 JSON。"
     ),
     "mock_followup": (

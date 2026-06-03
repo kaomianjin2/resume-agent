@@ -135,6 +135,7 @@ class GuiRuntime:
         target_role: str,
         question_count: int = DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT,
         followup_rounds: int = DEFAULT_MOCK_FOLLOWUP_ROUNDS,
+        question_type: str = "行为面试",
     ) -> dict[str, object]:
         question_result = self.executor.execute_node(
             session_id=session_id,
@@ -142,6 +143,7 @@ class GuiRuntime:
             inputs={
                 "target_role": target_role,
                 "question_count": question_count,
+                "question_type": question_type,
             },
         )
         if question_result.status != "success":
@@ -164,9 +166,11 @@ class GuiRuntime:
                 "status": "ready_for_answer",
                 "error_message": None,
                 "target_role": target_role,
+                "question_type": question_type,
                 "questions": questions,
                 "current_question_index": 0,
                 "followup_rounds": followup_rounds,
+                "question_count": question_count,
                 "pending_followups": [],
                 "current_followup_index": 0,
                 "total_followups": 0,
@@ -373,12 +377,14 @@ def start_mock_interview(
     target_role: str,
     question_count: int = DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT,
     followup_rounds: int = DEFAULT_MOCK_FOLLOWUP_ROUNDS,
+    question_type: str = "行为面试",
 ) -> dict[str, object]:
     return runtime.start_mock_interview(
         session_id=session_id,
         target_role=target_role,
         question_count=question_count,
         followup_rounds=followup_rounds,
+        question_type=question_type,
     )
 
 
@@ -539,9 +545,11 @@ def _idle_mock_interview_state(session_id: str) -> dict[str, object]:
         "session_id": session_id,
         "status": "idle",
         "error_message": None,
+        "question_type": "行为面试",
         "questions": [],
         "current_question_index": 0,
         "followup_rounds": 0,
+        "question_count": 0,
         "pending_followups": [],
         "current_followup_index": 0,
         "total_followups": 0,

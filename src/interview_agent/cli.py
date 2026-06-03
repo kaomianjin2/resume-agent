@@ -30,7 +30,13 @@ from interview_agent.planner import ExecutionPlan
 from interview_agent import rendering
 from interview_agent.router import RouteResult, route_conversation
 from interview_agent.session import SessionStore
-from interview_agent.storage import get_knowledge_base_status
+from interview_agent.storage import (
+    create_user,
+    get_knowledge_base_status,
+    list_users,
+    set_user_status,
+    verify_login,
+)
 
 
 DEFAULT_SESSION_ID = "interactive-cli-session"
@@ -128,6 +134,7 @@ def main(
 
     _enable_terminal_line_editing(input_func, output_stream)
     _write_line(output_stream, "请输入需求，输入 exit 退出。")
+    current_user: dict[str, str] | None = None
     try:
         while True:
             user_message = _read_line(input_func, output_stream, "> ")
@@ -138,9 +145,19 @@ def main(
             normalized_message = user_message.strip()
             if not normalized_message:
                 continue
-            if normalized_message in {"exit", "quit", "/exit"}:
+            if normalized_message in {"exit", "quit", "/exit", "退出"}:
                 _write_line(output_stream, "已退出。")
                 return 0
+
+            command_result = _handle_user_command(
+                normalized_message=normalized_message,
+                database_path=database_path,
+                output=output_stream,
+                current_user=current_user,
+            )
+            if command_result is not None:
+                current_user = command_result
+                continue
 
             if is_mock_interview_request(normalized_message):
                 session_inputs = session_store.get_all_state(session_id)
@@ -215,6 +232,91 @@ def main(
     except KeyboardInterrupt:
         _write_line(output_stream, "\n已退出。")
         return 0
+
+
+def _handle_user_command(
+    *,
+    normalized_message: str,
+    database_path: Path,
+    output: TextIO,
+    current_user: dict[str, str] | None,
+) -> dict[str, str] | None:
+    if normalized_message.startswith("/user "):
+        command_segments = normalized_message.split()
+        if len(command_segments) < 2:
+            _write_line(output, "用法: /user list|add|enable|disable ...")
+            return current_user
+        action = command_segments[1]
+        if action == "list":
+            users = list_users(database_path)
+            if not users:
+                _write_line(output, "当前没有用户。")
+                return current_user
+            for index, user_info in enumerate(users, start=1):
+                _write_line(
+                    output,
+                    f"{index}. {user_info['username']} | 角色: {user_info['role']} | 状态: {user_info['status']}",
+                )
+            return current_user
+        if action == "add":
+            if len(command_segments) != 5:
+                _write_line(output, "用法: /user add <username> <password> <admin|member>")
+                return current_user
+            _, _, username, password, role = command_segments
+            try:
+                created_user = create_user(
+                    database_path,
+                    username=username,
+                    password=password,
+                    role=role,
+                )
+            except (ValueError, Exception) as error:
+                _write_line(output, f"创建用户失败: {error}")
+                return current_user
+            _write_line(output, f"用户已创建: {created_user['username']} ({created_user['role']})")
+            return current_user
+        if action in {"enable", "disable"}:
+            if len(command_segments) != 3:
+                _write_line(output, "用法: /user enable|disable <username>")
+                return current_user
+            username = command_segments[2]
+            updated = set_user_status(
+                database_path,
+                username=username,
+                status="enabled" if action == "enable" else "disabled",
+            )
+            if not updated:
+                _write_line(output, "未找到该用户。")
+                return current_user
+            _write_line(output, f"用户状态已更新: {username} -> {'enabled' if action == 'enable' else 'disabled'}")
+            if current_user and current_user.get("username") == username and action == "disable":
+                _write_line(output, "当前登录用户已被禁用，已自动退出登录。")
+                return None
+            return current_user
+        _write_line(output, "未知用户命令。用法: /user list|add|enable|disable ...")
+        return current_user
+
+    if normalized_message.startswith("/login "):
+        command_segments = normalized_message.split()
+        if len(command_segments) != 3:
+            _write_line(output, "用法: /login <username> <password>")
+            return current_user
+        _, username, password = command_segments
+        user_info = verify_login(database_path, username=username, password=password)
+        if user_info is None:
+            _write_line(output, "登录失败：用户名或密码错误，或用户已禁用。")
+            return current_user
+        _write_line(output, f"登录成功：{user_info['username']} ({user_info['role']})")
+        return user_info
+
+    if normalized_message == "/logout":
+        if current_user is None:
+            _write_line(output, "当前未登录。")
+            return current_user
+        _write_line(output, f"已退出登录：{current_user['username']}")
+        return None
+
+    return None
 
 
 def _default_executor_factory(

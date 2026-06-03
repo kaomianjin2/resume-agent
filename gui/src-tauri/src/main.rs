@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     path::PathBuf,
     process::{Child, Command, ExitStatus, Stdio},
@@ -36,6 +37,8 @@ struct RuntimeState {
     resume_path: Option<String>,
     jd_path: Option<String>,
     last_error: Option<String>,
+    current_user: Option<String>,
+    current_user_role: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -48,6 +51,39 @@ struct RuntimeSnapshot {
     resume_path: Option<String>,
     jd_path: Option<String>,
     last_error: Option<String>,
+    current_user: Option<String>,
+    current_user_role: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UserRecord {
+    user_id: String,
+    username: String,
+    role: String,
+    status: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddUserPayload {
+    username: String,
+    password: String,
+    role: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateUserStatusPayload {
+    username: String,
+    status: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LoginPayload {
+    username: String,
+    password: String,
 }
 
 #[derive(Deserialize)]
@@ -89,6 +125,80 @@ fn remember_material_file(
     }
     runtime_state.last_error = None;
     Ok(build_snapshot(&mut runtime_state))
+}
+
+#[tauri::command]
+fn list_users() -> Result<Vec<UserRecord>, String> {
+    let output = run_python_json(
+        "from interview_agent.config import load_config; from interview_agent.storage import list_users; c=load_config('config/interview-agent.toml'); print_json(list_users(c.storage.database_path))",
+    )?;
+    let users = output
+        .as_array()
+        .ok_or_else(|| "invalid list_users payload".to_string())?;
+    let mut records = Vec::with_capacity(users.len());
+    for user in users {
+        records.push(UserRecord {
+            user_id: user.get("user_id").and_then(Value::as_str).unwrap_or_default().to_string(),
+            username: user.get("username").and_then(Value::as_str).unwrap_or_default().to_string(),
+            role: user.get("role").and_then(Value::as_str).unwrap_or_default().to_string(),
+            status: user.get("status").and_then(Value::as_str).unwrap_or_default().to_string(),
+        });
+    }
+    Ok(records)
+}
+
+#[tauri::command]
+fn add_user(payload: AddUserPayload) -> Result<UserRecord, String> {
+    let output = run_python_json(&format!(
+        "from interview_agent.config import load_config; from interview_agent.storage import create_user; c=load_config('config/interview-agent.toml'); print_json(create_user(c.storage.database_path, username={:?}, password={:?}, role={:?}))",
+        payload.username, payload.password, payload.role
+    ))?;
+    Ok(UserRecord {
+        user_id: output.get("user_id").and_then(Value::as_str).unwrap_or_default().to_string(),
+        username: output.get("username").and_then(Value::as_str).unwrap_or_default().to_string(),
+        role: output.get("role").and_then(Value::as_str).unwrap_or_default().to_string(),
+        status: output.get("status").and_then(Value::as_str).unwrap_or_default().to_string(),
+    })
+}
+
+#[tauri::command]
+fn update_user_status(payload: UpdateUserStatusPayload) -> Result<bool, String> {
+    let output = run_python_json(&format!(
+        "from interview_agent.config import load_config; from interview_agent.storage import set_user_status; c=load_config('config/interview-agent.toml'); print_json(set_user_status(c.storage.database_path, username={:?}, status={:?}))",
+        payload.username, payload.status
+    ))?;
+    output
+        .as_bool()
+        .ok_or_else(|| "invalid update_user_status payload".to_string())
+}
+
+#[tauri::command]
+fn login_user(payload: LoginPayload, state: tauri::State<'_, DesktopState>) -> Result<Option<UserRecord>, String> {
+    let output = run_python_json(&format!(
+        "from interview_agent.config import load_config; from interview_agent.storage import verify_login; c=load_config('config/interview-agent.toml'); print_json(verify_login(c.storage.database_path, username={:?}, password={:?}))",
+        payload.username, payload.password
+    ))?;
+    if output.is_null() {
+        return Ok(None);
+    }
+    let user_record = UserRecord {
+        user_id: output.get("user_id").and_then(Value::as_str).unwrap_or_default().to_string(),
+        username: output.get("username").and_then(Value::as_str).unwrap_or_default().to_string(),
+        role: output.get("role").and_then(Value::as_str).unwrap_or_default().to_string(),
+        status: output.get("status").and_then(Value::as_str).unwrap_or_default().to_string(),
+    };
+    let mut runtime_state = state.runtime.lock().map_err(|_| "runtime state lock failed".to_string())?;
+    runtime_state.current_user = Some(user_record.username.clone());
+    runtime_state.current_user_role = Some(user_record.role.clone());
+    Ok(Some(user_record))
+}
+
+#[tauri::command]
+fn logout_user(state: tauri::State<'_, DesktopState>) -> Result<(), String> {
+    let mut runtime_state = state.runtime.lock().map_err(|_| "runtime state lock failed".to_string())?;
+    runtime_state.current_user = None;
+    runtime_state.current_user_role = None;
+    Ok(())
 }
 
 #[tauri::command]
@@ -145,7 +255,25 @@ fn build_snapshot(runtime_state: &mut RuntimeState) -> RuntimeSnapshot {
         resume_path: runtime_state.resume_path.clone(),
         jd_path: runtime_state.jd_path.clone(),
         last_error: runtime_state.last_error.clone(),
+        current_user: runtime_state.current_user.clone(),
+        current_user_role: runtime_state.current_user_role.clone(),
     }
+}
+
+fn run_python_json(payload: &str) -> Result<Value, String> {
+    let script = format!(
+        "import json\nfrom pathlib import Path\nimport sys\nsys.path.insert(0, str(Path('src').resolve()))\ndef print_json(value):\n    print(json.dumps(value, ensure_ascii=False))\n{}\n",
+        payload
+    );
+    let output = Command::new("uv")
+        .args(["run", "python", "-c", &script])
+        .current_dir(repo_root()?)
+        .output()
+        .map_err(|error| format!("failed to run python command: {error}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    serde_json::from_slice(&output.stdout).map_err(|error| format!("failed to parse python output: {error}"))
 }
 
 fn child_is_running(runtime_state: &mut RuntimeState) -> bool {
@@ -261,6 +389,11 @@ fn main() {
             remember_material_file,
             start_python_runtime,
             stop_python_runtime,
+            list_users,
+            add_user,
+            update_user_status,
+            login_user,
+            logout_user,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Interview Agent desktop shell");

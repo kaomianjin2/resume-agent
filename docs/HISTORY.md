@@ -23,6 +23,35 @@
 
 ## 历史记录
 
+## 2026-05-22 - 用户管理模块登录拆分与 UI 文档落盘
+
+- 测试命令：`rtk npm run build`；`rtk npm run test:desktop`；`rtk uv run pytest tests/test_storage.py -k user`；`rtk uv run pytest tests/test_cli.py -k "user_commands_and_login_flow or login_rejects_disabled_user"`；Playwright 预览截图采集
+- reviewer 结论：本次按用户确认直接交付预览与文档，不走 reviewer
+- 影响范围：`gui/src/app/App.tsx`；`gui/src/app/layout/ShellLayout.tsx`；`gui/src/app/layout/Workspace.tsx`；`gui/src/modules/users/UserModule.tsx`；`gui/src/shared/styles/global.css`；`docs/USER_MANAGEMENT_UI.md`；`docs/HISTORY.md`
+- 完成证据：
+  - 登录页截图：`.playwright-cli/page-2026-05-22T14-27-59-322Z.png`
+  - 登录后首页/用户管理截图：`.playwright-cli/page-2026-05-22T14-29-51-221Z.png`
+  - 自动化验收：用户管理组件边界、卡片操作、错误信息展示、用户存储和 CLI 登录流均已覆盖
+- 变更摘要：
+  - 登录入口从用户管理模块剥离为独立登录页，登录后才进入 Agent 首页。
+  - 用户管理模块仅保留用户管理能力：新增用户、刷新列表、用户卡片列表、启用/禁用。
+  - 首页右上角增加当前用户信息、在线状态和退出登录入口。
+  - 新增 `docs/USER_MANAGEMENT_UI.md` 记录结构、边界和预览证据路径。
+
+## 2026-05-22 - Task 7: GUI UI Restore v2 端到端验收与记录
+
+- Tracking ID：`gui-ui-restore-v2-final-acceptance`
+- 测试命令：`rtk npm run build`；`rtk uv run pytest tests/test_gui_runtime.py -k mock_interview`；`rtk npm run preview -- --port 4173`；`curl -I http://127.0.0.1:4173`；Playwright 采集 1440x900、1180x900、820x900 截图；Playwright DOM 量测准备页、右栏、模拟面试默认配置、改选配置和 0 追问边界
+- reviewer 结论：主 agent 按 Task 7 验收清单完成当前证据审计，可继续
+- 影响范围：`docs/GUI_UI_RESTORE_PLAN.md`；`docs/HISTORY.md`
+- 完成证据：
+  - 截图：`output/playwright/gui-ui-restore-task7-1440x900.png`、`output/playwright/gui-ui-restore-task7-1180x900.png`、`output/playwright/gui-ui-restore-task7-820x900.png`
+  - DOM 量测：1440x900 为 `220px 780px 360px` 且准备页 6 个业务槽位完整；1180x900 为 `200px 918px` 且右栏在第二列；820x900 为 `792px` 单列；三视口无横向滚动且按钮溢出数为 `0`
+- 变更摘要：
+  - 完成 GUI UI Restore v2 的端到端构建、runtime 测试、预览服务、三视口截图和 DOM 验收。
+  - 验证准备页、右栏和模拟面试入口保持原型工作台结构，模拟面试题目数、题型、追问轮数选择可启动并进入运行状态。
+  - 验证默认配置直接启动为 `题目进度 1/5`，改选 `8`/`项目深挖`/`0` 后启动为 `题目进度 1/8` 且提交后不生成追问。
+
 ## 2026-05-21 - GUI UI 原型视觉级完全还原
 
 - Tracking ID：`gui-ui-restore`

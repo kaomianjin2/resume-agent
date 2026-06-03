@@ -1,4 +1,5 @@
 export type MockInterviewScenario = "default" | "empty";
+export type MockInterviewQuestionType = "行为面试" | "项目深挖" | "技术基础" | "系统设计";
 
 export type MockInterviewStatus =
   | "idle"
@@ -40,6 +41,7 @@ export type StartMockInterviewRequest = {
   sessionId: string;
   targetRole: string;
   questionCount?: number;
+  questionType?: MockInterviewQuestionType;
   followupRounds?: number;
   scenario?: MockInterviewScenario;
 };
@@ -69,8 +71,10 @@ type ScoreReport = {
 type MockInterviewFallbackSession = {
   scenario: MockInterviewScenario;
   sessionId: string;
+  questionType: MockInterviewQuestionType;
   questions: string[];
   currentQuestionIndex: number;
+  followupRounds: number;
   pendingFollowups: string[];
   currentFollowupIndex: number;
   totalFollowups: number;
@@ -85,10 +89,20 @@ const FALLBACK_SESSION_ID = "fallback-mock-session";
 const DEFAULT_QUESTIONS = [
   "介绍你最近一次线上延迟排查。",
   "如果延迟再次出现，你会如何设计预防机制？",
+  "说说你做过的一个高影响力项目。",
+  "你如何和产品、测试协作推进复杂需求？",
+  "解释一次你优化系统稳定性的经历。",
+  "你如何设计一个可观测性方案？",
+  "描述一次线上事故复盘后的改进。",
+  "如果要重构核心服务，你会如何拆步骤？",
 ];
 
 const FOLLOWUP_BY_QUESTION: Record<string, string[]> = {
-  "介绍你最近一次线上延迟排查。": ["你如何判断瓶颈在数据库？"],
+  "介绍你最近一次线上延迟排查。": [
+    "你如何判断瓶颈在数据库？",
+    "这次排查里你如何验证修复有效？",
+    "后续你如何避免同类问题复发？",
+  ],
 };
 
 const SCORE_REPORT_BY_PROMPT: Record<string, ScoreReport> = {
@@ -150,8 +164,10 @@ function createIdleFallbackSession(sessionId: string): MockInterviewFallbackSess
   return {
     scenario: "default",
     sessionId,
+    questionType: "行为面试",
     questions: [],
     currentQuestionIndex: 0,
+    followupRounds: 0,
     pendingFollowups: [],
     currentFollowupIndex: 0,
     totalFollowups: 0,
@@ -185,9 +201,11 @@ function startFallbackMockInterview(
   return buildFallbackSession({
     ...idleSession,
     scenario,
+    questionType: request.questionType ?? "行为面试",
     questions: DEFAULT_QUESTIONS.slice(0, request.questionCount ?? DEFAULT_QUESTIONS.length),
     currentPromptKind: "question",
     currentPromptText: DEFAULT_QUESTIONS[0],
+    followupRounds: request.followupRounds ?? 1,
     viewModel: {
       ...idleSession.viewModel,
       status: "ready_for_answer",
@@ -236,7 +254,7 @@ function submitFallbackMockAnswer(
   const scoreReports = previousSession.scoreReports.concat(scoreReport);
 
   if (promptKind === "question") {
-    const followups = FOLLOWUP_BY_QUESTION[promptText] ?? [];
+    const followups = (FOLLOWUP_BY_QUESTION[promptText] ?? []).slice(0, previousSession.followupRounds);
     if (followups.length > 0) {
       return buildFallbackSession({
         ...previousSession,
