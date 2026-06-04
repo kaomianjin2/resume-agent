@@ -90,6 +90,256 @@ def test_runtime_facade_routes_plans_executes_and_reads_session_state(tmp_path: 
     assert runtime.get_session_state("gui-session") == result["output"]
 
 
+def test_runtime_start_algorithm_practice_builds_selectable_exercise_view_model(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_structured_algorithm_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("algorithm-session")
+    runtime.session_store.set_state(
+        "algorithm-session",
+        "algorithm_practice_bank",
+        {
+            "topic": "动态规划",
+            "difficulty": "medium",
+            "exercises": [
+                {
+                    "title": "最长递增子序列",
+                    "prompt": "返回最长严格递增子序列长度。",
+                    "tags": ["动态规划", "数组"],
+                    "constraints": ["1 <= nums.length <= 2500"],
+                    "examples": ["输入 [10,9,2,5,3,7,101,18]，输出 4"],
+                    "edge_cases": ["空数组返回 0"],
+                },
+                {
+                    "title": "零钱兑换",
+                    "description": "计算凑成金额所需的最少硬币数。",
+                    "tags": ["动态规划"],
+                },
+            ],
+        },
+    )
+
+    view_model = runtime.start_algorithm_practice(
+        session_id="algorithm-session",
+        practice_topic="动态规划",
+        difficulty="medium",
+        question_count=2,
+    )
+
+    assert view_model == {
+        "session_id": "algorithm-session",
+        "status": "ready",
+        "error_message": None,
+        "topic": "动态规划",
+        "difficulty": "medium",
+        "exercises": [
+            {
+                "id": "exercise-1",
+                "title": "最长递增子序列",
+                "prompt": "返回最长严格递增子序列长度。",
+                "tags": ["动态规划", "数组"],
+                "constraints": ["1 <= nums.length <= 2500"],
+                "examples": ["输入 [10,9,2,5,3,7,101,18]，输出 4"],
+                "edge_cases": ["空数组返回 0"],
+            },
+            {
+                "id": "exercise-2",
+                "title": "零钱兑换",
+                "prompt": "计算凑成金额所需的最少硬币数。",
+                "tags": ["动态规划"],
+                "constraints": [],
+                "examples": [],
+                "edge_cases": [],
+            },
+        ],
+        "current_exercise_index": 0,
+        "progress": {
+            "current_exercise_index": 1,
+            "total_exercises": 2,
+        },
+    }
+
+
+def test_runtime_start_algorithm_practice_uses_pregenerated_bank_without_generating(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_failing_algorithm_generation_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("algorithm-session")
+    runtime.session_store.set_state(
+        "algorithm-session",
+        "algorithm_practice_bank",
+        {
+            "topic": "算法和数据结构",
+            "difficulty": "medium",
+            "exercises": [
+                {
+                    "title": "反转链表",
+                    "prompt": "反转单链表并返回新的头节点。",
+                    "tags": ["链表", "简单"],
+                    "constraints": ["0 <= 节点数 <= 5000"],
+                    "examples": ["输入 1->2->3，输出 3->2->1"],
+                    "edge_cases": ["空链表返回空"],
+                },
+                {
+                    "title": "有效括号",
+                    "prompt": "判断括号字符串是否合法。",
+                    "tags": ["栈", "简单"],
+                },
+            ],
+        },
+    )
+
+    view_model = runtime.start_algorithm_practice(
+        session_id="algorithm-session",
+        practice_topic="链表",
+        difficulty="medium",
+        question_count=1,
+    )
+
+    assert view_model == {
+        "session_id": "algorithm-session",
+        "status": "ready",
+        "error_message": None,
+        "topic": "算法和数据结构",
+        "difficulty": "medium",
+        "exercises": [
+            {
+                "id": "exercise-1",
+                "title": "反转链表",
+                "prompt": "反转单链表并返回新的头节点。",
+                "tags": ["链表", "简单"],
+                "constraints": ["0 <= 节点数 <= 5000"],
+                "examples": ["输入 1->2->3，输出 3->2->1"],
+                "edge_cases": ["空链表返回空"],
+            },
+        ],
+        "current_exercise_index": 0,
+        "progress": {
+            "current_exercise_index": 1,
+            "total_exercises": 1,
+        },
+    }
+
+
+def test_runtime_start_algorithm_practice_reports_empty_exercise_set(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_empty_algorithm_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("algorithm-session")
+    runtime.session_store.set_state(
+        "algorithm-session",
+        "algorithm_practice_bank",
+        {
+            "topic": "链表",
+            "difficulty": "easy",
+            "exercises": [],
+        },
+    )
+
+    view_model = runtime.start_algorithm_practice(
+        session_id="algorithm-session",
+        practice_topic="链表",
+        difficulty="easy",
+        question_count=3,
+    )
+
+    assert view_model == {
+        "session_id": "algorithm-session",
+        "status": "failed",
+        "error_message": "还没有生成可用于练习的题目。",
+        "topic": "链表",
+        "difficulty": "easy",
+        "exercises": [],
+        "current_exercise_index": 0,
+        "progress": {
+            "current_exercise_index": 0,
+            "total_exercises": 0,
+        },
+    }
+
+
+def test_runtime_start_algorithm_practice_uses_default_internal_bank(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_failing_algorithm_generation_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("algorithm-session")
+
+    view_model = runtime.start_algorithm_practice(
+        session_id="algorithm-session",
+        practice_topic="算法和数据结构",
+        difficulty="medium",
+        question_count=100,
+    )
+
+    assert view_model["status"] == "ready"
+    assert view_model["topic"] == "内部算法题库"
+    assert len(view_model["exercises"]) >= 100
+    assert {exercise["title"] for exercise in view_model["exercises"]} >= {
+        "最长递增子序列",
+        "零钱兑换",
+        "反转链表",
+        "二叉树层序遍历",
+        "LRU 缓存",
+    }
+    assert view_model["progress"] == {
+        "current_exercise_index": 1,
+        "total_exercises": len(view_model["exercises"]),
+    }
+
+
+def test_runtime_start_algorithm_practice_filters_default_bank_by_topic(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_failing_algorithm_generation_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("algorithm-session")
+
+    view_model = runtime.start_algorithm_practice(
+        session_id="algorithm-session",
+        practice_topic="二叉树",
+        difficulty="medium",
+        question_count=5,
+    )
+
+    assert view_model["status"] == "ready"
+    assert len(view_model["exercises"]) == 5
+    assert all("二叉树" in " ".join(exercise["tags"]) for exercise in view_model["exercises"])
+
+
 def test_missing_inputs_and_failed_nodes_do_not_write_success_state(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
 
@@ -802,6 +1052,51 @@ def build_registry() -> NodeRegistry:
     )
 
 
+def build_empty_algorithm_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="algorithm_practice",
+                description="Generate empty algorithm practice.",
+                required_inputs=(),
+                optional_inputs=("practice_topic", "difficulty", "question_count"),
+                outputs=("practice_set",),
+                handler=empty_algorithm_practice_handler,
+            ),
+        ]
+    )
+
+
+def build_structured_algorithm_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="algorithm_practice",
+                description="Generate structured algorithm practice.",
+                required_inputs=(),
+                optional_inputs=("practice_topic", "difficulty", "question_count"),
+                outputs=("practice_set",),
+                handler=structured_algorithm_practice_handler,
+            ),
+        ]
+    )
+
+
+def build_failing_algorithm_generation_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="algorithm_practice",
+                description="Algorithm generation must not run when pregenerated bank exists.",
+                required_inputs=(),
+                optional_inputs=("practice_topic", "difficulty", "question_count"),
+                outputs=("practice_set",),
+                handler=failing_algorithm_generation_handler,
+            ),
+        ]
+    )
+
+
 def build_prep_registry() -> NodeRegistry:
     return NodeRegistry(
         [
@@ -1039,6 +1334,42 @@ def algorithm_practice_handler(context: NodeContext, inputs: dict[str, object]) 
             "exercises": [f"{practice_topic} exercise"],
         }
     }
+
+
+def structured_algorithm_practice_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    assert context.services["source"] == "fake"
+    practice_topic = str(inputs.get("practice_topic", "算法"))
+    return {
+        "practice_set": {
+            "topic": practice_topic,
+            "difficulty": "medium",
+            "exercises": [
+                {
+                    "title": "最长递增子序列",
+                    "prompt": "返回最长严格递增子序列长度。",
+                    "tags": ["动态规划", "数组"],
+                    "constraints": ["1 <= nums.length <= 2500"],
+                    "examples": ["输入 [10,9,2,5,3,7,101,18]，输出 4"],
+                    "edge_cases": ["空数组返回 0"],
+                },
+                {
+                    "title": "零钱兑换",
+                    "description": "计算凑成金额所需的最少硬币数。",
+                    "tags": ["动态规划"],
+                },
+            ],
+        }
+    }
+
+
+def empty_algorithm_practice_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    return {"practice_set": {"topic": "链表", "difficulty": "easy", "exercises": []}}
+
+
+def failing_algorithm_generation_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context, inputs
+    raise AssertionError("algorithm_practice node must not generate exercises when pregenerated bank exists")
 
 
 def knowledge_search_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:

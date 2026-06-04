@@ -98,6 +98,15 @@ struct StartMockInterviewPayload {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct StartAlgorithmPracticePayload {
+    session_id: String,
+    practice_topic: String,
+    difficulty: Option<String>,
+    question_count: Option<i32>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SubmitMockAnswerPayload {
     session_id: String,
     answer: String,
@@ -169,6 +178,19 @@ fn start_mock_interview(payload: StartMockInterviewPayload) -> Result<Value, Str
         payload.question_count.unwrap_or(5),
         payload.followup_rounds.unwrap_or(1),
         payload.question_type.unwrap_or_else(|| "行为面试".to_string())
+    ))
+}
+
+#[tauri::command]
+fn start_algorithm_practice(payload: StartAlgorithmPracticePayload) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.start_algorithm_practice(session_id={:?}, practice_topic={:?}, difficulty={:?}, question_count={:?}))",
+        CONFIG_PATH,
+        payload.session_id,
+        payload.session_id,
+        payload.practice_topic,
+        payload.difficulty.unwrap_or_else(|| "medium".to_string()),
+        payload.question_count.unwrap_or(3)
     ))
 }
 
@@ -450,6 +472,7 @@ fn main() {
             remember_material_file,
             prepare_interview_materials,
             start_mock_interview,
+            start_algorithm_practice,
             submit_mock_answer,
             end_mock_interview,
             start_python_runtime,

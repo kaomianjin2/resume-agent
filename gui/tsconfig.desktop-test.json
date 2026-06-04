@@ -12,6 +12,7 @@
     "src/app/LoginPasswordInput.tsx",
     "src/app/fixtureData.ts",
     "src/app/layout/ReviewPanel.tsx",
+    "src/shared/api/algorithm.ts",
     "src/shared/api/mock.ts",
     "src/shared/api/prep.ts",
     "src/shared/desktop/desktopSnapshot.ts",

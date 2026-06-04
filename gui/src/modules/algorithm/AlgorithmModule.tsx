@@ -1,4 +1,11 @@
 import { ChangeEvent, ReactNode, UIEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlgorithmPracticeRuntimeClient,
+  createFallbackAlgorithmPracticeClient,
+  DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT,
+  defaultAlgorithmPracticeViewModel,
+  defaultInternalAlgorithmExercises,
+} from "../../shared/api/algorithm.js";
 
 type LanguageId = "python" | "javascript" | "go" | "java" | "c" | "cpp";
 type RunStateId = "empty" | "error" | "passed";
@@ -33,14 +40,26 @@ const runStates: Record<RunStateId, { title: string; stdout: string; stderr: str
   },
 };
 
-export function AlgorithmModule() {
+const fallbackRuntimeClient = createFallbackAlgorithmPracticeClient();
+
+type AlgorithmModuleProps = {
+  runtimeClient?: AlgorithmPracticeRuntimeClient;
+};
+
+export function AlgorithmModule({ runtimeClient = fallbackRuntimeClient }: AlgorithmModuleProps) {
   const [selectedLanguageId, setSelectedLanguageId] = useState<LanguageId>("python");
   const [runStateId, setRunStateId] = useState<RunStateId>("empty");
+  const [practiceViewModel, setPracticeViewModel] = useState(defaultAlgorithmPracticeViewModel);
+  const [selectedExerciseIndex, setSelectedExerciseIndex] = useState(0);
+  const [practiceLoading, setPracticeLoading] = useState(false);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
   const selectedLanguage = languageOptions.find((languageOption) => languageOption.id === selectedLanguageId) ?? languageOptions[0];
   const runState = runStates[runStateId];
   const [editorCode, setEditorCode] = useState("");
   const editorInputRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightedCode = useMemo(() => buildHighlightedCode(editorCode, selectedLanguageId), [editorCode, selectedLanguageId]);
+  const exercises = practiceViewModel.exercises.length ? practiceViewModel.exercises : defaultInternalAlgorithmExercises;
+  const selectedExercise = exercises[selectedExerciseIndex] ?? exercises[0];
 
   const handleLanguageChange = (event: ChangeEvent<HTMLSelectElement>) => {
     setSelectedLanguageId(event.target.value as LanguageId);
@@ -52,6 +71,32 @@ export function AlgorithmModule() {
 
   const handleEditorInput = (event: ChangeEvent<HTMLTextAreaElement>) => {
     setEditorCode(event.target.value);
+  };
+
+  const handleExerciseDropdownChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    setSelectedExerciseIndex(Number(event.target.value));
+  };
+
+  const handleStartPractice = async () => {
+    setPracticeLoading(true);
+    setPracticeError(null);
+    try {
+      const viewModel = await runtimeClient.startAlgorithmPractice({
+        sessionId: "gui-session",
+        practiceTopic: "算法和数据结构",
+        difficulty: "medium",
+        questionCount: DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT,
+      });
+      setPracticeViewModel(viewModel);
+      setSelectedExerciseIndex(0);
+      if (viewModel.status === "failed") {
+        setPracticeError(viewModel.errorMessage ?? "算法练习启动失败。");
+      }
+    } catch (error) {
+      setPracticeError(error instanceof Error ? error.message : "算法练习启动失败。");
+    } finally {
+      setPracticeLoading(false);
+    }
   };
 
   const handleEditorScroll = (event: UIEvent<HTMLTextAreaElement>) => {
@@ -73,6 +118,15 @@ export function AlgorithmModule() {
   }, [selectedLanguage.code, runStateId]);
 
   useEffect(() => {
+    setEditorCode("");
+    setRunStateId("empty");
+  }, [selectedExerciseIndex]);
+
+  useEffect(() => {
+    void handleStartPractice();
+  }, []);
+
+  useEffect(() => {
     if (!editorInputRef.current) {
       return;
     }
@@ -83,21 +137,38 @@ export function AlgorithmModule() {
     <div className="module-grid algorithm-module">
       <section className="content-panel wide">
         <p className="meta-label">题目</p>
-        <h3>最长递增子序列</h3>
-        <p className="body-copy">给定整数数组，返回最长严格递增子序列的长度。要求说明状态定义和转移过程。</p>
+        <h3>{selectedExercise.title}</h3>
+        <p className="body-copy">{selectedExercise.prompt}</p>
         <div className="tag-row">
-          <span className="tag">动态规划</span>
-          <span className="tag">中等</span>
-          <span className="tag">数组</span>
+          {selectedExercise.tags.map((tag) => (
+            <span className="tag" key={tag}>{tag}</span>
+          ))}
         </div>
         <ul className="clean-list">
-          <li>约束：1 {"<="} nums.length {"<="} 2500</li>
-          <li>示例：输入 [10,9,2,5,3,7,101,18]，输出 4</li>
-          <li>边界：空数组返回 0；严格递增数组返回数组长度</li>
+          {selectedExercise.constraints.map((constraint) => (
+            <li key={`constraint-${constraint}`}>约束：{constraint}</li>
+          ))}
+          {selectedExercise.examples.map((example) => (
+            <li key={`example-${example}`}>示例：{example}</li>
+          ))}
+          {selectedExercise.edgeCases.map((edgeCase) => (
+            <li key={`edge-${edgeCase}`}>边界：{edgeCase}</li>
+          ))}
         </ul>
       </section>
 
       <section className="content-panel">
+        <p className="meta-label">内部题库</p>
+        {practiceLoading && <p className="body-copy">题库加载中</p>}
+        {practiceError && <p className="form-error">{practiceError}</p>}
+        <label className="field-label" htmlFor="algorithm-exercise-select">选择题目</label>
+        <select id="algorithm-exercise-select" value={selectedExerciseIndex} onChange={handleExerciseDropdownChange}>
+          {exercises.map((exercise, exerciseIndex) => (
+            <option key={exercise.id || exercise.title} value={exerciseIndex}>
+              {exerciseIndex + 1}. {exercise.title}
+            </option>
+          ))}
+        </select>
         <label className="field-label" htmlFor="language">语言</label>
         <select id="language" value={selectedLanguageId} onChange={handleLanguageChange}>
           {languageOptions.map((languageOption) => (

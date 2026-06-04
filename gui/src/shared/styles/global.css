@@ -823,6 +823,56 @@ select {
   line-height: 1.6;
 }
 
+.exercise-list {
+  display: grid;
+  gap: 8px;
+}
+
+.exercise-list-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgba(146, 151, 255, 0.24);
+  border-radius: 8px;
+  color: var(--muted);
+  text-align: left;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.exercise-list-item span {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(70, 246, 255, 0.24);
+  border-radius: 999px;
+  color: #cdefff;
+  font-size: 12px;
+  background: rgba(70, 246, 255, 0.08);
+}
+
+.exercise-list-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: 13px;
+}
+
+.exercise-list-item.active {
+  color: var(--text);
+  border-color: rgba(70, 246, 255, 0.48);
+  background: rgba(70, 246, 255, 0.12);
+}
+
+.exercise-list-item:hover,
+.exercise-list-item:focus-visible {
+  color: var(--text);
+  border-color: rgba(70, 246, 255, 0.4);
+}
+
 .text-surface,
 pre,
 .mock-answer-input,

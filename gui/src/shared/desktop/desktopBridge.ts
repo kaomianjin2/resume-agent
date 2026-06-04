@@ -7,6 +7,11 @@ import {
   StartMockInterviewRequest,
   SubmitMockAnswerRequest,
 } from "../api/mock";
+import {
+  AlgorithmPracticeViewModel,
+  normalizeAlgorithmPracticeViewModel,
+  StartAlgorithmPracticeRequest,
+} from "../api/algorithm";
 import { normalizePrepViewModel, PrepViewModel } from "../api/prep";
 import {
   DesktopRuntimeSnapshot,
@@ -92,6 +97,14 @@ export async function startMockInterview(request: StartMockInterviewRequest): Pr
   }
   const rawViewModel = await invoke("start_mock_interview", { payload: request });
   return normalizeMockInterviewViewModel(rawViewModel);
+}
+
+export async function startAlgorithmPractice(request: StartAlgorithmPracticeRequest): Promise<AlgorithmPracticeViewModel> {
+  if (!isTauri()) {
+    return normalizeAlgorithmPracticeViewModel(null);
+  }
+  const rawViewModel = await invoke("start_algorithm_practice", { payload: request });
+  return normalizeAlgorithmPracticeViewModel(rawViewModel);
 }
 
 export async function submitMockAnswer(request: SubmitMockAnswerRequest): Promise<MockInterviewViewModel> {

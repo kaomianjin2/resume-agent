@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,9 @@ ServicesBuilder = Callable[[AppConfig], ServiceMap]
 ExecutorBuilder = Callable[[Path, NodeRegistry, ServiceMap], NodeExecutor]
 MOCK_INTERVIEW_STATE_KEY = "mock_interview_state"
 MOCK_INTERVIEW_VIEW_KEY = "mock_interview_view"
+ALGORITHM_PRACTICE_BANK_KEY = "algorithm_practice_bank"
+DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT = 3
+DEFAULT_ALGORITHM_PRACTICE_BANK_PATH = Path(__file__).with_name("algorithm_practice_bank.json")
 
 
 class GuiRuntimeError(RuntimeError):
@@ -79,6 +83,39 @@ class GuiRuntime:
     ) -> dict[str, object]:
         result = self.executor.execute_node(session_id=session_id, node_name=node_name, inputs=inputs)
         return _execution_result_to_dict(result)
+
+    def start_algorithm_practice(
+        self,
+        *,
+        session_id: str,
+        practice_topic: str,
+        difficulty: str = "medium",
+        question_count: int = DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT,
+    ) -> dict[str, object]:
+        practice_set = _select_algorithm_practice_set(
+            self.session_store.get_all_state(session_id).get(ALGORITHM_PRACTICE_BANK_KEY),
+            practice_topic=practice_topic,
+            question_count=question_count,
+        )
+        topic = _algorithm_practice_topic(practice_set, practice_topic)
+        resolved_difficulty = _algorithm_practice_difficulty(practice_set, difficulty)
+        exercises = _algorithm_exercise_view_models(practice_set)[:question_count]
+        if not exercises:
+            return _failed_algorithm_practice_view_model(session_id, topic, resolved_difficulty, "还没有生成可用于练习的题目。")
+
+        return {
+            "session_id": session_id,
+            "status": "ready",
+            "error_message": None,
+            "topic": topic,
+            "difficulty": resolved_difficulty,
+            "exercises": exercises,
+            "current_exercise_index": 0,
+            "progress": {
+                "current_exercise_index": 1,
+                "total_exercises": len(exercises),
+            },
+        }
 
     def get_session_state(self, session_id: str) -> dict[str, object]:
         return self.session_store.get_all_state(session_id)
@@ -397,6 +434,22 @@ def start_mock_interview(
     )
 
 
+def start_algorithm_practice(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    practice_topic: str,
+    difficulty: str = "medium",
+    question_count: int = DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT,
+) -> dict[str, object]:
+    return runtime.start_algorithm_practice(
+        session_id=session_id,
+        practice_topic=practice_topic,
+        difficulty=difficulty,
+        question_count=question_count,
+    )
+
+
 def submit_mock_answer(runtime: GuiRuntime, *, session_id: str, answer: str) -> dict[str, object]:
     return runtime.submit_mock_answer(session_id=session_id, answer=answer)
 
@@ -472,6 +525,151 @@ def _read_mock_text_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _select_algorithm_practice_set(
+    practice_bank: object,
+    *,
+    practice_topic: str,
+    question_count: int,
+) -> dict[str, object]:
+    if not isinstance(practice_bank, dict):
+        practice_bank = _load_default_algorithm_practice_bank()
+
+    exercises = _algorithm_exercise_bank_items(practice_bank)
+    matched_exercises = _matching_algorithm_exercises(exercises, practice_topic)
+    selected_exercises = matched_exercises[:question_count] if matched_exercises else exercises[:question_count]
+    return {
+        "topic": _text_value(practice_bank.get("topic"), practice_topic),
+        "difficulty": _text_value(practice_bank.get("difficulty"), "medium"),
+        "exercises": selected_exercises,
+    }
+
+
+def _load_default_algorithm_practice_bank() -> dict[str, object]:
+    bank = json.loads(DEFAULT_ALGORITHM_PRACTICE_BANK_PATH.read_text(encoding="utf-8"))
+    if not isinstance(bank, dict):
+        raise RuntimeError("内部算法题库必须是 JSON 对象")
+    return bank
+
+
+def _algorithm_exercise_bank_items(practice_bank: dict[str, object]) -> list[object]:
+    exercises = practice_bank.get("exercises")
+    if isinstance(exercises, list):
+        return exercises
+
+    practice_sets = practice_bank.get("practice_sets")
+    if not isinstance(practice_sets, list):
+        return []
+
+    bank_items: list[object] = []
+    for practice_set in practice_sets:
+        if not isinstance(practice_set, dict):
+            continue
+        practice_set_exercises = practice_set.get("exercises")
+        if isinstance(practice_set_exercises, list):
+            bank_items.extend(practice_set_exercises)
+    return bank_items
+
+
+def _matching_algorithm_exercises(exercises: list[object], practice_topic: str) -> list[object]:
+    topic_keyword = practice_topic.strip().lower()
+    if not topic_keyword:
+        return exercises
+
+    return [exercise for exercise in exercises if topic_keyword in _algorithm_exercise_search_text(exercise)]
+
+
+def _algorithm_exercise_search_text(exercise: object) -> str:
+    if isinstance(exercise, str):
+        return exercise.lower()
+    if not isinstance(exercise, dict):
+        return ""
+
+    search_parts = [
+        _text_value(_first_present_value(exercise, ("title", "name")), ""),
+        _text_value(_first_present_value(exercise, ("prompt", "description", "question", "content")), ""),
+        " ".join(_list_value(exercise.get("tags"))),
+    ]
+    return " ".join(search_parts).lower()
+
+
+def _algorithm_practice_topic(practice_set: object, fallback: str) -> str:
+    if not isinstance(practice_set, dict):
+        return fallback
+    return _text_value(practice_set.get("topic"), fallback)
+
+
+def _algorithm_practice_difficulty(practice_set: object, fallback: str) -> str:
+    if not isinstance(practice_set, dict):
+        return fallback
+    return _text_value(practice_set.get("difficulty"), fallback)
+
+
+def _algorithm_exercise_view_models(practice_set: object) -> list[dict[str, object]]:
+    if not isinstance(practice_set, dict):
+        return []
+    exercises = practice_set.get("exercises")
+    if not isinstance(exercises, list):
+        return []
+
+    view_models: list[dict[str, object]] = []
+    for exercise_index, exercise in enumerate(exercises, start=1):
+        view_model = _algorithm_exercise_view_model(exercise, exercise_index)
+        if view_model:
+            view_models.append(view_model)
+    return view_models
+
+
+def _algorithm_exercise_view_model(exercise: object, exercise_index: int) -> dict[str, object]:
+    if isinstance(exercise, str):
+        exercise_text = exercise.strip()
+        if not exercise_text:
+            return {}
+        return {
+            "id": f"exercise-{exercise_index}",
+            "title": f"练习题 {exercise_index}",
+            "prompt": exercise_text,
+            "tags": [],
+            "constraints": [],
+            "examples": [],
+            "edge_cases": [],
+        }
+    if not isinstance(exercise, dict):
+        return {}
+
+    title = _text_value(_first_present_value(exercise, ("title", "name")), f"练习题 {exercise_index}")
+    prompt = _text_value(_first_present_value(exercise, ("prompt", "description", "question", "content")), title)
+    return {
+        "id": f"exercise-{exercise_index}",
+        "title": title,
+        "prompt": prompt,
+        "tags": _list_value(exercise.get("tags")),
+        "constraints": _list_value(exercise.get("constraints")),
+        "examples": _list_value(exercise.get("examples")),
+        "edge_cases": _list_value(_first_present_value(exercise, ("edge_cases", "edgeCases", "boundaries"))),
+    }
+
+
+def _failed_algorithm_practice_view_model(
+    session_id: str,
+    topic: str,
+    difficulty: str,
+    error_message: str,
+) -> dict[str, object]:
+    return {
+        "session_id": session_id,
+        "status": "failed",
+        "error_message": error_message,
+        "topic": topic,
+        "difficulty": difficulty,
+        "exercises": [],
+        "current_exercise_index": 0,
+        "progress": {
+            "current_exercise_index": 0,
+            "total_exercises": 0,
+        },
+    }
 
 
 def _score_mock_answer(

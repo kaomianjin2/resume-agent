@@ -18,11 +18,13 @@ import {
   prepareInterviewMaterials,
   selectMaterialFile,
   snapshotWithDesktopError,
+  startAlgorithmPractice,
   startMockInterview,
   submitMockAnswer,
   updateUserStatus,
   UserRecord,
 } from "../shared/desktop/desktopBridge";
+import { createFallbackAlgorithmPracticeClient, AlgorithmPracticeRuntimeClient } from "../shared/api/algorithm.js";
 import { createFallbackMockInterviewClient, MockInterviewRuntimeClient } from "../shared/api/mock";
 import { failedPrepViewModel, getPrepViewModel, missingInputsPrepViewModel } from "../shared/api/prep";
 import { LoginPasswordInput } from "./LoginPasswordInput";
@@ -43,6 +45,7 @@ export function App() {
   const [newRole, setNewRole] = useState<"admin" | "member">("member");
   const [prepViewModel, setPrepViewModel] = useState(getPrepViewModel);
   const [prepIsLoading, setPrepIsLoading] = useState(false);
+  const [fallbackAlgorithmRuntimeClient] = useState(createFallbackAlgorithmPracticeClient);
   const [fallbackMockRuntimeClient] = useState(createFallbackMockInterviewClient);
   const activeModule = getModuleViewModel(activeModuleId);
   const effectiveCurrentUser = desktopSnapshot?.currentUser ?? webPreviewUser;
@@ -56,6 +59,12 @@ export function App() {
         getCurrentViewModel: fallbackMockRuntimeClient.getCurrentViewModel,
       }
     : fallbackMockRuntimeClient;
+  const algorithmRuntimeClient: AlgorithmPracticeRuntimeClient = desktopSnapshot?.isDesktopShell
+    ? {
+        startAlgorithmPractice,
+        getCurrentViewModel: fallbackAlgorithmRuntimeClient.getCurrentViewModel,
+      }
+    : fallbackAlgorithmRuntimeClient;
 
   useEffect(() => {
     if (activeModuleId === "users" && effectiveCurrentUserRole !== "admin") {
@@ -220,6 +229,7 @@ export function App() {
       userErrorMessage={userErrorMessage}
       currentUserRole={effectiveCurrentUserRole}
       mockRuntimeClient={mockRuntimeClient}
+      algorithmRuntimeClient={algorithmRuntimeClient}
       onModuleChange={setActiveModuleId}
       onSelectMaterialFile={handleSelectMaterialFile}
       onNewUsernameChange={setNewUsername}

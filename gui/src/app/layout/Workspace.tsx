@@ -3,6 +3,7 @@ import { AlgorithmModule } from "../../modules/algorithm/AlgorithmModule";
 import { MockModule } from "../../modules/mock/MockModule";
 import { PrepModule } from "../../modules/prep/PrepModule";
 import { UserModule } from "../../modules/users/UserModule";
+import { AlgorithmPracticeRuntimeClient } from "../../shared/api/algorithm.js";
 import { MockInterviewRuntimeClient } from "../../shared/api/mock";
 import { PrepViewModel } from "../../shared/api/prep";
 import { DesktopRuntimeSnapshot, MaterialKind, UserRecord } from "../../shared/desktop/desktopBridge";
@@ -19,6 +20,7 @@ type WorkspaceProps = {
   userErrorMessage: string;
   currentUserRole: UserRole | null;
   mockRuntimeClient: MockInterviewRuntimeClient;
+  algorithmRuntimeClient: AlgorithmPracticeRuntimeClient;
   onSelectMaterialFile: (kind: MaterialKind) => void;
   onNewUsernameChange: (value: string) => void;
   onNewPasswordChange: (value: string) => void;
@@ -41,6 +43,7 @@ export function Workspace({
   userErrorMessage,
   currentUserRole,
   mockRuntimeClient,
+  algorithmRuntimeClient,
   onSelectMaterialFile,
   onNewUsernameChange,
   onNewPasswordChange,
@@ -86,7 +89,7 @@ export function Workspace({
 
       {activeModule.id === "prep" && <PrepModule viewModel={prepViewModel} isLoading={prepIsLoading} />}
       {activeModule.id === "mock" && <MockModule materialsReady={materialsReady} runtimeClient={mockRuntimeClient} />}
-      {activeModule.id === "algorithm" && <AlgorithmModule />}
+      {activeModule.id === "algorithm" && <AlgorithmModule runtimeClient={algorithmRuntimeClient} />}
       {activeModule.id === "users" && canManageUsers && (
         <UserModule
           users={users}

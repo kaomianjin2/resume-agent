@@ -10,11 +10,18 @@ import {
   getVisibleModuleViewModels,
   moduleViewModels,
 } from "../.test-build/app/fixtureData.js";
-import { AlgorithmModule, buildHighlightedCode } from "../.test-build/modules/algorithm/AlgorithmModule.js";
+import {
+  AlgorithmModule,
+  buildHighlightedCode,
+} from "../.test-build/modules/algorithm/AlgorithmModule.js";
 import { MockModule } from "../.test-build/modules/mock/MockModule.js";
 import { PrepModule } from "../.test-build/modules/prep/PrepModule.js";
 import { UserModule } from "../.test-build/modules/users/UserModule.js";
 import { failedPrepViewModel, missingInputsPrepViewModel, prepViewModel } from "../.test-build/shared/api/prep.js";
+import {
+  createFallbackAlgorithmPracticeClient,
+  DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT,
+} from "../.test-build/shared/api/algorithm.js";
 
 test("snapshotWithDesktopError preserves previous snapshot and records error message", () => {
   const previousSnapshot = {
@@ -58,6 +65,36 @@ test("algorithm module renders editable textarea for code input", () => {
 
   assert.match(markup, /id="algorithm-editor"/);
   assert.match(markup, /class="code-editor-input"/);
+});
+
+test("algorithm module keeps exercise selection in the dropdown only", () => {
+  const markup = renderToStaticMarkup(React.createElement(AlgorithmModule));
+
+  assert.match(markup, /id="algorithm-exercise-select"/);
+  assert.match(markup, /最长递增子序列/);
+  assert.match(markup, /零钱兑换/);
+  assert.match(markup, /反转链表/);
+  assert.doesNotMatch(markup, /aria-label="内部题库题目"/);
+  assert.doesNotMatch(markup, /上一题/);
+  assert.doesNotMatch(markup, /下一题/);
+  assert.doesNotMatch(markup, /上一页/);
+  assert.doesNotMatch(markup, /下一页/);
+  assert.doesNotMatch(markup, /练习主题/);
+  assert.doesNotMatch(markup, /开始练习/);
+});
+
+test("algorithm practice default request and fallback expose more than three internal exercises", async () => {
+  const fallbackClient = createFallbackAlgorithmPracticeClient();
+  const viewModel = await fallbackClient.startAlgorithmPractice({
+    sessionId: "gui-session",
+    practiceTopic: "算法和数据结构",
+    difficulty: "medium",
+    questionCount: DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT,
+  });
+
+  assert.ok(DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT > 3);
+  assert.ok(viewModel.exercises.length > 3);
+  assert.equal(viewModel.progress.totalExercises, viewModel.exercises.length);
 });
 
 test("buildHighlightedCode marks keywords and numbers with token classes", () => {

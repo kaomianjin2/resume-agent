@@ -3,6 +3,7 @@ import { Sidebar } from "./Sidebar";
 import { Workspace } from "./Workspace";
 import { ReviewPanel } from "./ReviewPanel";
 import { DesktopRuntimeSnapshot, MaterialKind, UserRecord } from "../../shared/desktop/desktopBridge";
+import { AlgorithmPracticeRuntimeClient } from "../../shared/api/algorithm.js";
 import { MockInterviewRuntimeClient } from "../../shared/api/mock";
 import { PrepViewModel } from "../../shared/api/prep";
 
@@ -19,6 +20,7 @@ type ShellLayoutProps = {
   userErrorMessage: string;
   currentUserRole: UserRole | null;
   mockRuntimeClient: MockInterviewRuntimeClient;
+  algorithmRuntimeClient: AlgorithmPracticeRuntimeClient;
   onModuleChange: (moduleId: ModuleId) => void;
   onSelectMaterialFile: (kind: MaterialKind) => void;
   onNewUsernameChange: (value: string) => void;
@@ -43,6 +45,7 @@ export function ShellLayout({
   userErrorMessage,
   currentUserRole,
   mockRuntimeClient,
+  algorithmRuntimeClient,
   onModuleChange,
   onSelectMaterialFile,
   onNewUsernameChange,
@@ -75,6 +78,7 @@ export function ShellLayout({
         userErrorMessage={userErrorMessage}
         currentUserRole={currentUserRole}
         mockRuntimeClient={mockRuntimeClient}
+        algorithmRuntimeClient={algorithmRuntimeClient}
         onSelectMaterialFile={onSelectMaterialFile}
         onNewUsernameChange={onNewUsernameChange}
         onNewPasswordChange={onNewPasswordChange}
