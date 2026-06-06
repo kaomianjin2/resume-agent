@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
+    env,
+    ffi::{OsStr, OsString},
     path::PathBuf,
     process::{Child, Command, ExitStatus, Stdio},
     sync::Mutex,
@@ -292,7 +294,7 @@ fn start_python_runtime(state: tauri::State<'_, DesktopState>) -> Result<Runtime
     }
 
     let repo_root = repo_root()?;
-    let mut command = managed_command("uv");
+    let mut command = uv_command();
     let child_process = command
         .args(["run", "interview-agent", "--config", CONFIG_PATH])
         .current_dir(repo_root)
@@ -348,7 +350,7 @@ fn run_python_json(payload: &str) -> Result<Value, String> {
         "import json\nfrom pathlib import Path\nimport sys\nsys.path.insert(0, str(Path('src').resolve()))\ndef print_json(value):\n    print(json.dumps(value, ensure_ascii=False))\n{}\n",
         payload
     );
-    let output = Command::new("uv")
+    let output = uv_command()
         .args(["run", "python", "-c", &script])
         .current_dir(repo_root()?)
         .output()
@@ -395,13 +397,60 @@ fn terminate_child_process(child_process: &mut Child) -> Option<ExitStatus> {
     child_process.wait().ok()
 }
 
-fn managed_command(program: &str) -> Command {
+fn managed_command(program: impl AsRef<OsStr>) -> Command {
     let mut command = Command::new(program);
     #[cfg(unix)]
     {
         command.process_group(0);
     }
     command
+}
+
+fn uv_command() -> Command {
+    managed_command(&resolve_uv_program())
+}
+
+fn resolve_uv_program() -> OsString {
+    resolve_uv_program_with_path(env::var_os("PATH"))
+}
+
+fn resolve_uv_program_with_path(path_value: Option<OsString>) -> OsString {
+    if let Some(program_path) = find_program_in_path("uv", path_value) {
+        return program_path.into_os_string();
+    }
+
+    for candidate_path in fallback_uv_paths() {
+        if candidate_path.is_file() {
+            return candidate_path.into_os_string();
+        }
+    }
+
+    OsString::from("uv")
+}
+
+fn find_program_in_path(program_name: &str, path_value: Option<OsString>) -> Option<PathBuf> {
+    let path_value = path_value?;
+    for search_directory in env::split_paths(&path_value) {
+        let candidate_path = search_directory.join(program_name);
+        if candidate_path.is_file() {
+            return Some(candidate_path);
+        }
+    }
+    None
+}
+
+fn fallback_uv_paths() -> Vec<PathBuf> {
+    let mut candidate_paths = vec![
+        PathBuf::from("/opt/homebrew/bin/uv"),
+        PathBuf::from("/usr/local/bin/uv"),
+        PathBuf::from("/usr/bin/uv"),
+    ];
+    if let Some(home_directory) = env::var_os("HOME") {
+        let home_directory_path = PathBuf::from(home_directory);
+        candidate_paths.push(home_directory_path.join(".local/bin/uv"));
+        candidate_paths.push(home_directory_path.join(".cargo/bin/uv"));
+    }
+    candidate_paths
 }
 
 fn wait_for_child_exit(child_process: &mut Child, timeout: Duration) -> Option<ExitStatus> {
@@ -435,7 +484,7 @@ fn cleanup_python_runtime(state: &DesktopState) {
 }
 
 fn probe_knowledge_base_status() -> Result<String, String> {
-    let output = Command::new("uv")
+    let output = uv_command()
         .args(["run", "python", "-c", PYTHON_STATUS_SCRIPT])
         .current_dir(repo_root()?)
         .output()
@@ -562,5 +611,26 @@ mod tests {
         let _ = std::fs::remove_file(&pid_file);
 
         assert!(!process_still_running);
+    }
+
+    #[test]
+    fn find_program_in_path_resolves_uv_from_explicit_path() {
+        let uv_path = resolve_uv_program();
+        let uv_directory = PathBuf::from(&uv_path)
+            .parent()
+            .expect("uv parent directory")
+            .to_path_buf();
+
+        let resolved_path = find_program_in_path("uv", Some(uv_directory.into_os_string()))
+            .expect("resolve uv from explicit path");
+
+        assert_eq!(resolved_path, PathBuf::from(uv_path));
+    }
+
+    #[test]
+    fn resolve_uv_program_falls_back_when_path_is_empty() {
+        let uv_path = resolve_uv_program_with_path(Some(OsString::from("")));
+
+        assert!(PathBuf::from(uv_path).is_file());
     }
 }
