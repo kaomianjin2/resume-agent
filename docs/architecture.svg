@@ -1,238 +1,247 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1200" viewBox="0 0 1600 1200" role="img" aria-labelledby="title desc">
-  <title id="title">技术面试 Agent 项目架构图</title>
-  <desc id="desc">展示 Tauri Desktop Shell、React Web Shell、交互式 CLI、GUI Runtime Facade、GUI 面试准备与模拟面试入口、普通请求编排、对话路由、节点规划、节点执行、大模型调用、混合检索、SQLite 状态库和离线知识库构建之间的关系。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1180" viewBox="0 0 1800 1180" role="img" aria-labelledby="title desc">
+  <title id="title">技术面试 Agent 系统架构图</title>
+  <desc id="desc">展示桌面端、命令行、GUI Runtime、路由规划执行链路、结构化节点运行时、SQLite 会话状态、知识库检索索引和离线知识库构建之间的关系。</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    <marker id="arrow-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2937"/>
     </marker>
-    <marker id="soft-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
     </marker>
+    <filter id="card-shadow" x="-12%" y="-20%" width="124%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
     <style>
-      .canvas { fill: #f8fafc; }
-      .title { font: 700 34px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
-      .subtitle { font: 400 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
-      .section-title { font: 700 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
-      .label { font: 700 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
-      .small { font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
-      .tiny { font: 400 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #64748b; }
-      .note { font: 600 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334155; }
-      .panel { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.4; rx: 16; }
-      .runtime { fill: #ecfeff; stroke: #0891b2; stroke-width: 1.5; rx: 14; }
-      .logic { fill: #eff6ff; stroke: #2563eb; stroke-width: 1.5; rx: 14; }
-      .exec { fill: #f0fdf4; stroke: #16a34a; stroke-width: 1.5; rx: 14; }
-      .data { fill: #fff7ed; stroke: #ea580c; stroke-width: 1.5; rx: 14; }
-      .offline { fill: #fdf2f8; stroke: #db2777; stroke-width: 1.5; rx: 14; }
-      .external { fill: #f5f3ff; stroke: #7c3aed; stroke-width: 1.5; rx: 14; }
-      .line { stroke: #334155; stroke-width: 2; fill: none; marker-end: url(#arrow); }
-      .soft-line { stroke: #64748b; stroke-width: 1.8; fill: none; marker-end: url(#soft-arrow); }
-      .dash-line { stroke: #64748b; stroke-width: 1.8; stroke-dasharray: 7 6; fill: none; marker-end: url(#soft-arrow); }
-      .boundary { fill: none; stroke: #94a3b8; stroke-width: 1.2; stroke-dasharray: 8 8; rx: 18; }
+      .canvas { fill: #ffffff; }
+      .grid { stroke: #e5e7eb; stroke-width: 1; opacity: 0.58; }
+      .title { font: 760 42px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .subtitle { font: 400 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #4b5563; }
+      .section-title { font: 760 19px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .section-note { font: 420 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #6b7280; }
+      .label { font: 760 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #111827; }
+      .small { font: 520 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #374151; }
+      .tiny { font: 410 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #6b7280; }
+      .chip { font: 680 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0.6px; fill: #4b5563; }
+      .edge-label { font: 680 12px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #374151; }
+      .card { fill: #ffffff; stroke-width: 2.2; rx: 18; filter: url(#card-shadow); }
+      .hub { fill: #fffdf7; stroke: #f59e0b; }
+      .client { fill: #f7fbff; stroke: #3b82f6; }
+      .runtime { fill: #f9f7ff; stroke: #8b5cf6; }
+      .flow { fill: #f6fffb; stroke: #10b981; }
+      .node { fill: #fff7f3; stroke: #f97316; }
+      .data { fill: #f8fafc; stroke: #64748b; }
+      .offline { fill: #fff6fb; stroke: #ec4899; }
+      .external { fill: #f7fee7; stroke: #84cc16; }
+      .band { fill: #f8fafc; stroke: #d1d5db; stroke-width: 1.4; rx: 24; }
+      .band-light { fill: #ffffff; stroke: #e5e7eb; stroke-width: 1.2; rx: 22; }
+      .line { stroke: #1f2937; stroke-width: 2.3; fill: none; marker-end: url(#arrow-dark); }
+      .soft-line { stroke: #6b7280; stroke-width: 2; fill: none; marker-end: url(#arrow-muted); }
+      .dash-line { stroke: #6b7280; stroke-width: 2; stroke-dasharray: 9 8; fill: none; marker-end: url(#arrow-muted); }
+      .bus { stroke: #111827; stroke-width: 3.2; fill: none; marker-end: url(#arrow-dark); }
     </style>
   </defs>
 
-  <rect class="canvas" x="0" y="0" width="1600" height="1200"/>
-  <text class="title" x="70" y="70">技术面试 Agent 项目架构图</text>
-  <text class="subtitle" x="70" y="100">运行时只做交互、编排、检索和大模型调用；开发期离线构建知识库；会话状态与索引统一落在 SQLite。</text>
+  <rect class="canvas" x="0" y="0" width="1800" height="1180"/>
+  <g opacity="0.42">
+    <path class="grid" d="M 100 0 L 100 1180"/>
+    <path class="grid" d="M 300 0 L 300 1180"/>
+    <path class="grid" d="M 500 0 L 500 1180"/>
+    <path class="grid" d="M 700 0 L 700 1180"/>
+    <path class="grid" d="M 900 0 L 900 1180"/>
+    <path class="grid" d="M 1100 0 L 1100 1180"/>
+    <path class="grid" d="M 1300 0 L 1300 1180"/>
+    <path class="grid" d="M 1500 0 L 1500 1180"/>
+    <path class="grid" d="M 1700 0 L 1700 1180"/>
+    <path class="grid" d="M 0 160 L 1800 160"/>
+    <path class="grid" d="M 0 320 L 1800 320"/>
+    <path class="grid" d="M 0 480 L 1800 480"/>
+    <path class="grid" d="M 0 640 L 1800 640"/>
+    <path class="grid" d="M 0 800 L 1800 800"/>
+    <path class="grid" d="M 0 960 L 1800 960"/>
+    <path class="grid" d="M 0 1120 L 1800 1120"/>
+  </g>
 
-  <rect class="boundary" x="50" y="130" width="1500" height="610"/>
-  <text class="section-title" x="74" y="162">运行时路径</text>
-  <text class="tiny" x="178" y="162">启动时只检查知识库 ready 状态，不在运行期解析或构建原始资料。</text>
+  <text class="title" x="900" y="70" text-anchor="middle">技术面试 Agent 系统架构图</text>
+  <text class="subtitle" x="900" y="102" text-anchor="middle">本地桌面与 CLI 双入口共用编排核心；运行时只读 ready 知识库，节点结果经契约校验后写入 SQLite。</text>
 
-  <rect class="external" x="90" y="205" width="180" height="82"/>
-  <text class="label" x="125" y="238">用户</text>
-  <text class="small" x="115" y="263">自然语言 / /node</text>
+  <rect class="band" x="80" y="145" width="1640" height="610"/>
+  <text class="section-title" x="115" y="185">运行时主链路</text>
+  <text class="section-note" x="246" y="185">输入、路由、规划、执行、结构化节点、大模型和检索上下文形成一条可追踪链路。</text>
 
-  <rect class="runtime" x="340" y="190" width="230" height="112"/>
-  <text class="label" x="384" y="225">交互式 CLI</text>
-  <text class="small" x="375" y="252">cli.py</text>
-  <text class="tiny" x="370" y="276">加载配置、检查 KB、循环输入</text>
-  <text class="tiny" x="370" y="294">装配编排与展示回调</text>
+  <rect class="band-light" x="105" y="220" width="305" height="460"/>
+  <text class="chip" x="130" y="253">CLIENT SURFACES</text>
 
-  <rect class="runtime" x="90" y="330" width="220" height="96"/>
-  <text class="label" x="125" y="365">Tauri Desktop Shell</text>
-  <text class="small" x="122" y="391">gui/src-tauri</text>
-  <text class="tiny" x="112" y="410">文件选择 / Python 进程组启停</text>
+  <rect class="card client" x="135" y="285" width="245" height="86"/>
+  <text class="label" x="258" y="318" text-anchor="middle">用户</text>
+  <text class="small" x="258" y="344" text-anchor="middle">自然语言 / /node</text>
 
-  <rect class="runtime" x="90" y="445" width="220" height="82"/>
-  <text class="label" x="130" y="479">React Web Shell</text>
-  <text class="small" x="135" y="505">gui/src/app</text>
-  <text class="tiny" x="118" y="521">桌面状态 / lastError 展示</text>
+  <rect class="card client" x="135" y="405" width="245" height="94"/>
+  <text class="label" x="258" y="438" text-anchor="middle">Tauri Desktop Shell</text>
+  <text class="small" x="258" y="463" text-anchor="middle">gui/src-tauri</text>
+  <text class="tiny" x="258" y="484" text-anchor="middle">窗口 / 文件选择 / Python 进程组</text>
 
-  <rect class="runtime" x="340" y="65" width="230" height="96"/>
-  <text class="label" x="371" y="100">GUI Runtime Facade</text>
-  <text class="small" x="365" y="126">gui_runtime.py</text>
-  <text class="tiny" x="370" y="146">结构化 status / prep / mock / route</text>
+  <rect class="card client" x="135" y="535" width="245" height="92"/>
+  <text class="label" x="258" y="568" text-anchor="middle">React Web Shell</text>
+  <text class="small" x="258" y="593" text-anchor="middle">gui/src/app</text>
+  <text class="tiny" x="258" y="614" text-anchor="middle">KB 状态 / runtime 状态 / lastError</text>
 
-  <rect class="runtime" x="340" y="495" width="230" height="82"/>
-  <text class="label" x="394" y="528">结果展示层</text>
-  <text class="small" x="386" y="553">rendering.py</text>
-  <text class="tiny" x="366" y="570">格式化节点结果与终端样式</text>
+  <rect class="band-light" x="465" y="220" width="305" height="460"/>
+  <text class="chip" x="490" y="253">ENTRY + FACADE</text>
 
-  <rect class="logic" x="650" y="450" width="230" height="70"/>
-  <text class="label" x="704" y="480">模拟面试流程</text>
-  <text class="small" x="694" y="506">mock_interview.py</text>
-  <text class="tiny" x="682" y="522">复用 CLI 输入与展示回调</text>
+  <rect class="card hub" x="495" y="280" width="245" height="105"/>
+  <text class="label" x="618" y="314" text-anchor="middle">交互式 CLI</text>
+  <text class="small" x="618" y="340" text-anchor="middle">cli.py</text>
+  <text class="tiny" x="618" y="362" text-anchor="middle">加载配置、检查 KB、装配回调</text>
 
-  <rect class="data" x="340" y="350" width="230" height="112"/>
-  <text class="label" x="390" y="385">项目配置</text>
-  <text class="small" x="376" y="412">config/interview-agent.toml</text>
-  <text class="tiny" x="390" y="436">LLM / embedding / storage</text>
+  <rect class="card hub" x="495" y="430" width="245" height="104"/>
+  <text class="label" x="618" y="464" text-anchor="middle">GUI Runtime Facade</text>
+  <text class="small" x="618" y="490" text-anchor="middle">gui_runtime.py</text>
+  <text class="tiny" x="618" y="512" text-anchor="middle">status / prep / mock / route</text>
 
-  <rect class="logic" x="650" y="160" width="230" height="96"/>
-  <text class="label" x="704" y="195">对话路由器</text>
-  <text class="small" x="693" y="222">router.py</text>
-  <text class="tiny" x="677" y="242">输出 needs_user_choice</text>
+  <rect class="card hub" x="495" y="575" width="245" height="78"/>
+  <text class="label" x="618" y="607" text-anchor="middle">结果展示层</text>
+  <text class="small" x="618" y="633" text-anchor="middle">rendering.py</text>
 
-  <rect class="logic" x="650" y="70" width="230" height="70"/>
-  <text class="label" x="688" y="100">面试准备聚合</text>
-  <text class="small" x="676" y="124">prepare_interview_materials</text>
+  <rect class="band-light" x="825" y="220" width="410" height="460"/>
+  <text class="chip" x="850" y="253">ROUTE + PLAN</text>
 
-  <rect class="logic" x="650" y="310" width="230" height="108"/>
-  <text class="label" x="696" y="346">节点规划器</text>
-  <text class="small" x="693" y="373">planner.py</text>
-  <text class="tiny" x="677" y="395">复用 state_contracts.py</text>
+  <rect class="card runtime" x="858" y="282" width="155" height="94"/>
+  <text class="label" x="936" y="316" text-anchor="middle">面试准备</text>
+  <text class="small" x="936" y="342" text-anchor="middle">resume / JD / match</text>
+  <text class="tiny" x="936" y="363" text-anchor="middle">聚合 view model</text>
 
-  <rect class="exec" x="960" y="235" width="240" height="118"/>
-  <text class="label" x="1010" y="272">节点执行器</text>
-  <text class="small" x="1028" y="299">executor.py</text>
-  <text class="tiny" x="990" y="322">校验契约、执行节点、记录结果</text>
+  <rect class="card runtime" x="1043" y="282" width="155" height="94"/>
+  <text class="label" x="1121" y="316" text-anchor="middle">模拟面试</text>
+  <text class="small" x="1121" y="342" text-anchor="middle">start / submit / end</text>
+  <text class="tiny" x="1121" y="363" text-anchor="middle">题目、追问、评分</text>
 
-  <rect class="exec" x="1280" y="150" width="220" height="118"/>
-  <text class="label" x="1322" y="186">节点注册表</text>
-  <text class="small" x="1320" y="213">nodes/registry.py</text>
-  <text class="tiny" x="1310" y="238">复用 state_contracts.py</text>
+  <rect class="card flow" x="858" y="420" width="155" height="98"/>
+  <text class="label" x="936" y="454" text-anchor="middle">对话路由器</text>
+  <text class="small" x="936" y="480" text-anchor="middle">router.py</text>
+  <text class="tiny" x="936" y="502" text-anchor="middle">needs_user_choice</text>
 
-  <rect class="exec" x="1280" y="325" width="220" height="128"/>
-  <text class="label" x="1302" y="361">面试节点处理器</text>
-  <text class="small" x="1308" y="388">nodes/interview.py</text>
-  <text class="tiny" x="1313" y="414">11 个节点归一化输出</text>
+  <rect class="card flow" x="1043" y="420" width="155" height="98"/>
+  <text class="label" x="1121" y="454" text-anchor="middle">节点规划器</text>
+  <text class="small" x="1121" y="480" text-anchor="middle">planner.py</text>
+  <text class="tiny" x="1121" y="502" text-anchor="middle">生成内部步骤</text>
 
-  <rect class="logic" x="960" y="500" width="240" height="112"/>
-  <text class="label" x="1004" y="535">结构化运行时</text>
-  <text class="small" x="1032" y="562">agents.py</text>
-  <text class="tiny" x="987" y="586">渲染 prompt、注入 RAG、保护来源字段</text>
+  <rect class="card flow" x="950" y="555" width="155" height="82"/>
+  <text class="label" x="1028" y="588" text-anchor="middle">模拟面试流程</text>
+  <text class="small" x="1028" y="614" text-anchor="middle">mock_interview.py</text>
 
-  <rect class="external" x="1280" y="535" width="220" height="96"/>
-  <text class="label" x="1314" y="572">大模型客户端</text>
-  <text class="small" x="1308" y="599">llm.py</text>
-  <text class="tiny" x="1315" y="618">OpenAI-compatible API</text>
+  <rect class="band-light" x="1290" y="220" width="405" height="460"/>
+  <text class="chip" x="1315" y="253">EXECUTE + INTELLIGENCE</text>
 
-  <rect class="data" x="650" y="530" width="230" height="130"/>
-  <text class="label" x="704" y="566">会话状态库</text>
-  <text class="small" x="693" y="593">sessions</text>
-  <text class="small" x="693" y="615">session_state</text>
-  <text class="small" x="693" y="637">node_runs</text>
+  <rect class="card node" x="1320" y="285" width="155" height="105"/>
+  <text class="label" x="1398" y="319" text-anchor="middle">节点执行器</text>
+  <text class="small" x="1398" y="345" text-anchor="middle">executor.py</text>
+  <text class="tiny" x="1398" y="367" text-anchor="middle">执行、记录、写状态</text>
 
-  <rect class="logic" x="910" y="650" width="270" height="58"/>
-  <text class="label" x="950" y="676">状态契约</text>
-  <text class="small" x="962" y="698">state_contracts.py</text>
+  <rect class="card node" x="1510" y="285" width="155" height="105"/>
+  <text class="label" x="1588" y="319" text-anchor="middle">节点注册表</text>
+  <text class="small" x="1588" y="345" text-anchor="middle">nodes/registry.py</text>
+  <text class="tiny" x="1588" y="367" text-anchor="middle">读取节点契约</text>
 
-  <rect class="data" x="90" y="545" width="480" height="112"/>
-  <text class="label" x="236" y="580">SQLite 知识库索引</text>
-  <text class="small" x="145" y="608">knowledge_documents / knowledge_chunks / knowledge_base_meta</text>
-  <text class="small" x="195" y="632">knowledge_chunks_fts / knowledge_chunk_embeddings</text>
+  <rect class="card node" x="1320" y="430" width="155" height="110"/>
+  <text class="label" x="1398" y="464" text-anchor="middle">面试节点</text>
+  <text class="small" x="1398" y="490" text-anchor="middle">nodes/interview.py</text>
+  <text class="tiny" x="1398" y="512" text-anchor="middle">11 个节点输出归一化</text>
 
-  <path class="line" d="M 270 246 L 340 246"/>
-  <path class="line" d="M 180 287 L 180 330"/>
-  <path class="line" d="M 200 426 L 200 445"/>
-  <path class="line" d="M 310 486 C 330 375 320 145 340 113"/>
-  <path class="soft-line" d="M 310 378 C 328 340 330 278 340 246"/>
-  <path class="soft-line" d="M 310 370 C 328 360 330 406 340 406"/>
-  <path class="soft-line" d="M 455 161 L 455 190"/>
-  <path class="soft-line" d="M 570 113 C 620 113 620 195 650 195"/>
-  <path class="soft-line" d="M 570 104 L 650 104"/>
-  <path class="soft-line" d="M 880 104 C 925 104 925 270 960 270"/>
-  <path class="soft-line" d="M 765 140 L 765 530"/>
-  <path class="soft-line" d="M 570 132 C 625 150 625 346 650 346"/>
-  <path class="soft-line" d="M 570 151 C 650 240 850 260 960 282"/>
-  <path class="soft-line" d="M 455 161 C 500 360 570 535 650 595"/>
-  <path class="soft-line" d="M 455 302 L 455 350"/>
-  <path class="soft-line" d="M 500 302 C 540 375 540 455 500 495"/>
-  <path class="line" d="M 570 226 C 610 226 610 208 650 208"/>
-  <path class="line" d="M 570 260 C 615 260 615 364 650 364"/>
-  <path class="line" d="M 570 294 C 612 330 612 485 650 485"/>
-  <path class="line" d="M 880 208 C 925 208 925 270 960 270"/>
-  <path class="line" d="M 880 364 C 925 364 925 315 960 315"/>
-  <path class="line" d="M 880 485 C 930 485 930 334 960 334"/>
-  <path class="line" d="M 1200 276 C 1235 276 1235 209 1280 209"/>
-  <path class="line" d="M 1200 322 C 1235 322 1235 389 1280 389"/>
-  <path class="line" d="M 1280 410 C 1240 410 1240 556 1200 556"/>
-  <path class="line" d="M 1200 582 L 1280 582"/>
-  <path class="line" d="M 960 582 C 920 582 920 595 880 595"/>
-  <path class="soft-line" d="M 910 679 C 845 679 825 418 765 418"/>
-  <path class="soft-line" d="M 1045 650 L 1080 353"/>
-  <path class="soft-line" d="M 1180 679 C 1290 680 1340 268 1390 268"/>
-  <path class="line" d="M 960 535 C 815 475 700 490 570 595"/>
-  <path class="line" d="M 960 560 C 815 545 710 545 570 610"/>
-  <path class="soft-line" d="M 455 462 C 455 510 612 535 650 565"/>
+  <rect class="card node" x="1510" y="430" width="155" height="110"/>
+  <text class="label" x="1588" y="464" text-anchor="middle">结构化运行时</text>
+  <text class="small" x="1588" y="490" text-anchor="middle">agents.py</text>
+  <text class="tiny" x="1588" y="512" text-anchor="middle">Prompt + RAG + JSON</text>
 
-  <text class="note" x="300" y="232">CLI 输入</text>
-  <text class="note" x="210" y="321">桌面窗口</text>
-  <text class="note" x="250" y="474">结构化 UI</text>
-  <text class="note" x="506" y="436">结果展示</text>
-  <text class="note" x="590" y="202">路由契约</text>
-  <text class="note" x="590" y="92">准备页 / 模拟面试 view model</text>
-  <text class="note" x="592" y="354">生成内部步骤</text>
-  <text class="note" x="600" y="448">模拟面试流程</text>
-  <text class="note" x="892" y="258">按计划执行</text>
-  <text class="note" x="1216" y="198">读取节点契约</text>
-  <text class="note" x="1216" y="382">调用处理函数</text>
-  <text class="note" x="1217" y="572">结构化 JSON</text>
-  <text class="note" x="810" y="580">校验后读写状态</text>
-  <text class="note" x="675" y="526">检索上下文 + source metadata</text>
+  <rect class="card external" x="1415" y="575" width="155" height="78"/>
+  <text class="label" x="1493" y="607" text-anchor="middle">LLM 客户端</text>
+  <text class="small" x="1493" y="633" text-anchor="middle">llm.py</text>
 
-  <rect class="boundary" x="50" y="780" width="1500" height="280"/>
-  <text class="section-title" x="74" y="812">离线知识库构建路径</text>
-  <text class="tiny" x="232" y="812">开发期命令负责筛选、解析、切分、向量化和索引写入；失败会记录 failed 状态。</text>
+  <path class="line" d="M 380 328 C 430 328 444 332 495 332"/>
+  <path class="soft-line" d="M 258 371 L 258 405"/>
+  <path class="soft-line" d="M 258 499 L 258 535"/>
+  <path class="line" d="M 380 581 C 420 581 445 482 495 482"/>
+  <path class="soft-line" d="M 618 385 L 618 430"/>
+  <path class="line" d="M 740 482 C 795 482 805 329 858 329"/>
+  <path class="line" d="M 740 482 C 794 482 806 469 858 469"/>
+  <path class="line" d="M 740 482 C 800 482 805 597 950 597"/>
+  <path class="line" d="M 1013 469 L 1043 469"/>
+  <path class="line" d="M 1198 469 C 1240 469 1260 337 1320 337"/>
+  <path class="line" d="M 1105 597 C 1205 597 1228 337 1320 337"/>
+  <path class="line" d="M 1475 337 L 1510 337"/>
+  <path class="line" d="M 1588 390 L 1588 430"/>
+  <path class="line" d="M 1510 485 L 1475 485"/>
+  <path class="line" d="M 1588 540 C 1588 558 1545 575 1493 575"/>
+  <path class="soft-line" d="M 1320 485 C 1250 485 1220 597 1105 597"/>
+  <path class="soft-line" d="M 495 615 C 438 625 405 625 380 615"/>
 
-  <rect class="offline" x="90" y="865" width="220" height="96"/>
-  <text class="label" x="132" y="902">知识库源目录</text>
-  <text class="small" x="126" y="929">/Users/cynicism/Desktop/面试</text>
+  <text class="edge-label" x="424" y="315">CLI 输入</text>
+  <text class="edge-label" x="398" y="537">桌面桥接</text>
+  <text class="edge-label" x="778" y="306">准备页</text>
+  <text class="edge-label" x="779" y="454">路由</text>
+  <text class="edge-label" x="1210" y="320">计划执行</text>
+  <text class="edge-label" x="1478" y="322">注册</text>
+  <text class="edge-label" x="1212" y="581">面试闭环</text>
 
-  <rect class="offline" x="390" y="840" width="200" height="96"/>
-  <text class="label" x="420" y="877">文件筛选策略</text>
-  <text class="small" x="432" y="904">file_policy.py</text>
-  <text class="tiny" x="430" y="922">包含 md/pdf/docx</text>
+  <rect class="band" x="80" y="790" width="1040" height="270"/>
+  <text class="section-title" x="115" y="830">共享状态与检索数据面</text>
+  <text class="section-note" x="298" y="830">会话、节点运行记录、节点输出状态和知识库索引统一存放在 SQLite。</text>
 
-  <rect class="offline" x="390" y="960" width="200" height="70"/>
-  <text class="label" x="430" y="997">文本解析器</text>
-  <text class="small" x="430" y="1020">parser.py</text>
+  <rect class="card data" x="140" y="880" width="245" height="110"/>
+  <text class="label" x="263" y="916" text-anchor="middle">项目配置</text>
+  <text class="small" x="263" y="943" text-anchor="middle">config/interview-agent.toml</text>
+  <text class="tiny" x="263" y="965" text-anchor="middle">LLM / embedding / storage</text>
 
-  <rect class="offline" x="670" y="865" width="220" height="96"/>
-  <text class="label" x="708" y="902">文本切分</text>
-  <text class="small" x="716" y="929">chunking.py</text>
+  <rect class="card data" x="455" y="880" width="245" height="110"/>
+  <text class="label" x="578" y="916" text-anchor="middle">会话状态库</text>
+  <text class="small" x="578" y="943" text-anchor="middle">sessions / session_state</text>
+  <text class="small" x="578" y="966" text-anchor="middle">node_runs</text>
 
-  <rect class="offline" x="970" y="840" width="230" height="120"/>
-  <text class="label" x="1012" y="878">知识库构建器</text>
-  <text class="small" x="1024" y="905">kb/build.py</text>
-  <text class="tiny" x="1000" y="930">building / ready / failed</text>
+  <rect class="card data" x="770" y="880" width="285" height="110"/>
+  <text class="label" x="913" y="916" text-anchor="middle">SQLite 知识库索引</text>
+  <text class="small" x="913" y="943" text-anchor="middle">knowledge_documents / chunks</text>
+  <text class="small" x="913" y="966" text-anchor="middle">FTS5 / embeddings / meta</text>
 
-  <rect class="external" x="970" y="985" width="230" height="58"/>
-  <text class="label" x="1004" y="1021">本地 bge-m3 向量模型</text>
+  <rect class="card data" x="455" y="1018" width="245" height="58"/>
+  <text class="label" x="578" y="1052" text-anchor="middle">state_contracts.py</text>
 
-  <rect class="data" x="1280" y="865" width="220" height="116"/>
-  <text class="label" x="1312" y="902">SQLite 检索索引</text>
-  <text class="small" x="1310" y="929">documents / chunks</text>
-  <text class="small" x="1310" y="952">FTS5 / embeddings</text>
+  <path class="dash-line" d="M 617 534 C 617 735 578 800 578 880"/>
+  <path class="dash-line" d="M 1398 390 C 1210 760 760 760 578 880"/>
+  <path class="dash-line" d="M 1588 540 C 1460 760 1070 805 913 880"/>
+  <path class="dash-line" d="M 578 1018 C 640 805 1030 735 1121 518"/>
+  <path class="dash-line" d="M 578 1018 C 820 830 1290 760 1398 390"/>
+  <path class="dash-line" d="M 263 880 C 310 760 522 720 618 534"/>
+  <text class="edge-label" x="610" y="777">校验后读写</text>
+  <text class="edge-label" x="1010" y="804">检索上下文 + source metadata</text>
+  <text class="edge-label" x="388" y="807">固定配置</text>
 
-  <path class="line" d="M 310 913 L 390 890"/>
-  <path class="line" d="M 590 888 C 625 888 625 913 670 913"/>
-  <path class="line" d="M 590 995 C 630 995 635 937 670 926"/>
-  <path class="line" d="M 890 913 L 970 900"/>
-  <path class="line" d="M 1085 960 L 1085 985"/>
-  <path class="line" d="M 1200 900 L 1280 913"/>
-  <path class="dash-line" d="M 1400 865 C 1240 780 630 735 455 462"/>
+  <rect class="band" x="1180" y="790" width="540" height="270"/>
+  <text class="section-title" x="1215" y="830">离线知识库构建</text>
+  <text class="section-note" x="1375" y="830">开发期命令完成筛选、解析、切分、向量化和索引写入。</text>
 
-  <text class="note" x="320" y="895">筛选</text>
-  <text class="note" x="606" y="880">抽取正文</text>
-  <text class="note" x="907" y="897">写入</text>
-  <text class="note" x="1212" y="895">索引</text>
-  <text class="note" x="1120" y="978">本地模型</text>
-  <text class="note" x="1195" y="786">运行时只读检索</text>
+  <rect class="card offline" x="1220" y="880" width="190" height="86"/>
+  <text class="label" x="1315" y="914" text-anchor="middle">源目录</text>
+  <text class="small" x="1315" y="941" text-anchor="middle">/Users/cynicism/Desktop/面试</text>
 
-  <rect class="panel" x="70" y="1040" width="1460" height="74"/>
-  <text class="small" x="95" y="1069">关键约束：配置固定来自 config/interview-agent.toml；GUI Runtime Facade 只输出结构化数据；面试准备与模拟面试入口复用既有节点契约；节点输出校验后才写入 session_state。</text>
-  <text class="small" x="95" y="1095">桌面约束：Tauri Desktop Shell 只负责本地窗口、文件选择和 Python runtime 进程组启停；关闭窗口必须清理整个进程树。</text>
-  <!-- 中文注释：本图把运行期交互链路和离线知识库构建链路分开，避免把“启动检查 ready 状态”和“构建知识库”混为同一流程。 -->
+  <rect class="card offline" x="1450" y="880" width="220" height="86"/>
+  <text class="label" x="1560" y="914" text-anchor="middle">构建流水线</text>
+  <text class="small" x="1560" y="941" text-anchor="middle">file_policy / parser / chunking</text>
+
+  <rect class="card offline" x="1220" y="1000" width="190" height="72"/>
+  <text class="label" x="1315" y="1031" text-anchor="middle">本地 bge-m3</text>
+  <text class="small" x="1315" y="1056" text-anchor="middle">local_files_only</text>
+
+  <rect class="card offline" x="1450" y="1000" width="220" height="72"/>
+  <text class="label" x="1560" y="1031" text-anchor="middle">kb/build.py</text>
+  <text class="small" x="1560" y="1056" text-anchor="middle">building / ready / failed</text>
+
+  <path class="line" d="M 1410 923 L 1450 923"/>
+  <path class="line" d="M 1560 966 L 1560 1000"/>
+  <path class="line" d="M 1410 1036 L 1450 1036"/>
+  <path class="dash-line" d="M 1450 1036 C 1280 1100 1035 1040 913 990"/>
+  <text class="edge-label" x="1421" y="907">筛选</text>
+  <text class="edge-label" x="1580" y="986">写入</text>
+  <text class="edge-label" x="1115" y="1080">运行时只读 ready 索引</text>
+
+  <rect class="band-light" x="80" y="1092" width="1640" height="58"/>
+  <text class="small" x="115" y="1128">关键约束：配置只来自 config/interview-agent.toml；运行时不构建知识库；GUI Runtime 只输出结构化 view model；节点输出通过 state_contracts.py 校验后写入 session_state；Tauri 关闭窗口时清理 Python 进程树。</text>
 </svg>
