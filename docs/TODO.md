@@ -266,3 +266,19 @@
 4. [ ] [操作] 手工构建知识库 → verify: `rtk uv run python -m interview_agent.kb.build --source /Users/cynicism/Desktop/面试 --config config/interview-agent.toml --db data/interview_agent.sqlite`
 5. [ ] [操作] 手工启动交互式 Agent → verify: `rtk uv run interview-agent --config config/interview-agent.toml`
 6. [x] [操作] 固化手工验证清单，覆盖明确路由、缺输入补齐、不确定路由、模拟面试和失败恢复 → verify: CLI 不展示内部节点名，不访问网络，不修改 `/Users/cynicism/Desktop/面试`
+
+## Feature Track: 求职投递功能
+
+**Status:** `[ ]`  
+**Owner:** main agent / implementer / reviewer  
+**Dependencies:** 已有简历解析、JD 解析、匹配评估、GUI runtime
+
+**Reference Docs:**
+
+- `docs/job-application-feature-design.md`
+- `docs/job-application-development-tasks.md`
+
+1. [操作] 按 `docs/job-application-development-tasks.md` 逐项执行 JOB-001 到 JOB-019 → verify: 每个任务均有独立 worktree、implementer 提交、reviewer 结论、最小必要测试和观测证据
+2. [操作] 每个任务合并后由主 agent 更新本 TODO 状态与专项任务文档状态 → verify: `rtk git diff -- docs/TODO.md docs/job-application-development-tasks.md`
+3. [操作] 功能完成后由主 agent 更新 `HISTORY.md` → verify: HISTORY 记录包含任务编号、功能名称、测试命令、reviewer 结论和影响范围
+4. [操作] 涉及架构变更后由主 agent 更新 `docs/architecture.md` 与 `docs/architecture.svg` → verify: `rtk xmllint --noout docs/architecture.svg`
