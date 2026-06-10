@@ -1566,6 +1566,190 @@ def test_job_platform_contract_rejects_unconfirmed_submission_without_sensitive_
     assert _contains_sensitive_adapter_payload(asdict(result)) is False
 
 
+def test_job_collection_orchestrator_keeps_successful_platform_results_and_retries_failed_platform() -> None:
+    from interview_agent.job_collection import JobCollectionOrchestrator
+    from interview_agent.job_platform_adapters import (
+        FakeJobPlatformAdapter,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+        StandardJob,
+    )
+
+    boss_job = StandardJob(
+        platform="boss",
+        platform_job_id="boss-collection-001",
+        title="后端工程师",
+        company_name="示例科技",
+        location="上海",
+        remote_policy="hybrid",
+        salary_range="35k-50k",
+        level="高级",
+        experience_requirement="5年",
+        education_requirement="本科",
+        industry="AI 工具",
+        company_size="100-500人",
+        funding_stage="B轮",
+        tech_stack=["Python"],
+        benefits=["五险一金"],
+        published_at="2026-06-10T09:00:00+08:00",
+        detail_url="https://example.com/boss/jobs/collection-001",
+        jd_text="负责后端服务。",
+        collected_at="2026-06-10T09:05:00+08:00",
+        field_confidence={"salary_range": "fixture"},
+    )
+    orchestrator = JobCollectionOrchestrator(
+        {
+            "boss": FakeJobPlatformAdapter(platform="boss", jobs=[boss_job]),
+            "lagou": FakeJobPlatformAdapter(
+                platform="lagou",
+                search_error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+                    platform="lagou",
+                    stage="search",
+                    message="列表结构变化",
+                ),
+            ),
+        }
+    )
+
+    first_result = orchestrator.collect(
+        collection_task_id="collection-001",
+        platforms=["boss", "lagou"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={"technical_skills": ["Python"]},
+        keyword="后端工程师 Python",
+    )
+
+    assert first_result["status"] == "partial"
+    assert [job.platform_job_id for job in first_result["jobs"]] == ["boss-collection-001"]
+    assert [event["status"] for event in first_result["platform_progress"]["boss"]["events"]] == [
+        "started",
+        "page_collected",
+        "detail_collected",
+        "completed",
+    ]
+    assert first_result["platform_progress"]["boss"]["collected_job_count"] == 1
+    assert first_result["platform_progress"]["lagou"]["status"] == "failed"
+    assert first_result["platform_progress"]["lagou"]["failure_reason"] == "page_structure_changed"
+    assert first_result["platform_progress"]["lagou"]["retry_count"] == 0
+
+    retry_job = StandardJob(
+        platform="lagou",
+        platform_job_id="lagou-collection-001",
+        title="平台工程师",
+        company_name="示例云",
+        location="杭州",
+        remote_policy=None,
+        salary_range=None,
+        level=None,
+        experience_requirement=None,
+        education_requirement=None,
+        industry=None,
+        company_size=None,
+        funding_stage=None,
+        tech_stack=["Python"],
+        benefits=[],
+        published_at=None,
+        detail_url="https://example.com/lagou/jobs/collection-001",
+        jd_text="负责平台建设。",
+        collected_at="2026-06-10T09:10:00+08:00",
+        field_confidence={"salary_range": "missing"},
+    )
+    retry_result = orchestrator.retry_failed_platform(
+        collection_task_id="collection-001",
+        platform="lagou",
+        adapter=FakeJobPlatformAdapter(platform="lagou", jobs=[retry_job]),
+    )
+
+    assert retry_result["status"] == "success"
+    assert [job.platform_job_id for job in retry_result["jobs"]] == ["boss-collection-001", "lagou-collection-001"]
+    assert retry_result["platform_progress"]["boss"]["status"] == "completed"
+    assert retry_result["platform_progress"]["boss"]["collected_job_count"] == 1
+    assert retry_result["platform_progress"]["lagou"]["status"] == "completed"
+    assert retry_result["platform_progress"]["lagou"]["retry_count"] == 1
+    assert retry_result["platform_progress"]["lagou"]["failure_reason"] is None
+
+
+def test_runtime_collects_jobs_and_exposes_collection_progress_view_model(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import (
+        FakeJobPlatformAdapter,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+        StandardJob,
+    )
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("job-collection-session")
+    boss_job = StandardJob(
+        platform="boss",
+        platform_job_id="boss-runtime-001",
+        title="后端工程师",
+        company_name="示例科技",
+        location="上海",
+        remote_policy="hybrid",
+        salary_range="35k-50k",
+        level="高级",
+        experience_requirement="5年",
+        education_requirement="本科",
+        industry="AI 工具",
+        company_size="100-500人",
+        funding_stage="B轮",
+        tech_stack=["Python"],
+        benefits=[],
+        published_at="2026-06-10T09:00:00+08:00",
+        detail_url="https://example.com/boss/jobs/runtime-001",
+        jd_text="负责后端服务。",
+        collected_at="2026-06-10T09:05:00+08:00",
+        field_confidence={"salary_range": "fixture"},
+    )
+
+    view_model = runtime.collect_job_applications(
+        session_id="job-collection-session",
+        collection_task_id="collection-runtime-001",
+        adapters={
+            "boss": FakeJobPlatformAdapter(platform="boss", jobs=[boss_job]),
+            "liepin": FakeJobPlatformAdapter(
+                platform="liepin",
+                search_error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.LOGIN_EXPIRED,
+                    platform="liepin",
+                    stage="search",
+                    message="登录失效",
+                ),
+            ),
+        },
+        platforms=["boss", "liepin"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={},
+        keyword="后端工程师",
+    )
+
+    assert view_model["status"] == "partial"
+    assert view_model["summary"] == {
+        "platform_count": 2,
+        "completed_platform_count": 1,
+        "failed_platform_count": 1,
+        "collected_job_count": 1,
+    }
+    assert view_model["platforms"]["boss"]["status"] == "completed"
+    assert view_model["platforms"]["boss"]["collected_job_count"] == 1
+    assert view_model["platforms"]["liepin"]["status"] == "failed"
+    assert view_model["platforms"]["liepin"]["failure_reason"] == "login_expired"
+    assert view_model["jobs"][0]["platform_job_id"] == "boss-runtime-001"
+    assert runtime.get_job_collection_progress(session_id="job-collection-session") == view_model
+    assert _contains_sensitive_adapter_payload(view_model) is False
+
+
 def _contains_sensitive_adapter_payload(value: object) -> bool:
     sensitive_markers = ("cookie", "token", "session", "password", "credential", "account_id")
     return any(marker in _flatten_text(value).lower() for marker in sensitive_markers)

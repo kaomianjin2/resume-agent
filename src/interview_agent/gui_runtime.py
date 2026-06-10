@@ -7,6 +7,8 @@ from pathlib import Path
 
 from interview_agent.config import AppConfig, DEFAULT_CONFIG_PATH, load_config
 from interview_agent.executor import NodeExecutionResult, NodeExecutor
+from interview_agent.job_collection import JobCollectionOrchestrator, job_collection_view_model
+from interview_agent.job_platform_adapters import JobPlatformAdapter
 from interview_agent.kb.retrieval import SQLiteHybridRetriever
 from interview_agent.llm import OpenAICompatibleClient
 from interview_agent.mock_interview import DEFAULT_MOCK_FOLLOWUP_ROUNDS, DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT
@@ -25,6 +27,7 @@ MOCK_INTERVIEW_STATE_KEY = "mock_interview_state"
 MOCK_INTERVIEW_VIEW_KEY = "mock_interview_view"
 JOB_SEARCH_PROFILE_KEY = "job_search_profile"
 JOB_SEARCH_FILTERS_KEY = "job_search_filters"
+JOB_COLLECTION_PROGRESS_KEY = "job_collection_progress"
 ALGORITHM_PRACTICE_BANK_KEY = "algorithm_practice_bank"
 DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT = 3
 DEFAULT_ALGORITHM_PRACTICE_BANK_PATH = Path(__file__).with_name("algorithm_practice_bank.json")
@@ -189,6 +192,35 @@ class GuiRuntime:
                 },
             )
         return view_model
+
+    def collect_job_applications(
+        self,
+        *,
+        session_id: str,
+        collection_task_id: str,
+        adapters: Mapping[str, JobPlatformAdapter],
+        platforms: list[str],
+        job_profile: dict[str, object],
+        hard_filters: dict[str, object],
+        ranking_preferences: dict[str, object],
+        keyword: str,
+    ) -> dict[str, object]:
+        orchestrator = JobCollectionOrchestrator(adapters, database_path=Path(self.config.storage.database_path))
+        result = orchestrator.collect(
+            collection_task_id=collection_task_id,
+            platforms=platforms,
+            job_profile=job_profile,
+            hard_filters=hard_filters,
+            ranking_preferences=ranking_preferences,
+            keyword=keyword,
+        )
+        view_model = job_collection_view_model(result)
+        self.session_store.set_state(session_id, JOB_COLLECTION_PROGRESS_KEY, view_model)
+        return view_model
+
+    def get_job_collection_progress(self, *, session_id: str) -> dict[str, object]:
+        view_model = self.session_store.get_state(session_id, JOB_COLLECTION_PROGRESS_KEY)
+        return view_model if isinstance(view_model, dict) else _empty_job_collection_progress_view_model()
 
     def start_mock_interview(
         self,
@@ -445,6 +477,34 @@ def prepare_job_search_profile(
     overrides: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return runtime.prepare_job_search_profile(session_id=session_id, overrides=overrides)
+
+
+def collect_job_applications(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    collection_task_id: str,
+    adapters: Mapping[str, JobPlatformAdapter],
+    platforms: list[str],
+    job_profile: dict[str, object],
+    hard_filters: dict[str, object],
+    ranking_preferences: dict[str, object],
+    keyword: str,
+) -> dict[str, object]:
+    return runtime.collect_job_applications(
+        session_id=session_id,
+        collection_task_id=collection_task_id,
+        adapters=adapters,
+        platforms=platforms,
+        job_profile=job_profile,
+        hard_filters=hard_filters,
+        ranking_preferences=ranking_preferences,
+        keyword=keyword,
+    )
+
+
+def get_job_collection_progress(runtime: GuiRuntime, *, session_id: str) -> dict[str, object]:
+    return runtime.get_job_collection_progress(session_id=session_id)
 
 
 def start_mock_interview(
@@ -808,6 +868,20 @@ def _empty_mock_progress() -> dict[str, int]:
         "total_questions": 0,
         "current_followup_index": 0,
         "total_followups": 0,
+    }
+
+
+def _empty_job_collection_progress_view_model() -> dict[str, object]:
+    return {
+        "status": "idle",
+        "summary": {
+            "platform_count": 0,
+            "completed_platform_count": 0,
+            "failed_platform_count": 0,
+            "collected_job_count": 0,
+        },
+        "platforms": {},
+        "jobs": [],
     }
 
 
