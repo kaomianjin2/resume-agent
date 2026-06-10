@@ -67,7 +67,6 @@ class JobCollectionOrchestrator:
         next_retry_count = int(progress.get("retry_count", 0)) + 1
         selected_adapter = adapter or self._adapters[platform]
         self._adapters[platform] = selected_adapter
-        progress["events"] = []
         self._write_progress(collection_task_id, platform, "retrying", retry_count=next_retry_count)
         self._collect_platform(collection_task_id, platform, selected_adapter, self._requests[collection_task_id], retry_count=next_retry_count)
         return self._result()
@@ -200,7 +199,8 @@ class JobCollectionOrchestrator:
         progress = {platform: dict(platform_progress) for platform, platform_progress in self._platform_progress.items()}
         failed_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] == "failed")
         completed_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] == "completed")
-        status = "failed" if failed_count and not completed_count else "partial" if failed_count else "success"
+        running_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] not in {"completed", "failed"})
+        status = "running" if running_count else "failed" if failed_count and not completed_count else "partial" if failed_count else "success"
         return {
             "status": status,
             "jobs": jobs,

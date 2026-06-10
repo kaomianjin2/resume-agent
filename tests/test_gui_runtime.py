@@ -1796,13 +1796,22 @@ def test_runtime_retries_failed_job_collection_platform_and_saves_new_view_model
     assert [job["platform_job_id"] for job in retry_view_model["jobs"]] == ["boss-retry-001", "lagou-retry-001"]
     assert retry_view_model["platforms"]["lagou"]["status"] == "completed"
     assert retry_view_model["platforms"]["lagou"]["retry_count"] == 1
-    assert retry_view_model["platforms"]["lagou"]["events"][0]["status"] == "retrying"
+    assert [event["status"] for event in retry_view_model["platforms"]["lagou"]["events"]] == [
+        "started",
+        "failed",
+        "retrying",
+        "started",
+        "page_collected",
+        "detail_collected",
+        "completed",
+    ]
     assert runtime.get_job_collection_progress(session_id="job-retry-session") == retry_view_model
 
 
 def test_runtime_reads_running_job_collection_progress_during_collection(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
     from interview_agent.job_platform_adapters import FakeJobPlatformAdapter, JobSearchRequest, PlatformExecutionResult
+    from interview_agent.storage import get_collection_progress
 
     database_path = tmp_path / "runtime.sqlite3"
     initialize_database(database_path)
@@ -1833,31 +1842,45 @@ def test_runtime_reads_running_job_collection_progress_during_collection(tmp_pat
         keyword="后端工程师",
     )
 
+    assert observed_progress[0]["status"] == "running"
     assert observed_progress[0]["platforms"]["boss"]["status"] == "started"
     assert observed_progress[0]["platforms"]["boss"]["events"] == [
         {"status": "started", "current_page": 0, "last_job_offset": 0}
     ]
+    persisted_progress = get_collection_progress(database_path, collection_task_id="collection-running-001", platform="boss")
+    assert persisted_progress is not None
+    assert persisted_progress["status"] == "completed"
     assert view_model["platforms"]["boss"]["status"] == "completed"
 
 
-def test_job_collection_orchestrator_isolates_platform_exceptions_and_redacts_failure_reason() -> None:
+def test_job_collection_orchestrator_isolates_platform_exceptions_from_search_list_and_detail() -> None:
     from interview_agent.job_collection import JobCollectionOrchestrator
-    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter, JobSearchRequest, PlatformExecutionResult
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter, JobSearchRequest, PlatformExecutionResult, StandardJob
 
     class ThrowingAdapter(FakeJobPlatformAdapter):
         def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
             raise RuntimeError("cookie=sid-secret token=secret session=chrome")
 
+    class ThrowingListAdapter(FakeJobPlatformAdapter):
+        def collect_job_list(self, search_id: str) -> list[StandardJob]:
+            raise ValueError("列表结构变化 token=secret")
+
+    class ThrowingDetailAdapter(FakeJobPlatformAdapter):
+        def read_job_detail(self, platform_job_id: str) -> StandardJob:
+            raise ValueError("详情结构变化 cookie=sid-secret")
+
     orchestrator = JobCollectionOrchestrator(
         {
             "boss": ThrowingAdapter(platform="boss"),
+            "lagou": ThrowingListAdapter(platform="lagou", jobs=[_standard_job(platform="lagou", platform_job_id="lagou-list-001")]),
+            "boss_detail": ThrowingDetailAdapter(platform="boss_detail", jobs=[_standard_job(platform="boss_detail", platform_job_id="boss-detail-001")]),
             "liepin": FakeJobPlatformAdapter(platform="liepin", jobs=[_standard_job(platform="liepin", platform_job_id="liepin-safe-001")]),
         }
     )
 
     result = orchestrator.collect(
         collection_task_id="collection-exception-001",
-        platforms=["boss", "liepin"],
+        platforms=["boss", "lagou", "boss_detail", "liepin"],
         job_profile={"target_roles": ["后端工程师"]},
         hard_filters={},
         ranking_preferences={},
@@ -1868,8 +1891,14 @@ def test_job_collection_orchestrator_isolates_platform_exceptions_and_redacts_fa
     assert [job.platform_job_id for job in result["jobs"]] == ["liepin-safe-001"]
     assert result["platform_progress"]["boss"]["status"] == "failed"
     assert result["platform_progress"]["boss"]["failure_reason"] == "platform_exception"
+    assert result["platform_progress"]["lagou"]["status"] == "failed"
+    assert result["platform_progress"]["lagou"]["failure_reason"] == "platform_exception"
+    assert result["platform_progress"]["boss_detail"]["status"] == "failed"
+    assert result["platform_progress"]["boss_detail"]["failure_reason"] == "platform_exception"
     assert result["platform_progress"]["liepin"]["status"] == "completed"
     assert _contains_sensitive_adapter_payload(result["platform_progress"]["boss"]) is False
+    assert _contains_sensitive_adapter_payload(result["platform_progress"]["lagou"]) is False
+    assert _contains_sensitive_adapter_payload(result["platform_progress"]["boss_detail"]) is False
 
 
 def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt() -> None:
@@ -1904,8 +1933,17 @@ def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt
         adapter=FakeJobPlatformAdapter(platform="lagou", jobs=[_standard_job(platform="lagou", platform_job_id="lagou-retrying-001")]),
     )
 
-    assert [event["status"] for event in result["platform_progress"]["lagou"]["events"]][:2] == ["retrying", "started"]
+    assert [event["status"] for event in result["platform_progress"]["lagou"]["events"]] == [
+        "started",
+        "failed",
+        "retrying",
+        "started",
+        "page_collected",
+        "detail_collected",
+        "completed",
+    ]
     assert result["platform_progress"]["lagou"]["status"] == "completed"
+    assert result["platform_progress"]["lagou"]["failure_reason"] is None
 
 
 def _contains_sensitive_adapter_payload(value: object) -> bool:
