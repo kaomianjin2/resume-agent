@@ -1827,6 +1827,9 @@ def test_runtime_reads_running_job_collection_progress_during_collection(tmp_pat
     class ObservingAdapter(FakeJobPlatformAdapter):
         def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
             observed_progress.append(runtime.get_job_collection_progress(session_id="job-running-session"))
+            persisted_started_progress = get_collection_progress(database_path, collection_task_id="collection-running-001", platform="boss")
+            assert persisted_started_progress is not None
+            assert persisted_started_progress["status"] == "started"
             return super().search_jobs(request)
 
     view_model = runtime.collect_job_applications(
@@ -1901,9 +1904,22 @@ def test_job_collection_orchestrator_isolates_platform_exceptions_from_search_li
     assert _contains_sensitive_adapter_payload(result["platform_progress"]["boss_detail"]) is False
 
 
-def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt() -> None:
+def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt(tmp_path: Path) -> None:
     from interview_agent.job_collection import JobCollectionOrchestrator
     from interview_agent.job_platform_adapters import FakeJobPlatformAdapter, PlatformAdapterError, PlatformAdapterErrorType
+    from interview_agent.storage import get_collection_progress
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    observed_persisted_retrying_progress: list[dict[str, object]] = []
+
+    def observe_retrying_progress(result: dict[str, object]) -> None:
+        platform_progress = result["platform_progress"]["lagou"]
+        if platform_progress["status"] != "retrying":
+            return
+        persisted_progress = get_collection_progress(database_path, collection_task_id="collection-retrying-001", platform="lagou")
+        assert persisted_progress is not None
+        observed_persisted_retrying_progress.append(persisted_progress)
 
     orchestrator = JobCollectionOrchestrator(
         {
@@ -1916,7 +1932,9 @@ def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt
                     message="限流",
                 ),
             )
-        }
+        },
+        database_path=database_path,
+        progress_callback=observe_retrying_progress,
     )
     orchestrator.collect(
         collection_task_id="collection-retrying-001",
@@ -1944,6 +1962,18 @@ def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt
     ]
     assert result["platform_progress"]["lagou"]["status"] == "completed"
     assert result["platform_progress"]["lagou"]["failure_reason"] is None
+    assert observed_persisted_retrying_progress == [
+        {
+            "collection_task_id": "collection-retrying-001",
+            "platform": "lagou",
+            "current_page": 0,
+            "last_job_offset": 0,
+            "retry_count": 1,
+            "failure_reason": None,
+            "manual_takeover_required": False,
+            "status": "retrying",
+        }
+    ]
 
 
 def _contains_sensitive_adapter_payload(value: object) -> bool:
