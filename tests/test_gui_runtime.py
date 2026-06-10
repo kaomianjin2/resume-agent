@@ -1171,6 +1171,117 @@ def test_job_platform_adapter_error_redacts_sensitive_message_and_url_summary() 
     assert _contains_sensitive_adapter_payload(asdict(result)) is False
 
 
+def test_job_platform_adapter_error_summary_does_not_expose_field_name() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        FakeJobPlatformAdapter,
+        JobSearchRequest,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+    )
+
+    adapter = FakeJobPlatformAdapter(
+        platform="boss",
+        search_error=PlatformAdapterError(
+            error_type=PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+            platform="boss",
+            stage="search",
+            message="需要人工处理",
+            page_url="https://example.com/jobs?query=python",
+            field_name="account_id",
+        ),
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={"target_roles": ["后端工程师"]},
+            hard_filters={},
+            ranking_preferences={},
+            keyword="后端工程师",
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.errors[0].field_name is None
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
+def test_job_platform_adapter_sanitizes_sensitive_submit_result_without_raising() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        ApplicationSubmissionResult,
+        ConfirmationApplicationRequest,
+        FakeJobPlatformAdapter,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+        StandardJob,
+    )
+
+    fake_job = StandardJob(
+        platform="liepin",
+        platform_job_id="liepin-sensitive",
+        title="平台工程师",
+        company_name="Example",
+        location="杭州",
+        remote_policy=None,
+        salary_range=None,
+        level=None,
+        experience_requirement=None,
+        education_requirement=None,
+        industry=None,
+        company_size=None,
+        funding_stage=None,
+        tech_stack=["OAuth token bucket"],
+        benefits=[],
+        published_at=None,
+        detail_url="https://example.com/liepin/jobs/sensitive",
+        jd_text="负责 auth service 和 mobile backend",
+        collected_at="2026-06-10T10:05:00+00:00",
+        field_confidence={"session_id": "业务追踪字段"},
+    )
+    adapter = FakeJobPlatformAdapter(
+        platform="liepin",
+        jobs=[fake_job],
+        submit_results={
+            "liepin-sensitive": ApplicationSubmissionResult(
+                platform="liepin",
+                platform_job_id="liepin-sensitive",
+                status="failed",
+                error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.LOGIN_EXPIRED,
+                    platform="liepin",
+                    stage="submit",
+                    message="cookie=sid-secret token=secret 手机号 13800000000",
+                    page_url="https://example.com/apply?token=secret&session_id=chrome-secret",
+                    field_name="cookie",
+                ),
+                platform_message="验证码 123456",
+                duplicate_detected=False,
+            )
+        },
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=fake_job,
+            application_message="您好，我对该岗位感兴趣。",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.error_type is PlatformAdapterErrorType.LOGIN_EXPIRED
+    assert result.error.message == "浏览器自动化错误已脱敏"
+    assert result.error.page_url == "https://example.com/apply"
+    assert result.error.field_name is None
+    assert result.platform_message == "浏览器自动化错误已脱敏"
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
 def test_job_platform_fake_adapter_simulates_submission_failure_without_sensitive_payload() -> None:
     from dataclasses import asdict
 

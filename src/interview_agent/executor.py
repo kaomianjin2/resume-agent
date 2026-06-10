@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, validate_required_inputs
-from interview_agent.sensitive import assert_no_sensitive_payload
+from interview_agent.sensitive import assert_no_sensitive_payload, contains_sensitive_payload
 from interview_agent.session import SessionStore, encode_json_payload, ensure_session, write_session_state
 from interview_agent.state_contracts import validate_state_entry
 from interview_agent.storage import get_connection, transaction
@@ -62,7 +62,7 @@ class NodeExecutor:
                 run_id, session_id, node_name, "success", output, []
             )
         except Exception as exc:
-            result = NodeExecutionResult(run_id, session_id, node_name, "failed", {}, [], str(exc))
+            result = NodeExecutionResult(run_id, session_id, node_name, "failed", {}, [], _safe_error_message(exc))
 
         self._record_result(result, merged_inputs, started_at)
         return result
@@ -96,6 +96,13 @@ def _insert_node_run(connection: sqlite3.Connection, result: NodeExecutionResult
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _safe_error_message(exc: Exception) -> str:
+    error_message = str(exc)
+    if contains_sensitive_payload(error_message):
+        return "节点执行失败，错误详情已脱敏"
+    return error_message
 
 
 def _validate_node_output(expected_outputs: tuple[str, ...], output: dict[str, object]) -> None:

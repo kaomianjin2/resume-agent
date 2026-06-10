@@ -186,8 +186,9 @@ class FakeJobPlatformAdapter:
             )
         if request.job.platform_job_id in self._submit_results:
             result = self._submit_results[request.job.platform_job_id]
-            _assert_no_sensitive_payload(result)
-            return result
+            safe_result = _sanitize_submission_result(result)
+            _assert_no_sensitive_payload(safe_result)
+            return safe_result
         if request.job.platform_job_id in self._applied_job_ids:
             return ApplicationSubmissionResult(
                 platform=self.platform,
@@ -223,7 +224,22 @@ def _sanitize_adapter_error(error: PlatformAdapterError) -> PlatformAdapterError
         stage=error.stage,
         message="浏览器自动化错误已脱敏",
         page_url=summarize_url(error.page_url),
-        field_name=error.field_name,
+        field_name=None,
     )
     _assert_no_sensitive_payload(safe_error)
     return safe_error
+
+
+def _sanitize_submission_result(result: ApplicationSubmissionResult) -> ApplicationSubmissionResult:
+    safe_error = _sanitize_adapter_error(result.error) if result.error is not None else None
+    safe_result = ApplicationSubmissionResult(
+        platform=result.platform,
+        platform_job_id=result.platform_job_id,
+        status=result.status,
+        error=safe_error,
+        platform_message="浏览器自动化错误已脱敏" if result.platform_message else None,
+        submitted_at=result.submitted_at,
+        duplicate_detected=result.duplicate_detected,
+    )
+    _assert_no_sensitive_payload(safe_result)
+    return safe_result

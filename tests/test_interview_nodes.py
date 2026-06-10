@@ -764,6 +764,74 @@ def test_llm_prompt_rejects_contact_and_browser_session_payload() -> None:
         raise AssertionError("LLM prompt 接受了敏感输入")
 
 
+def test_llm_prompt_allows_business_terms_that_are_not_credentials() -> None:
+    from interview_agent.agents import build_prompt
+
+    prompt = build_prompt(
+        node_name="jd_match",
+        prompt_inputs={
+            "resume_profile": {
+                "name": "候选人",
+                "summary": "负责 OAuth token 轮换、mobile API 网关和 session_id 业务追踪字段治理。",
+            },
+            "jd_requirements": {
+                "must_have": ["auth service design", "mobile backend", "token bucket rate limiting"],
+                "session_id": "job-tracking-field",
+            },
+        },
+        rag_results=[],
+    )
+
+    assert "token bucket rate limiting" in prompt
+    assert "auth service design" in prompt
+    assert "mobile API 网关" in prompt
+    assert "job-tracking-field" in prompt
+
+
+def test_node_executor_persists_safe_error_summary_when_handler_raises_sensitive_exception(tmp_path: Path) -> None:
+    from interview_agent.nodes.registry import NodeRegistry
+    from interview_agent.nodes.spec import NodeSpec
+
+    def sensitive_failure_handler(context, inputs):
+        del context, inputs
+        raise RuntimeError("浏览器返回 cookie=sid-secret token=secret 手机号 13800000000")
+
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    executor = NodeExecutor(
+        database_path,
+        NodeRegistry(
+            [
+                NodeSpec(
+                    name="sensitive_failure",
+                    description="Sensitive failure test node.",
+                    required_inputs=("question",),
+                    optional_inputs=(),
+                    outputs=("search_results",),
+                    handler=sensitive_failure_handler,
+                )
+            ]
+        ),
+        services={},
+    )
+
+    result = executor.execute_node(
+        session_id="session-1",
+        node_name="sensitive_failure",
+        inputs={"question": "normal JD token bucket and auth service question"},
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        run_row = connection.execute(
+            "SELECT status, output_payload, error_message FROM node_runs WHERE run_id = ?",
+            (result.run_id,),
+        ).fetchone()
+
+    assert result.status == "failed"
+    assert result.error_message == "节点执行失败，错误详情已脱敏"
+    assert run_row == ("failed", None, "节点执行失败，错误详情已脱敏")
+
+
 def test_run_structured_node_preserves_rag_source_metadata_from_retriever(
     tmp_path: Path,
 ) -> None:
