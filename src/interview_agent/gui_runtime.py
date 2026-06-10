@@ -851,41 +851,39 @@ def _job_search_profile_view_model(
         }
 
     basic_info = _dict_value(resume_profile.get("basic_info"))
-    technical_skills = _override_list(overrides, "technical_skills", _resume_list(resume_profile, ("skills", "core_skills", "technical_skills")))
-    years_of_experience = _override_value(
-        overrides,
-        "years_of_experience",
-        _first_present_value(resume_profile, ("years_of_experience", "work_years", "experience_years")) or basic_info.get("years_of_experience"),
-    )
-    cities = _override_list(overrides, "cities", _resume_list(resume_profile, ("preferred_cities", "cities", "locations")))
+    salary_expectation = _dict_value(resume_profile.get("salary_expectation"))
+    technical_skills = _overridden_list(overrides, "technical_skills", _resume_list(resume_profile, ("skills", "core_skills", "technical_skills")))
+    years_of_experience = _overridden_value(overrides, "years_of_experience", _resume_years_of_experience(resume_profile, basic_info))
+    cities = _overridden_list(overrides, "cities", _resume_list(resume_profile, ("preferred_cities", "cities", "locations")))
     target_roles = _resume_list(resume_profile, ("target_roles", "preferred_roles", "roles"))
     if not target_roles:
         target_roles = [_resume_headline(resume_profile, basic_info)]
 
-    education = _override_value(
-        overrides,
-        "education",
-        _first_present_value(resume_profile, ("education_level", "education")) or basic_info.get("education_level"),
-    )
+    confirmed_fields = _confirmed_job_profile_fields(resume_profile, overrides)
+    education = _overridden_value(overrides, "education", _resume_education(resume_profile, basic_info))
+    salary_min = _overridden_value(overrides, "salary_min", salary_expectation.get("min"))
+    salary_max = _overridden_value(overrides, "salary_max", salary_expectation.get("max"))
     hard_filters = {
         "cities": cities,
-        "remote_policy": _override_value(overrides, "remote_policy", _first_present_value(resume_profile, ("remote_preference", "remote_policy"))) or "onsite",
-        "salary_min": _override_value(overrides, "salary_min", _salary_min(resume_profile.get("salary_expectation"))),
-        "levels": _override_list(overrides, "levels", _resume_list(resume_profile, ("preferred_levels", "levels"))),
-        "experience_years_min": _override_value(overrides, "experience_years_min", years_of_experience),
-        "experience_years_max": _override_value(overrides, "experience_years_max", years_of_experience),
+        "remote_policy": _overridden_value(overrides, "remote_policy", _first_present_value(resume_profile, ("remote_preference", "remote_policy"))),
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "levels": _overridden_list(overrides, "levels", _resume_list(resume_profile, ("preferred_levels", "levels"))),
+        "experience_years_min": _overridden_value(overrides, "experience_years_min", years_of_experience),
+        "experience_years_max": _overridden_value(overrides, "experience_years_max", years_of_experience),
         "education": education,
-        "company_blacklist": _override_list(overrides, "company_blacklist", _resume_list(resume_profile, ("company_blacklist", "blacklist_companies"))),
-        "company_whitelist": _override_list(overrides, "company_whitelist", _resume_list(resume_profile, ("company_whitelist", "whitelist_companies"))),
+        "company_blacklist": _overridden_list(overrides, "company_blacklist", _resume_list(resume_profile, ("company_blacklist", "blacklist_companies"))),
+        "company_whitelist": _overridden_list(overrides, "company_whitelist", _resume_list(resume_profile, ("company_whitelist", "whitelist_companies"))),
     }
     ranking_preferences = {
-        "industries": _override_list(overrides, "industries", _resume_list(resume_profile, ("preferred_industries", "industries"))),
-        "company_sizes": _override_list(overrides, "company_sizes", _resume_list(resume_profile, ("preferred_company_sizes", "company_sizes"))),
-        "funding_stages": _override_list(overrides, "funding_stages", _resume_list(resume_profile, ("preferred_funding_stages", "funding_stages"))),
+        "industries": _overridden_list(overrides, "industries", _resume_list(resume_profile, ("preferred_industries", "industries"))),
+        "company_sizes": _overridden_list(overrides, "company_sizes", _resume_list(resume_profile, ("preferred_company_sizes", "company_sizes"))),
+        "funding_stages": _overridden_list(overrides, "funding_stages", _resume_list(resume_profile, ("preferred_funding_stages", "funding_stages"))),
         "technical_skills": technical_skills,
-        "benefits": _override_list(overrides, "benefits", _resume_list(resume_profile, ("preferred_benefits", "benefits"))),
-        "published_within_days": _override_value(overrides, "published_within_days", 30),
+        "benefits": _overridden_list(overrides, "benefits", _resume_list(resume_profile, ("preferred_benefits", "benefits"))),
+        "published_within_days": _overridden_value(overrides, "published_within_days", resume_profile.get("published_within_days")),
     }
+    search_preferences = {**hard_filters, **ranking_preferences}
     job_profile = {
         "candidate_name": _text_value(_first_present_value(resume_profile, ("name",)) or basic_info.get("name"), "未命名候选人"),
         "target_roles": target_roles,
@@ -894,8 +892,9 @@ def _job_search_profile_view_model(
         "education_level": education,
         "technical_skills": technical_skills,
         "project_keywords": _resume_list(resume_profile, ("projects", "project_keywords", "project_experience", "project_experiences")),
+        "search_preferences": search_preferences,
     }
-    pending_fields = _pending_job_profile_fields(technical_skills, years_of_experience, cities)
+    pending_fields = _pending_job_profile_fields(job_profile, hard_filters, ranking_preferences, confirmed_fields)
     return {
         "session_id": session_id,
         "status": "needs_confirmation" if pending_fields else "ready",
@@ -907,16 +906,11 @@ def _job_search_profile_view_model(
     }
 
 
-def _override_value(overrides: dict[str, object], key: str, fallback: object) -> object:
-    value = overrides.get(key)
-    if isinstance(value, str) and value.strip():
-        return value
-    if isinstance(value, int | float):
-        return value
-    return fallback
+def _overridden_value(overrides: dict[str, object], key: str, fallback: object) -> object:
+    return overrides[key] if key in overrides else fallback
 
 
-def _override_list(overrides: dict[str, object], key: str, fallback: list[str]) -> list[str]:
+def _overridden_list(overrides: dict[str, object], key: str, fallback: list[str]) -> list[str]:
     return _list_value(overrides.get(key)) if key in overrides else fallback
 
 
@@ -924,21 +918,73 @@ def _resume_list(resume_profile: dict[str, object], keys: tuple[str, ...]) -> li
     return _merged_list_values(resume_profile, keys)
 
 
-def _salary_min(value: object) -> object:
-    if isinstance(value, dict):
-        return _override_value(value, "min", None)
-    return None
+def _resume_years_of_experience(resume_profile: dict[str, object], basic_info: dict[str, object]) -> object:
+    return _first_present_value(resume_profile, ("years_of_experience", "work_years", "experience_years")) or basic_info.get("years_of_experience")
 
 
-def _pending_job_profile_fields(technical_skills: list[str], years_of_experience: object, cities: list[str]) -> list[str]:
-    pending_fields: list[str] = []
-    if not technical_skills:
-        pending_fields.append("technical_skills")
-    if years_of_experience is None:
-        pending_fields.append("years_of_experience")
-    if not cities:
-        pending_fields.append("cities")
-    return pending_fields
+def _resume_education(resume_profile: dict[str, object], basic_info: dict[str, object]) -> object:
+    return _first_present_value(resume_profile, ("education_level", "education")) or basic_info.get("education_level")
+
+
+def _confirmed_job_profile_fields(resume_profile: dict[str, object], overrides: dict[str, object]) -> set[str]:
+    field_sources = {
+        "technical_skills": ("technical_skills", "skills", "core_skills"),
+        "years_of_experience": ("years_of_experience", "work_years", "experience_years"),
+        "cities": ("cities", "preferred_cities", "locations"),
+        "remote_policy": ("remote_policy", "remote_preference"),
+        "salary": ("salary_min", "salary_max", "salary_expectation"),
+        "levels": ("levels", "preferred_levels"),
+        "education": ("education", "education_level"),
+        "industries": ("industries", "preferred_industries"),
+        "company_sizes": ("company_sizes", "preferred_company_sizes"),
+        "funding_stages": ("funding_stages", "preferred_funding_stages"),
+        "benefits": ("benefits", "preferred_benefits"),
+        "published_within_days": ("published_within_days",),
+        "company_blacklist": ("company_blacklist", "blacklist_companies"),
+        "company_whitelist": ("company_whitelist", "whitelist_companies"),
+    }
+    return {
+        field_name
+        for field_name, source_keys in field_sources.items()
+        if any(source_key in overrides or source_key in resume_profile for source_key in source_keys)
+    }
+
+
+def _pending_job_profile_fields(
+    job_profile: dict[str, object],
+    hard_filters: dict[str, object],
+    ranking_preferences: dict[str, object],
+    confirmed_fields: set[str],
+) -> list[str]:
+    checks = (
+        ("technical_skills", ranking_preferences.get("technical_skills")),
+        ("years_of_experience", job_profile.get("years_of_experience")),
+        ("cities", hard_filters.get("cities")),
+        ("remote_policy", hard_filters.get("remote_policy")),
+        ("salary", (hard_filters.get("salary_min"), hard_filters.get("salary_max"))),
+        ("levels", hard_filters.get("levels")),
+        ("education", hard_filters.get("education")),
+        ("industries", ranking_preferences.get("industries")),
+        ("company_sizes", ranking_preferences.get("company_sizes")),
+        ("funding_stages", ranking_preferences.get("funding_stages")),
+        ("benefits", ranking_preferences.get("benefits")),
+        ("published_within_days", ranking_preferences.get("published_within_days")),
+        ("company_blacklist", hard_filters.get("company_blacklist")),
+        ("company_whitelist", hard_filters.get("company_whitelist")),
+    )
+    return [field_name for field_name, value in checks if field_name not in confirmed_fields and _needs_job_profile_confirmation(value)]
+
+
+def _needs_job_profile_confirmation(value: object) -> bool:
+    if isinstance(value, tuple):
+        return all(_needs_job_profile_confirmation(item) for item in value)
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, list):
+        return not value
+    return False
 
 
 def _default_job_search_keywords(target_roles: list[str], technical_skills: list[str]) -> list[str]:
