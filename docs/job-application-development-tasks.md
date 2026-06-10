@@ -41,7 +41,10 @@
 
 ### JOB-001 求职数据模型与存储设计
 
-- 状态：`pending`
+- 状态：`done`
+- 负责人：implementer / reviewer
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
 - 目标：定义标准岗位、筛选条件、评估报告、确认批次、投递记录和采集进度的数据结构与持久化方式。
 - 影响范围：SQLite schema、存储层、类型归一化。
 - 输入：`docs/job-application-feature-design.md` 中的数据模型。
@@ -63,9 +66,12 @@
 rtk uv run pytest -p no:cacheprovider tests/test_storage.py
 ```
 
-- 观测证据：记录测试输出摘要和新增/修改测试名。
-- 副作用：新增本地持久化数据结构。
-- 影响调用方：求职模块、平台适配器、采集编排器、投递执行器。
+- 验证结果：`14 passed in 0.12s`；reviewer 第三次复审结论：`可继续`，无阻断问题。
+- 观测证据：
+  - 新增/修改测试：`test_job_application_storage_uses_platform_job_id_contract_and_duplicate_detection`、`test_job_application_filters_and_evaluation_are_queryable_after_restart`、`test_confirmation_batch_keeps_batch_metadata_and_job_results_separate`、`test_collection_progress_is_queryable_and_clear_job_application_data_preserve_sessions`、`test_job_application_storage_rejects_sensitive_content_across_all_text_inputs`。
+  - 任务提交：`d6a866c`、`91cefc9`、`e8dd20c`。
+- 副作用：新增求职相关 SQLite 表；求职存储入口会拒绝明显敏感内容落库。
+- 影响调用方：求职模块、平台适配器、采集编排器、投递执行器可读取标准岗位、筛选条件、评估报告、确认批次、投递结果和平台进度。
 
 ### JOB-002 求职画像生成
 

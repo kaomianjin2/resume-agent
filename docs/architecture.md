@@ -172,6 +172,10 @@ erDiagram
     sessions ||--o{ node_runs : records
     knowledge_documents ||--o{ knowledge_chunks : contains
     knowledge_chunks ||--o| knowledge_chunk_embeddings : indexed_by
+    job_applications ||--o| job_application_evaluations : evaluated_by
+    job_applications ||--o{ application_records : tracks
+    application_confirmations ||--o{ application_records : groups
+    collection_tasks ||--o{ collection_platform_progress : reports
 
     sessions {
         text session_id PK
@@ -223,6 +227,73 @@ erDiagram
         integer dimension
         text updated_at
     }
+
+    job_applications {
+        text job_id PK
+        text platform
+        text platform_job_id
+        text company_name
+        text title
+        text location
+        text detail_url
+        text jd_text
+        text field_confidence
+        text status
+        text duplicate_key
+    }
+
+    job_application_filters {
+        text filter_id PK
+        text hard_filters
+        text ranking_preferences
+        text created_at
+        text updated_at
+    }
+
+    job_application_evaluations {
+        text evaluation_id PK
+        text job_id FK
+        real score
+        text hard_filter_status
+        text application_message
+        integer recommended
+    }
+
+    application_confirmations {
+        text confirmation_batch_id PK
+        text status
+        text confirmed_at
+        text created_at
+        text updated_at
+    }
+
+    application_records {
+        text record_id PK
+        text job_id FK
+        text confirmation_batch_id FK
+        text platform
+        text status
+        text submitted_at
+        text failure_reason
+        integer duplicate_detected
+    }
+
+    collection_tasks {
+        text collection_task_id PK
+        text platform
+        text search_keyword
+        text status
+    }
+
+    collection_platform_progress {
+        text progress_id PK
+        text collection_task_id FK
+        text platform
+        integer current_page
+        integer retry_count
+        integer manual_takeover_required
+        text status
+    }
 ```
 
 ## 架构约束
@@ -238,6 +309,9 @@ erDiagram
 - 配置固定读取 `config/interview-agent.toml`。
 - 运行时只检查知识库 ready 状态，不构建知识库。
 - 知识库通过离线命令构建到 SQLite。
+- 求职投递数据独立落在 SQLite 求职表中，包含标准岗位、筛选条件、评估报告、确认批次、投递记录、采集任务和平台进度。
+- 求职存储入口拒绝明显账号凭据、联系方式、cookie、token、session、验证码等敏感内容落库。
+- 清空求职数据只删除求职相关表，不删除 `sessions`、`session_state`、知识库索引或 Chrome 登录态。
 - 节点之间只通过 SQLite `session_state` 共享数据。
 - 节点输入、可选输入和输出 key 由 `state_contracts.py` 集中定义。
 - Planner 和 Registry 复用同一份 state contract。

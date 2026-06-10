@@ -241,7 +241,7 @@
 
 ## Final Review
 
-**Status:** `[ ]`  
+**Status:** `[~]`  
 **Owner:** final_reviewer  
 **Dependencies:** Task 0-9
 
@@ -279,6 +279,7 @@
 - `docs/job-application-development-tasks.md`
 
 1. [操作] 按 `docs/job-application-development-tasks.md` 逐项执行 JOB-001 到 JOB-019 → verify: 每个任务均有独立 worktree、implementer 提交、reviewer 结论、最小必要测试和观测证据
+   - [x] JOB-001 求职数据模型与存储设计 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_storage.py`：14 passed；reviewer 第三次复审 `可继续`
 2. [操作] 每个任务合并后由主 agent 更新本 TODO 状态与专项任务文档状态 → verify: `rtk git diff -- docs/TODO.md docs/job-application-development-tasks.md`
 3. [操作] 功能完成后由主 agent 更新 `HISTORY.md` → verify: HISTORY 记录包含任务编号、功能名称、测试命令、reviewer 结论和影响范围
 4. [操作] 涉及架构变更后由主 agent 更新 `docs/architecture.md` 与 `docs/architecture.svg` → verify: `rtk xmllint --noout docs/architecture.svg`

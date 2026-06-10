@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1180" viewBox="0 0 1800 1180" role="img" aria-labelledby="title desc">
   <title id="title">技术面试 Agent 系统架构图</title>
-  <desc id="desc">展示桌面端、命令行、GUI Runtime、路由规划执行链路、结构化节点运行时、SQLite 会话状态、知识库检索索引和离线知识库构建之间的关系。</desc>
+  <desc id="desc">展示桌面端、命令行、GUI Runtime、路由规划执行链路、结构化节点运行时、SQLite 会话状态、求职投递存储、知识库检索索引和离线知识库构建之间的关系。</desc>
   <defs>
     <marker id="arrow-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2937"/>
@@ -62,7 +62,7 @@
   </g>
 
   <text class="title" x="900" y="70" text-anchor="middle">技术面试 Agent 系统架构图</text>
-  <text class="subtitle" x="900" y="102" text-anchor="middle">本地桌面与 CLI 双入口共用编排核心；运行时只读 ready 知识库，节点结果经契约校验后写入 SQLite。</text>
+  <text class="subtitle" x="900" y="102" text-anchor="middle">本地桌面与 CLI 双入口共用编排核心；运行时只读 ready 知识库，节点和求职数据经边界校验后写入 SQLite。</text>
 
   <rect class="band" x="80" y="145" width="1640" height="610"/>
   <text class="section-title" x="115" y="185">运行时主链路</text>
@@ -184,7 +184,7 @@
 
   <rect class="band" x="80" y="790" width="1040" height="270"/>
   <text class="section-title" x="115" y="830">共享状态与检索数据面</text>
-  <text class="section-note" x="298" y="830">会话、节点运行记录、节点输出状态和知识库索引统一存放在 SQLite。</text>
+  <text class="section-note" x="298" y="830">会话、节点运行记录、节点输出状态、求职投递数据和知识库索引统一存放在 SQLite。</text>
 
   <rect class="card data" x="140" y="880" width="245" height="110"/>
   <text class="label" x="263" y="916" text-anchor="middle">项目配置</text>
@@ -201,12 +201,17 @@
   <text class="small" x="913" y="943" text-anchor="middle">knowledge_documents / chunks</text>
   <text class="small" x="913" y="966" text-anchor="middle">FTS5 / embeddings / meta</text>
 
+  <rect class="card data" x="770" y="1018" width="285" height="58"/>
+  <text class="label" x="913" y="1040" text-anchor="middle">求职投递存储</text>
+  <text class="small" x="913" y="1062" text-anchor="middle">jobs / filters / batches / progress</text>
+
   <rect class="card data" x="455" y="1018" width="245" height="58"/>
   <text class="label" x="578" y="1052" text-anchor="middle">state_contracts.py</text>
 
   <path class="dash-line" d="M 617 534 C 617 735 578 800 578 880"/>
   <path class="dash-line" d="M 1398 390 C 1210 760 760 760 578 880"/>
   <path class="dash-line" d="M 1588 540 C 1460 760 1070 805 913 880"/>
+  <path class="dash-line" d="M 617 534 C 710 760 840 880 913 1018"/>
   <path class="dash-line" d="M 578 1018 C 640 805 1030 735 1121 518"/>
   <path class="dash-line" d="M 578 1018 C 820 830 1290 760 1398 390"/>
   <path class="dash-line" d="M 263 880 C 310 760 522 720 618 534"/>
@@ -243,5 +248,5 @@
   <text class="edge-label" x="1115" y="1080">运行时只读 ready 索引</text>
 
   <rect class="band-light" x="80" y="1092" width="1640" height="58"/>
-  <text class="small" x="115" y="1128">关键约束：配置只来自 config/interview-agent.toml；运行时不构建知识库；GUI Runtime 只输出结构化 view model；节点输出通过 state_contracts.py 校验后写入 session_state；Tauri 关闭窗口时清理 Python 进程树。</text>
+  <text class="small" x="115" y="1128">关键约束：配置只来自 config/interview-agent.toml；运行时不构建知识库；GUI Runtime 只输出结构化 view model；节点输出通过 state_contracts.py 校验后写入 session_state；求职存储拒绝明显敏感内容落库。</text>
 </svg>
