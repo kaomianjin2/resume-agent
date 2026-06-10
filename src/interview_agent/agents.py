@@ -5,6 +5,7 @@ import json
 from interview_agent.llm import request_structured_output
 from interview_agent.llm import LLMError
 from interview_agent.prompts import render_prompt
+from interview_agent.sensitive import assert_no_sensitive_payload
 
 
 def run_structured_node(
@@ -41,6 +42,8 @@ def build_prompt(
     prompt_inputs: dict[str, object],
     rag_results: list[dict[str, object]],
 ) -> str:
+    assert_no_sensitive_payload(prompt_inputs, error_message="LLM prompt 输入包含敏感字段")
+    assert_no_sensitive_payload(rag_results, error_message="LLM prompt 输入包含敏感字段")
     serialized_inputs = {
         key: _serialize_prompt_value(value)
         for key, value in prompt_inputs.items()

@@ -5,6 +5,8 @@ from enum import Enum
 from typing import Literal, Protocol
 from uuid import uuid4
 
+from interview_agent.sensitive import assert_no_sensitive_payload, flatten_payload, summarize_url
+
 
 AdapterResultStatus = Literal["success", "failed", "partial"]
 ApplicationSubmissionStatus = Literal["submitted", "failed", "skipped", "duplicate"]
@@ -137,12 +139,12 @@ class FakeJobPlatformAdapter:
         _assert_no_sensitive_payload(request)
         self._last_search_id = f"{self.platform}-search-{uuid4()}"
         if self._search_error is not None:
-            _assert_no_sensitive_payload(self._search_error)
+            safe_error = _sanitize_adapter_error(self._search_error)
             return PlatformExecutionResult(
                 platform=self.platform,
                 status="failed",
                 search_id=self._last_search_id,
-                errors=[self._search_error],
+                errors=[safe_error],
             )
         _assert_no_sensitive_payload(self._jobs)
         return PlatformExecutionResult(
@@ -184,8 +186,9 @@ class FakeJobPlatformAdapter:
             )
         if request.job.platform_job_id in self._submit_results:
             result = self._submit_results[request.job.platform_job_id]
-            _assert_no_sensitive_payload(result)
-            return result
+            safe_result = _sanitize_submission_result(result)
+            _assert_no_sensitive_payload(safe_result)
+            return safe_result
         if request.job.platform_job_id in self._applied_job_ids:
             return ApplicationSubmissionResult(
                 platform=self.platform,
@@ -207,21 +210,36 @@ class FakeJobPlatformAdapter:
 
 
 def _assert_no_sensitive_payload(value: object) -> None:
-    flattened_payload = _flatten_payload(value).lower()
-    sensitive_markers = ("cookie", "token", "session", "password", "credential", "account_id")
-    if any(marker in flattened_payload for marker in sensitive_markers):
-        raise ValueError("适配器结果包含敏感凭据")
+    assert_no_sensitive_payload(value, error_message="适配器结果包含敏感凭据")
 
 
 def _flatten_payload(value: object) -> str:
-    if isinstance(value, Enum):
-        return value.value
-    if hasattr(value, "__dataclass_fields__"):
-        return _flatten_payload(value.__dict__)
-    if isinstance(value, dict):
-        return " ".join(_flatten_payload(item) for pair in value.items() for item in pair)
-    if isinstance(value, list | tuple | set):
-        return " ".join(_flatten_payload(item) for item in value)
-    if value is None:
-        return ""
-    return str(value)
+    return flatten_payload(value)
+
+
+def _sanitize_adapter_error(error: PlatformAdapterError) -> PlatformAdapterError:
+    safe_error = PlatformAdapterError(
+        error_type=error.error_type,
+        platform=error.platform,
+        stage=error.stage,
+        message="浏览器自动化错误已脱敏",
+        page_url=summarize_url(error.page_url),
+        field_name=None,
+    )
+    _assert_no_sensitive_payload(safe_error)
+    return safe_error
+
+
+def _sanitize_submission_result(result: ApplicationSubmissionResult) -> ApplicationSubmissionResult:
+    safe_error = _sanitize_adapter_error(result.error) if result.error is not None else None
+    safe_result = ApplicationSubmissionResult(
+        platform=result.platform,
+        platform_job_id=result.platform_job_id,
+        status=result.status,
+        error=safe_error,
+        platform_message="浏览器自动化错误已脱敏" if result.platform_message else None,
+        submitted_at=result.submitted_at,
+        duplicate_detected=result.duplicate_detected,
+    )
+    _assert_no_sensitive_payload(safe_result)
+    return safe_result

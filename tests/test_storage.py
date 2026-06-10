@@ -28,6 +28,7 @@ from interview_agent.storage import (
     transaction,
     verify_login,
 )
+from interview_agent.session import SessionStore
 
 
 EXPECTED_TABLES = {
@@ -703,3 +704,25 @@ def test_job_application_storage_rejects_sensitive_content_across_all_text_input
             manual_takeover_required=True,
             status="paused",
         )
+
+
+def test_session_state_rejects_browser_session_and_contact_payload(tmp_path: Path) -> None:
+    database_path = tmp_path / "storage.sqlite3"
+    initialize_database(database_path)
+    session_store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="敏感"):
+        session_store.set_state(
+            "session-sensitive",
+            "job_search_profile",
+            {
+                "target_roles": ["后端工程师"],
+                "browser_session": {"cookie": "sid=secret"},
+                "phone": "13800000000",
+            },
+        )
+
+    with sqlite3.connect(database_path) as connection:
+        state_count = connection.execute("SELECT COUNT(*) FROM session_state").fetchone()
+
+    assert state_count == (0,)

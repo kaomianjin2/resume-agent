@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 from typing import Any
 
+from interview_agent.sensitive import assert_no_sensitive_payload
 from interview_agent.state_contracts import validate_state_entry
 from interview_agent.storage import get_connection, transaction
 
@@ -60,6 +61,7 @@ def write_session_state(connection: sqlite3.Connection, session_id: str, values:
     current_timestamp = _current_timestamp()
     for state_key, state_value in values.items():
         validate_state_entry(state_key, state_value)
+        assert_no_sensitive_payload({state_key: state_value}, error_message="session state 包含敏感字段")
     for state_key, state_value in values.items():
         connection.execute(
             "INSERT INTO session_state "
