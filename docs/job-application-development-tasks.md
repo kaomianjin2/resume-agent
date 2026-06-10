@@ -212,7 +212,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 
 ### JOB-006 多平台采集编排与进度状态
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：实现多平台采集调度和平台级可观测进度状态。
 - 影响范围：采集编排器、运行时 facade、存储层进度记录、GUI view model。
 - 输入：求职画像、筛选条件、平台适配器接口。
@@ -235,6 +235,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 - 观测证据：记录平台进度状态样例和测试输出摘要。
 - 副作用：新增采集任务状态。
 - 影响调用方：GUI 采集进度页、平台适配器。
+
+#### JOB-006 完成记录
+
+- 状态：done
+- 负责人：implementer / reviewer / main agent
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
+- 修改文件：`src/interview_agent/job_collection.py`、`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "job_collection_orchestrator or runtime_collects_jobs or retry or running_job_collection"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`；`rtk git diff --check main...HEAD`
+- 验证结果：定向采集编排测试 5 passed；`tests/test_gui_runtime.py tests/test_storage.py` 65 passed；diff check 无输出
+- 观测证据：新增 `JobCollectionOrchestrator`，覆盖平台级 `started`、`page_collected`、`detail_collected`、`completed`、`failed`、`retrying` 状态；测试证明单平台失败不影响其他平台结果，失败平台可通过 GUI runtime 重试，运行中 `started` 与重试中 `retrying` 先写入 SQLite 并可通过 `get_collection_progress()` 读取；reviewer 第四次复审 `Can proceed: Yes`
+- 副作用：新增 GUI session state `job_collection_progress` 和运行期采集编排器缓存；新增 SQLite 采集进度写入链路；未接入真实浏览器、网络、投递动作、数据库 schema、配置或部署流程
+- 影响调用方：GUI 采集进度页可读取稳定进度 view model；后续 JOB-007 到 JOB-011 可复用多平台编排、失败隔离、失败平台重试和持久化进度状态
+- 后续风险：真实平台适配器仍需在 JOB-008 到 JOB-010 中接入平台页面结构；验证码、限流、账号风控和人工接管策略仍由 JOB-007 处理
 
 ### JOB-007 平台风控与人工接管
 

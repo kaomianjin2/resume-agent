@@ -2,6 +2,15 @@
 
 ## 2026-06-10
 
+### JOB-006 多平台采集编排与进度状态
+
+- 功能名称：多平台采集编排与进度状态
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`
+- 测试结果：`65 passed in 0.59s`
+- reviewer 结论：第四次复审 `Can proceed: Yes`，无阻断问题。
+- 影响范围：`src/interview_agent/job_collection.py`、`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 变更摘要：新增多平台求职采集编排器和 GUI Runtime 采集 facade，支持平台级开始、翻页、详情采集、完成、失败和重试状态；单个平台失败或抛异常时保留其他平台结果；失败平台可通过 runtime 重试；运行中和重试中的采集进度写入 SQLite 并同步为 GUI view model；未接入真实浏览器、网络、投递动作、配置或部署流程。
+
 ### JOB-004 Chrome 会话隔离与敏感信息脱敏边界
 
 - 功能名称：Chrome 会话隔离与敏感信息脱敏边界
