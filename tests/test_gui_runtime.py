@@ -1046,6 +1046,177 @@ def test_runtime_job_search_profile_state_contains_all_job_002_override_dimensio
     }
 
 
+def test_job_platform_fake_adapter_simulates_successful_readonly_search() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        FakeJobPlatformAdapter,
+        JobSearchRequest,
+        StandardJob,
+    )
+
+    fake_job = StandardJob(
+        platform="boss",
+        platform_job_id="boss-001",
+        title="Python 后端工程师",
+        company_name="Example",
+        location="上海",
+        remote_policy="hybrid",
+        salary_range="35k-50k",
+        level="高级",
+        experience_requirement="5年",
+        education_requirement="本科",
+        industry="AI 工具",
+        company_size="100-500人",
+        funding_stage="B轮",
+        tech_stack=["Python", "PostgreSQL"],
+        benefits=["五险一金"],
+        published_at="2026-06-10T09:00:00+00:00",
+        detail_url="https://example.com/boss/jobs/001",
+        jd_text="负责后端服务",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence={"salary_range": "high"},
+    )
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[fake_job])
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={"target_roles": ["后端工程师"], "technical_skills": ["Python"]},
+            hard_filters={"cities": ["上海"]},
+            ranking_preferences={"technical_skills": ["Python"]},
+            keyword="后端工程师 Python",
+        )
+    )
+
+    assert result.status == "success"
+    assert result.jobs == [fake_job]
+    assert adapter.collect_job_list(result.search_id) == [fake_job]
+    assert adapter.read_job_detail("boss-001") == fake_job
+    assert adapter.is_already_applied("boss-001") is False
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
+def test_job_platform_fake_adapter_simulates_required_platform_errors() -> None:
+    from interview_agent.job_platform_adapters import (
+        FakeJobPlatformAdapter,
+        JobSearchRequest,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+    )
+
+    for error_type in [
+        PlatformAdapterErrorType.LOGIN_EXPIRED,
+        PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        PlatformAdapterErrorType.RATE_LIMITED,
+        PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+    ]:
+        adapter = FakeJobPlatformAdapter(
+            platform="lagou",
+            search_error=PlatformAdapterError(
+                error_type=error_type,
+                platform="lagou",
+                stage="search",
+                message=f"{error_type.value} during search",
+            ),
+        )
+
+        result = adapter.search_jobs(
+            JobSearchRequest(
+                job_profile={"target_roles": ["后端工程师"]},
+                hard_filters={},
+                ranking_preferences={},
+                keyword="后端工程师",
+            )
+        )
+
+        assert result.status == "failed"
+        assert result.errors[0].error_type is error_type
+        assert result.errors[0].platform == "lagou"
+        assert result.jobs == []
+
+
+def test_job_platform_fake_adapter_simulates_submission_failure_without_sensitive_payload() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        ApplicationSubmissionResult,
+        ConfirmationApplicationRequest,
+        FakeJobPlatformAdapter,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+        StandardJob,
+    )
+
+    fake_job = StandardJob(
+        platform="liepin",
+        platform_job_id="liepin-001",
+        title="平台工程师",
+        company_name="Example",
+        location="杭州",
+        remote_policy=None,
+        salary_range=None,
+        level=None,
+        experience_requirement=None,
+        education_requirement=None,
+        industry=None,
+        company_size=None,
+        funding_stage=None,
+        tech_stack=[],
+        benefits=[],
+        published_at=None,
+        detail_url="https://example.com/liepin/jobs/001",
+        jd_text="负责平台建设",
+        collected_at="2026-06-10T10:05:00+00:00",
+        field_confidence={"salary_range": "missing"},
+    )
+    adapter = FakeJobPlatformAdapter(
+        platform="liepin",
+        jobs=[fake_job],
+        submit_results={
+            "liepin-001": ApplicationSubmissionResult(
+                platform="liepin",
+                platform_job_id="liepin-001",
+                status="failed",
+                error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
+                    platform="liepin",
+                    stage="submit",
+                    message="投递按钮不可用",
+                ),
+                platform_message="按钮不可用",
+                duplicate_detected=False,
+            )
+        },
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=fake_job,
+            application_message="您好，我对该岗位感兴趣。",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.error_type is PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
+def _contains_sensitive_adapter_payload(value: object) -> bool:
+    sensitive_markers = ("cookie", "token", "session", "password", "credential", "account_id")
+    return any(marker in _flatten_text(value).lower() for marker in sensitive_markers)
+
+
+def _flatten_text(value: object) -> str:
+    if isinstance(value, dict):
+        return " ".join(_flatten_text(item) for pair in value.items() for item in pair)
+    if isinstance(value, list | tuple | set):
+        return " ".join(_flatten_text(item) for item in value)
+    return str(value)
+
+
 def test_runtime_starts_mock_interview_and_returns_first_question_only(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
 
