@@ -1,9 +1,12 @@
 import { ModuleViewModel } from "../fixtureData";
 import { PrepViewModel } from "../../shared/api/prep";
+import type { JobScreenId } from "../../modules/job/JobModule";
 
 type ReviewPanelProps = {
   activeModule: ModuleViewModel;
   prepViewModel: PrepViewModel;
+  selectedJobIds?: string[];
+  jobActiveScreen?: JobScreenId;
 };
 
 const statusText = {
@@ -12,7 +15,7 @@ const statusText = {
   blocked: "未启用",
 };
 
-export function ReviewPanel({ activeModule, prepViewModel }: ReviewPanelProps) {
+export function ReviewPanel({ activeModule, prepViewModel, selectedJobIds, jobActiveScreen }: ReviewPanelProps) {
   if (activeModule.id === "prep") {
     const reviewState = buildPrepReviewState(prepViewModel);
     return (
@@ -59,6 +62,74 @@ export function ReviewPanel({ activeModule, prepViewModel }: ReviewPanelProps) {
             <span>生成 10 到 15 个高频追问即可，正式题目留到模拟面试模块处理。</span>
           </article>
         </section>
+      </aside>
+    );
+  }
+
+  if (activeModule.id === "job") {
+    if (jobActiveScreen !== "jobs") {
+      return null;
+    }
+    const selectedCount = selectedJobIds?.length ?? 0;
+    return (
+      <aside className="review-panel" aria-label="投递检查面板">
+        <div className="review-section">
+          <div className="panel-head">
+            <h3>投递检查</h3>
+            <span className="job-state-tag warn">候选岗位</span>
+          </div>
+          <p className="muted-text">已选择 {selectedCount} 个岗位，包含 1 个低置信度字段，需要批量确认。</p>
+        </div>
+
+        <div className="review-metric-grid">
+          <div className="review-metric-card">
+            <span className="review-metric-label">已选岗位</span>
+            <strong className="review-metric-value">{selectedCount}</strong>
+          </div>
+          <div className="review-metric-card">
+            <span className="review-metric-label">高风险</span>
+            <strong className="review-metric-value" style={{ color: "var(--warning)" }}>1</strong>
+          </div>
+        </div>
+
+        <div className="review-scroll">
+          <div className="job-check-row"><span className="job-check-dot" /><span className="truncate">Chrome 登录态不入库</span><span className="job-state-tag good">OK</span></div>
+          <div className="job-check-row"><span className="job-check-dot" /><span className="truncate">LLM 输入不含 cookie/token</span><span className="job-state-tag good">OK</span></div>
+          <div className="job-check-row"><span className="job-check-dot warn" /><span className="truncate">1 个岗位字段低置信度</span><span className="job-state-tag warn">确认</span></div>
+          <div className="job-check-row"><span className="job-check-dot bad" /><span className="truncate">重复岗位不可投递</span><span className="job-state-tag bad">拦截</span></div>
+          <div className="job-check-row"><span className="job-check-dot warn" /><span className="truncate">1 个确认批次待重校验</span><span className="job-state-tag warn">stale</span></div>
+          <div className="job-check-row"><span className="job-check-dot bad" /><span className="truncate">安全扫描失败时阻断提交</span><span className="job-state-tag bad">block</span></div>
+
+          <div className="review-platform-card">
+            <div className="panel-head">
+              <h3>平台分布</h3>
+              <span className="job-tag">2 个平台</span>
+            </div>
+            <div className="review-platform-tags">
+              <span className="job-tag good">BOSS 1</span>
+              <span className="job-tag warn">猎聘 1</span>
+              <span className="job-tag">拉勾 0</span>
+            </div>
+          </div>
+
+          <div className="review-next-card">
+            <h3>下一步</h3>
+            <p className="muted-text">进入批量确认前，系统会展示批次摘要、风险、简历摘要、每个平台的话术策略和逐岗位重校验结果。</p>
+          </div>
+
+          <div className="job-blocked-card">
+            <div className="job-blocked-head">
+              <h3>安全阻断态</h3>
+              <span className="job-state-tag bad">security blocked</span>
+            </div>
+            <p className="muted-text">如果日志、SQLite、session state 或 prompt 命中 cookie、token、session id，主操作只保留回退、清理和重新扫描。</p>
+          </div>
+        </div>
+
+        <div className="review-bottom-actions">
+          <button className="ghost-button" type="button">返回调整</button>
+          <button className="primary-button" type="button">批量确认</button>
+        </div>
       </aside>
     );
   }

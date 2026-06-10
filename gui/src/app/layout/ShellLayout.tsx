@@ -1,10 +1,12 @@
 import { ModuleId, ModuleViewModel, UserRole } from "../fixtureData";
+import type { JobScreenId } from "../../modules/job/JobModule";
 import { Sidebar } from "./Sidebar";
 import { Workspace } from "./Workspace";
 import { ReviewPanel } from "./ReviewPanel";
 import { DesktopRuntimeSnapshot, MaterialKind, UserRecord } from "../../shared/desktop/desktopBridge";
 import { AlgorithmPracticeRuntimeClient } from "../../shared/api/algorithm.js";
 import { MockInterviewRuntimeClient } from "../../shared/api/mock";
+import { JobRuntimeClient } from "../../shared/api/job";
 import { PrepViewModel } from "../../shared/api/prep";
 
 type ShellLayoutProps = {
@@ -21,6 +23,11 @@ type ShellLayoutProps = {
   currentUserRole: UserRole | null;
   mockRuntimeClient: MockInterviewRuntimeClient;
   algorithmRuntimeClient: AlgorithmPracticeRuntimeClient;
+  jobRuntimeClient: JobRuntimeClient;
+  selectedJobIds: string[];
+  onSelectedJobIdsChange: (ids: string[]) => void;
+  jobActiveScreen: JobScreenId;
+  onJobActiveScreenChange: (screen: JobScreenId) => void;
   onModuleChange: (moduleId: ModuleId) => void;
   onSelectMaterialFile: (kind: MaterialKind) => void;
   onNewUsernameChange: (value: string) => void;
@@ -46,6 +53,11 @@ export function ShellLayout({
   currentUserRole,
   mockRuntimeClient,
   algorithmRuntimeClient,
+  jobRuntimeClient,
+  selectedJobIds,
+  onSelectedJobIdsChange,
+  jobActiveScreen,
+  onJobActiveScreenChange,
   onModuleChange,
   onSelectMaterialFile,
   onNewUsernameChange,
@@ -57,9 +69,17 @@ export function ShellLayout({
   onToggleUserStatus,
 }: ShellLayoutProps) {
   const isUsersModule = activeModuleId === "users";
+  const isJobWithoutReview = activeModuleId === "job" && jobActiveScreen !== "jobs";
+  const hideReview = isUsersModule || isJobWithoutReview;
+
+  const layoutClass = isUsersModule
+    ? "shell-layout users-minimal"
+    : hideReview
+      ? "shell-layout no-review"
+      : "shell-layout";
 
   return (
-    <main className={isUsersModule ? "shell-layout users-minimal" : "shell-layout"}>
+    <main className={layoutClass}>
       <Sidebar
         activeModuleId={activeModuleId}
         desktopSnapshot={desktopSnapshot}
@@ -79,6 +99,11 @@ export function ShellLayout({
         currentUserRole={currentUserRole}
         mockRuntimeClient={mockRuntimeClient}
         algorithmRuntimeClient={algorithmRuntimeClient}
+        jobRuntimeClient={jobRuntimeClient}
+        selectedJobIds={selectedJobIds}
+        onSelectedJobIdsChange={onSelectedJobIdsChange}
+        jobActiveScreen={jobActiveScreen}
+        onJobActiveScreenChange={onJobActiveScreenChange}
         onSelectMaterialFile={onSelectMaterialFile}
         onNewUsernameChange={onNewUsernameChange}
         onNewPasswordChange={onNewPasswordChange}
@@ -88,7 +113,7 @@ export function ShellLayout({
         onRefreshUsers={onRefreshUsers}
         onToggleUserStatus={onToggleUserStatus}
       />
-      {!isUsersModule ? <ReviewPanel activeModule={activeModule} prepViewModel={prepViewModel} /> : null}
+      {!isUsersModule ? <ReviewPanel activeModule={activeModule} prepViewModel={prepViewModel} selectedJobIds={selectedJobIds} jobActiveScreen={jobActiveScreen} /> : null}
     </main>
   );
 }

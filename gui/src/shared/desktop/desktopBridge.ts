@@ -12,6 +12,10 @@ import {
   normalizeAlgorithmPracticeViewModel,
   StartAlgorithmPracticeRequest,
 } from "../api/algorithm";
+import {
+  CollectionProgress,
+  JobSearchProfile,
+} from "../api/job";
 import { normalizePrepViewModel, PrepViewModel } from "../api/prep";
 import {
   DesktopRuntimeSnapshot,
@@ -162,4 +166,42 @@ export async function logoutUser(): Promise<void> {
     return;
   }
   await invoke("logout_user");
+}
+
+export async function prepareJobSearchProfile(
+  sessionId: string,
+  overrides?: Record<string, unknown>,
+): Promise<JobSearchProfile> {
+  if (!isTauri()) {
+    throw new Error("仅桌面模式支持生成求职画像");
+  }
+  const rawViewModel = await invoke("prepare_job_search_profile", {
+    sessionId,
+    overrides: overrides ?? {},
+  });
+  return rawViewModel as unknown as JobSearchProfile;
+}
+
+export async function getJobCollectionProgress(sessionId: string): Promise<CollectionProgress> {
+  if (!isTauri()) {
+    throw new Error("仅桌面模式支持查看采集进度");
+  }
+  const rawViewModel = await invoke("get_job_collection_progress", { sessionId });
+  return rawViewModel as unknown as CollectionProgress;
+}
+
+export async function retryFailedJobCollection(
+  sessionId: string,
+  collectionTaskId: string,
+  platform: string,
+): Promise<CollectionProgress> {
+  if (!isTauri()) {
+    throw new Error("仅桌面模式支持重试采集平台");
+  }
+  const rawViewModel = await invoke("retry_failed_job_collection_platform", {
+    sessionId,
+    collectionTaskId,
+    platform,
+  });
+  return rawViewModel as unknown as CollectionProgress;
 }
