@@ -1476,9 +1476,15 @@ def test_job_platform_contract_parses_multiple_list_cards_without_cross_contamin
     assert jobs[0].company_name == "第一家公司"
     assert jobs[0].tech_stack == ["Python", "PostgreSQL"]
     assert jobs[0].benefits == []
+    assert jobs[0].remote_policy is None
+    assert jobs[0].field_confidence["tech_stack"] == "fixture"
+    assert jobs[0].field_confidence["benefits"] == "missing"
+    assert jobs[0].field_confidence["remote_policy"] == "missing"
     assert jobs[1].company_name == "第二家公司"
     assert jobs[1].tech_stack == []
     assert jobs[1].benefits == ["补充医疗", "弹性工作"]
+    assert jobs[1].field_confidence["tech_stack"] == "missing"
+    assert jobs[1].field_confidence["benefits"] == "fixture"
 
 
 def test_job_platform_contract_reports_missing_required_fixture_field() -> None:

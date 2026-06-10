@@ -339,6 +339,27 @@ class _JobFixtureParser(HTMLParser):
 
 
 def _build_standard_job(fields: dict[str, str]) -> StandardJob:
+    standard_fields = {
+        "platform",
+        "platform_job_id",
+        "title",
+        "company_name",
+        "location",
+        "remote_policy",
+        "salary_range",
+        "level",
+        "experience_requirement",
+        "education_requirement",
+        "industry",
+        "company_size",
+        "funding_stage",
+        "tech_stack",
+        "benefits",
+        "published_at",
+        "detail_url",
+        "jd_text",
+        "collected_at",
+    }
     required_fields = {
         "platform",
         "platform_job_id",
@@ -352,6 +373,9 @@ def _build_standard_job(fields: dict[str, str]) -> StandardJob:
     missing_fields = sorted(field_name for field_name in required_fields if not fields.get(field_name))
     if missing_fields:
         raise ValueError(f"岗位夹具缺少字段: {', '.join(missing_fields)}")
+    field_confidence = {
+        field_name: "fixture" if fields.get(field_name) else "missing" for field_name in standard_fields
+    }
     return StandardJob(
         platform=fields["platform"],
         platform_job_id=fields["platform_job_id"],
@@ -372,7 +396,7 @@ def _build_standard_job(fields: dict[str, str]) -> StandardJob:
         detail_url=fields["detail_url"],
         jd_text=fields["jd_text"],
         collected_at=fields["collected_at"],
-        field_confidence={field_name: "fixture" for field_name in fields},
+        field_confidence=field_confidence,
     )
 
 
