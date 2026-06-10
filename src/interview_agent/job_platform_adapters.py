@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from html.parser import HTMLParser
 from typing import Literal, Protocol
 from uuid import uuid4
 
@@ -243,3 +244,127 @@ def _sanitize_submission_result(result: ApplicationSubmissionResult) -> Applicat
     )
     _assert_no_sensitive_payload(safe_result)
     return safe_result
+
+
+def parse_job_list_fixture(html: str) -> list[StandardJob]:
+    parser = _JobFixtureParser()
+    parser.feed(html)
+    parser.close()
+    return [_build_standard_job(fields) for fields in parser.job_cards]
+
+
+def parse_job_detail_fixture(html: str) -> StandardJob:
+    parser = _JobFixtureParser()
+    parser.feed(html)
+    parser.close()
+    if not parser.job_detail:
+        raise ValueError("岗位详情夹具缺少 data-job-detail")
+    return _build_standard_job(parser.job_detail)
+
+
+def classify_job_platform_fixture_error(*, platform: str, stage: str, html: str) -> PlatformAdapterError | None:
+    parser = _JobFixtureParser()
+    parser.feed(html)
+    parser.close()
+    error_type = {
+        "login_expired": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "captcha_required": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "button_unavailable": PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
+        "already_applied": PlatformAdapterErrorType.DUPLICATE_APPLICATION,
+    }.get(parser.fixture_state)
+    if error_type is None:
+        return None
+    return PlatformAdapterError(
+        error_type=error_type,
+        platform=platform,
+        stage=stage,
+        message="夹具状态触发平台适配器错误",
+    )
+
+
+class _JobFixtureParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.fixture_state: str | None = None
+        self.job_cards: list[dict[str, str]] = []
+        self.job_detail: dict[str, str] = {}
+        self._current_fields: dict[str, str] | None = None
+        self._current_field_name: str | None = None
+        self._current_field_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if attributes.get("data-fixture-state"):
+            self.fixture_state = attributes["data-fixture-state"]
+        if "data-job-card" in attributes:
+            self._current_fields = {}
+        if "data-job-detail" in attributes:
+            self._current_fields = {}
+            self.job_detail = self._current_fields
+        field_name = attributes.get("data-field")
+        if field_name and self._current_fields is not None:
+            self._current_field_name = field_name
+            self._current_field_parts = []
+            if tag == "a" and field_name == "detail_url":
+                self._current_fields[field_name] = attributes.get("href") or ""
+
+    def handle_data(self, data: str) -> None:
+        if self._current_field_name is not None:
+            self._current_field_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._current_field_name is not None:
+            value = " ".join(" ".join(self._current_field_parts).split())
+            if value and self._current_field_name != "detail_url":
+                self._current_fields[self._current_field_name] = value
+            self._current_field_name = None
+            self._current_field_parts = []
+        if tag == "article" and self._current_fields is not None:
+            self.job_cards.append(self._current_fields)
+            if self.job_detail is self._current_fields:
+                self.job_detail = self._current_fields
+            self._current_fields = None
+
+
+def _build_standard_job(fields: dict[str, str]) -> StandardJob:
+    required_fields = {
+        "platform",
+        "platform_job_id",
+        "title",
+        "company_name",
+        "location",
+        "detail_url",
+        "jd_text",
+        "collected_at",
+    }
+    missing_fields = sorted(field_name for field_name in required_fields if not fields.get(field_name))
+    if missing_fields:
+        raise ValueError(f"岗位夹具缺少字段: {', '.join(missing_fields)}")
+    return StandardJob(
+        platform=fields["platform"],
+        platform_job_id=fields["platform_job_id"],
+        title=fields["title"],
+        company_name=fields["company_name"],
+        location=fields["location"],
+        remote_policy=fields.get("remote_policy"),
+        salary_range=fields.get("salary_range"),
+        level=fields.get("level"),
+        experience_requirement=fields.get("experience_requirement"),
+        education_requirement=fields.get("education_requirement"),
+        industry=fields.get("industry"),
+        company_size=fields.get("company_size"),
+        funding_stage=fields.get("funding_stage"),
+        tech_stack=_split_fixture_list(fields.get("tech_stack")),
+        benefits=_split_fixture_list(fields.get("benefits")),
+        published_at=fields.get("published_at"),
+        detail_url=fields["detail_url"],
+        jd_text=fields["jd_text"],
+        collected_at=fields["collected_at"],
+        field_confidence={field_name: "fixture" for field_name in fields},
+    )
+
+
+def _split_fixture_list(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]

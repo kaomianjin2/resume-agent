@@ -1351,6 +1351,90 @@ def test_job_platform_fake_adapter_simulates_submission_failure_without_sensitiv
     assert _contains_sensitive_adapter_payload(asdict(result)) is False
 
 
+def test_job_platform_contract_parses_fixture_list_and_detail_fields() -> None:
+    from interview_agent.job_platform_adapters import (
+        parse_job_detail_fixture,
+        parse_job_list_fixture,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+
+    jobs = parse_job_list_fixture((fixture_dir / "list.html").read_text())
+    detail = parse_job_detail_fixture((fixture_dir / "detail.html").read_text())
+
+    assert len(jobs) == 1
+    assert jobs[0].platform == "boss"
+    assert jobs[0].platform_job_id == "boss-frontend-001"
+    assert jobs[0].title == "资深后端工程师"
+    assert jobs[0].company_name == "示例科技"
+    assert jobs[0].location == "上海"
+    assert jobs[0].salary_range == "35k-50k"
+    assert jobs[0].tech_stack == ["Python", "PostgreSQL", "FastAPI"]
+    assert jobs[0].benefits == ["五险一金", "弹性工作"]
+    assert jobs[0].detail_url == "https://example.com/boss/jobs/boss-frontend-001"
+    assert detail.platform_job_id == jobs[0].platform_job_id
+    assert detail.jd_text == "负责后端服务与平台稳定性。 需要维护 PostgreSQL 查询性能并建设 FastAPI 服务。"
+    assert detail.field_confidence["title"] == "fixture"
+
+
+def test_job_platform_contract_classifies_fixture_error_states() -> None:
+    from interview_agent.job_platform_adapters import (
+        PlatformAdapterErrorType,
+        classify_job_platform_fixture_error,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    expected_error_types = {
+        "login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "button_unavailable.html": PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
+        "already_applied.html": PlatformAdapterErrorType.DUPLICATE_APPLICATION,
+    }
+
+    for fixture_name, expected_error_type in expected_error_types.items():
+        error = classify_job_platform_fixture_error(
+            platform="boss",
+            stage="submit",
+            html=(fixture_dir / fixture_name).read_text(),
+        )
+
+        assert error is not None
+        assert error.error_type is expected_error_type
+        assert error.platform == "boss"
+        assert error.stage == "submit"
+        assert _contains_sensitive_adapter_payload(error.__dict__) is False
+
+
+def test_job_platform_contract_rejects_unconfirmed_submission_without_sensitive_payload() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        ConfirmationApplicationRequest,
+        FakeJobPlatformAdapter,
+        PlatformAdapterErrorType,
+        parse_job_detail_fixture,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    job = parse_job_detail_fixture((fixture_dir / "detail.html").read_text())
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job])
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-unconfirmed",
+            job=job,
+            application_message="您好，我对该岗位感兴趣。",
+            confirmed=False,
+        )
+    )
+
+    assert result.status == "skipped"
+    assert result.status != "submitted"
+    assert result.error is not None
+    assert result.error.error_type is PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
 def _contains_sensitive_adapter_payload(value: object) -> bool:
     sensitive_markers = ("cookie", "token", "session", "password", "credential", "account_id")
     return any(marker in _flatten_text(value).lower() for marker in sensitive_markers)
