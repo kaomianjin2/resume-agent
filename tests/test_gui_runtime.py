@@ -1351,6 +1351,221 @@ def test_job_platform_fake_adapter_simulates_submission_failure_without_sensitiv
     assert _contains_sensitive_adapter_payload(asdict(result)) is False
 
 
+def test_job_platform_contract_parses_fixture_list_and_detail_fields() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        parse_job_detail_fixture,
+        parse_job_list_fixture,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+
+    jobs = parse_job_list_fixture((fixture_dir / "list.html").read_text())
+    detail = parse_job_detail_fixture((fixture_dir / "detail.html").read_text())
+
+    assert len(jobs) == 1
+    expected_list_job = {
+        "platform": "boss",
+        "platform_job_id": "boss-frontend-001",
+        "title": "资深后端工程师",
+        "company_name": "示例科技",
+        "location": "上海",
+        "remote_policy": "hybrid",
+        "salary_range": "35k-50k",
+        "level": "高级",
+        "experience_requirement": "5年",
+        "education_requirement": "本科",
+        "industry": "AI 工具",
+        "company_size": "100-500人",
+        "funding_stage": "B轮",
+        "tech_stack": ["Python", "PostgreSQL", "FastAPI"],
+        "benefits": ["五险一金", "弹性工作"],
+        "published_at": "2026-06-10T09:00:00+08:00",
+        "detail_url": "https://example.com/boss/jobs/boss-frontend-001",
+        "jd_text": "负责后端服务与平台稳定性。",
+        "collected_at": "2026-06-10T09:05:00+08:00",
+        "field_confidence": {
+            "platform": "fixture",
+            "platform_job_id": "fixture",
+            "title": "fixture",
+            "company_name": "fixture",
+            "location": "fixture",
+            "remote_policy": "fixture",
+            "salary_range": "fixture",
+            "level": "fixture",
+            "experience_requirement": "fixture",
+            "education_requirement": "fixture",
+            "industry": "fixture",
+            "company_size": "fixture",
+            "funding_stage": "fixture",
+            "tech_stack": "fixture",
+            "benefits": "fixture",
+            "published_at": "fixture",
+            "detail_url": "fixture",
+            "jd_text": "fixture",
+            "collected_at": "fixture",
+        },
+    }
+    expected_detail_job = {
+        **expected_list_job,
+        "jd_text": "负责后端服务与平台稳定性。 需要维护 PostgreSQL 查询性能并建设 FastAPI 服务。",
+        "collected_at": "2026-06-10T09:06:00+08:00",
+    }
+
+    assert asdict(jobs[0]) == expected_list_job
+    assert asdict(detail) == expected_detail_job
+
+
+def test_job_platform_contract_preserves_nested_field_text() -> None:
+    from interview_agent.job_platform_adapters import parse_job_detail_fixture
+
+    detail = parse_job_detail_fixture(
+        """
+        <article data-job-detail>
+          <span data-field="platform">boss</span>
+          <span data-field="platform_job_id">boss-nested-001</span>
+          <h1 data-field="title">后端工程师</h1>
+          <span data-field="company_name">示例科技</span>
+          <span data-field="location">上海</span>
+          <a data-field="detail_url" href="https://example.com/jobs/nested">详情</a>
+          <section data-field="jd_text">
+            负责核心服务 <strong>稳定性</strong> 和 <span>性能优化</span> 建设。
+          </section>
+          <time data-field="collected_at">2026-06-10T09:06:00+08:00</time>
+        </article>
+        """
+    )
+
+    assert detail.jd_text == "负责核心服务 稳定性 和 性能优化 建设。"
+
+
+def test_job_platform_contract_parses_multiple_list_cards_without_cross_contamination() -> None:
+    from interview_agent.job_platform_adapters import parse_job_list_fixture
+
+    jobs = parse_job_list_fixture(
+        """
+        <section data-job-list>
+          <article data-job-card>
+            <span data-field="platform">boss</span>
+            <span data-field="platform_job_id">boss-list-001</span>
+            <h2 data-field="title">后端工程师</h2>
+            <span data-field="company_name">第一家公司</span>
+            <span data-field="location">上海</span>
+            <span data-field="tech_stack">Python,PostgreSQL</span>
+            <a data-field="detail_url" href="https://example.com/jobs/001">详情</a>
+            <p data-field="jd_text">负责服务端。</p>
+            <time data-field="collected_at">2026-06-10T09:05:00+08:00</time>
+          </article>
+          <article data-job-card>
+            <span data-field="platform">boss</span>
+            <span data-field="platform_job_id">boss-list-002</span>
+            <h2 data-field="title">平台工程师</h2>
+            <span data-field="company_name">第二家公司</span>
+            <span data-field="location">杭州</span>
+            <span data-field="benefits">补充医疗,弹性工作</span>
+            <a data-field="detail_url" href="https://example.com/jobs/002">详情</a>
+            <p data-field="jd_text">负责平台建设。</p>
+            <time data-field="collected_at">2026-06-10T09:08:00+08:00</time>
+          </article>
+        </section>
+        """
+    )
+
+    assert [job.platform_job_id for job in jobs] == ["boss-list-001", "boss-list-002"]
+    assert jobs[0].company_name == "第一家公司"
+    assert jobs[0].tech_stack == ["Python", "PostgreSQL"]
+    assert jobs[0].benefits == []
+    assert jobs[0].remote_policy is None
+    assert jobs[0].field_confidence["tech_stack"] == "fixture"
+    assert jobs[0].field_confidence["benefits"] == "missing"
+    assert jobs[0].field_confidence["remote_policy"] == "missing"
+    assert jobs[1].company_name == "第二家公司"
+    assert jobs[1].tech_stack == []
+    assert jobs[1].benefits == ["补充医疗", "弹性工作"]
+    assert jobs[1].field_confidence["tech_stack"] == "missing"
+    assert jobs[1].field_confidence["benefits"] == "fixture"
+
+
+def test_job_platform_contract_reports_missing_required_fixture_field() -> None:
+    import pytest
+
+    from interview_agent.job_platform_adapters import parse_job_detail_fixture
+
+    with pytest.raises(ValueError, match="company_name"):
+        parse_job_detail_fixture(
+            """
+            <article data-job-detail>
+              <span data-field="platform">boss</span>
+              <span data-field="platform_job_id">boss-missing-001</span>
+              <h1 data-field="title">后端工程师</h1>
+              <span data-field="location">上海</span>
+              <a data-field="detail_url" href="https://example.com/jobs/missing">详情</a>
+              <section data-field="jd_text">负责后端服务。</section>
+              <time data-field="collected_at">2026-06-10T09:06:00+08:00</time>
+            </article>
+            """
+        )
+
+
+def test_job_platform_contract_classifies_fixture_error_states() -> None:
+    from interview_agent.job_platform_adapters import (
+        PlatformAdapterErrorType,
+        classify_job_platform_fixture_error,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    expected_error_types = {
+        "login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "button_unavailable.html": PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
+        "already_applied.html": PlatformAdapterErrorType.DUPLICATE_APPLICATION,
+    }
+
+    for fixture_name, expected_error_type in expected_error_types.items():
+        error = classify_job_platform_fixture_error(
+            platform="boss",
+            stage="submit",
+            html=(fixture_dir / fixture_name).read_text(),
+        )
+
+        assert error is not None
+        assert error.error_type is expected_error_type
+        assert error.platform == "boss"
+        assert error.stage == "submit"
+        assert _contains_sensitive_adapter_payload(error.__dict__) is False
+
+
+def test_job_platform_contract_rejects_unconfirmed_submission_without_sensitive_payload() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        ConfirmationApplicationRequest,
+        FakeJobPlatformAdapter,
+        PlatformAdapterErrorType,
+        parse_job_detail_fixture,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    job = parse_job_detail_fixture((fixture_dir / "detail.html").read_text())
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job])
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-unconfirmed",
+            job=job,
+            application_message="您好，我对该岗位感兴趣。",
+            confirmed=False,
+        )
+    )
+
+    assert result.status == "skipped"
+    assert result.status != "submitted"
+    assert result.error is not None
+    assert result.error.error_type is PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
 def _contains_sensitive_adapter_payload(value: object) -> bool:
     sensitive_markers = ("cookie", "token", "session", "password", "credential", "account_id")
     return any(marker in _flatten_text(value).lower() for marker in sensitive_markers)
