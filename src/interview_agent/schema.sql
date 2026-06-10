@@ -76,6 +76,20 @@ CREATE TABLE IF NOT EXISTS job_applications (
     employment_type TEXT,
     salary_range TEXT,
     posted_at TEXT,
+    remote_policy TEXT,
+    level TEXT,
+    experience_requirement TEXT,
+    education_requirement TEXT,
+    industry TEXT,
+    company_size TEXT,
+    funding_stage TEXT,
+    tech_stack TEXT,
+    benefits TEXT,
+    published_at TEXT,
+    detail_url TEXT NOT NULL,
+    jd_text TEXT NOT NULL,
+    collected_at TEXT NOT NULL,
+    field_confidence TEXT NOT NULL,
     normalized_payload TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('pending_review', 'approved', 'submitted', 'failed', 'skipped', 'duplicate')),
     duplicate_key TEXT NOT NULL UNIQUE,
@@ -83,9 +97,17 @@ CREATE TABLE IF NOT EXISTS job_applications (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS job_application_filters (
+    filter_id TEXT PRIMARY KEY,
+    hard_filters TEXT NOT NULL,
+    ranking_preferences TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS job_application_evaluations (
     evaluation_id TEXT PRIMARY KEY,
-    job_id TEXT NOT NULL,
+    job_id TEXT NOT NULL UNIQUE,
     score REAL,
     hard_filter_status TEXT,
     strengths TEXT,

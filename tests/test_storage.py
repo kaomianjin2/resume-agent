@@ -8,12 +8,18 @@ import pytest
 from interview_agent.storage import (
     clear_job_application_data,
     create_user,
+    get_collection_progress,
+    get_confirmation_batch,
+    get_job_application_evaluation,
+    get_job_application_filters,
     get_connection,
     get_knowledge_base_status,
     initialize_database,
     list_job_applications,
     list_users,
     record_collection_progress,
+    save_job_application_evaluation,
+    save_job_application_filters,
     save_job_application,
     save_platform_collection_task,
     set_knowledge_base_status,
@@ -29,6 +35,7 @@ EXPECTED_TABLES = {
     "application_records",
     "collection_platform_progress",
     "collection_tasks",
+    "job_application_filters",
     "job_application_evaluations",
     "job_applications",
     "knowledge_base_meta",
@@ -213,7 +220,7 @@ def test_default_admin_login_repairs_existing_admin_password(tmp_path: Path) -> 
     assert users[0]["status"] == "enabled"
 
 
-def test_job_application_storage_supports_save_list_and_duplicate_detection(tmp_path: Path) -> None:
+def test_job_application_storage_persists_standard_fields_and_duplicate_detection(tmp_path: Path) -> None:
     database_path = tmp_path / "storage.sqlite3"
     initialize_database(database_path)
 
@@ -228,32 +235,102 @@ def test_job_application_storage_supports_save_list_and_duplicate_detection(tmp_
         employment_type="full_time",
         salary_range="40k-60k",
         posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy="hybrid",
+        level="senior",
+        experience_requirement="5 years",
+        education_requirement="bachelor",
+        industry="ai",
+        company_size="100-499",
+        funding_stage="series_c",
+        tech_stack="python, llm",
+        benefits="meal, stock",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url="https://example.com/jobs/1?track=abc",
+        jd_text="build agents",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"salary_range":"high"}',
         normalized_payload='{"platform":"boss"}',
     )
     duplicate_job = save_job_application(
         database_path,
         platform="boss",
-        external_job_id="job-001",
-        job_url="https://example.com/jobs/1",
+        external_job_id="job-001-reposted",
+        job_url="https://example.com/jobs/1?track=xyz",
         company_name="OpenAI",
         title="Research Engineer",
         location="Shanghai",
         employment_type="full_time",
         salary_range="40k-60k",
         posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy="hybrid",
+        level="senior",
+        experience_requirement="5 years",
+        education_requirement="bachelor",
+        industry="ai",
+        company_size="100-499",
+        funding_stage="series_c",
+        tech_stack="python, llm",
+        benefits="meal, stock",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url="https://example.com/jobs/1?track=xyz",
+        jd_text="build agents",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"salary_range":"high"}',
         normalized_payload='{"platform":"boss"}',
+    )
+    cross_platform_job = save_job_application(
+        database_path,
+        platform="lagou",
+        external_job_id="job-001-reposted",
+        job_url="https://example.com/jobs/1?track=lagou",
+        company_name="OpenAI",
+        title="Research Engineer",
+        location="Shanghai",
+        employment_type="full_time",
+        salary_range="40k-60k",
+        posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy="hybrid",
+        level="senior",
+        experience_requirement="5 years",
+        education_requirement="bachelor",
+        industry="ai",
+        company_size="100-499",
+        funding_stage="series_c",
+        tech_stack="python, llm",
+        benefits="meal, stock",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url="https://example.com/jobs/1?track=lagou",
+        jd_text="build agents",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"salary_range":"high"}',
+        normalized_payload='{"platform":"lagou"}',
     )
     jobs = list_job_applications(database_path)
 
     assert first_job["is_duplicate"] is False
     assert duplicate_job["is_duplicate"] is True
     assert duplicate_job["job_id"] == first_job["job_id"]
-    assert len(jobs) == 1
+    assert cross_platform_job["is_duplicate"] is False
+    assert len(jobs) == 2
     assert jobs[0]["platform"] == "boss"
     assert jobs[0]["status"] == "pending_review"
+    assert jobs[0]["remote_policy"] == "hybrid"
+    assert jobs[0]["level"] == "senior"
+    assert jobs[0]["experience_requirement"] == "5 years"
+    assert jobs[0]["education_requirement"] == "bachelor"
+    assert jobs[0]["industry"] == "ai"
+    assert jobs[0]["company_size"] == "100-499"
+    assert jobs[0]["funding_stage"] == "series_c"
+    assert jobs[0]["tech_stack"] == "python, llm"
+    assert jobs[0]["benefits"] == "meal, stock"
+    assert jobs[0]["published_at"] == "2026-06-09T09:00:00+00:00"
+    assert jobs[0]["detail_url"] == "https://example.com/jobs/1?track=abc"
+    assert jobs[0]["jd_text"] == "build agents"
+    assert jobs[0]["collected_at"] == "2026-06-10T09:05:00+00:00"
+    assert jobs[0]["field_confidence"] == '{"salary_range":"high"}'
 
 
-def test_job_application_status_updates_track_confirmation_batch(tmp_path: Path) -> None:
+def test_job_application_filters_and_evaluation_are_queryable_after_restart(tmp_path: Path) -> None:
     database_path = tmp_path / "storage.sqlite3"
     initialize_database(database_path)
     saved_job = save_job_application(
@@ -267,54 +344,143 @@ def test_job_application_status_updates_track_confirmation_batch(tmp_path: Path)
         employment_type="full_time",
         salary_range="30k-45k",
         posted_at="2026-06-10T10:00:00+00:00",
+        remote_policy="onsite",
+        level="mid",
+        experience_requirement="3 years",
+        education_requirement="bachelor",
+        industry="saas",
+        company_size="500-999",
+        funding_stage="public",
+        tech_stack="python, postgres",
+        benefits="bonus",
+        published_at="2026-06-10T08:00:00+00:00",
+        detail_url="https://example.com/jobs/2",
+        jd_text="build apis",
+        collected_at="2026-06-10T10:05:00+00:00",
+        field_confidence='{"title":"high"}',
         normalized_payload='{"platform":"lagou"}',
     )
-
-    pending_record = update_job_application_status(
+    save_job_application_filters(
         database_path,
-        job_id=saved_job["job_id"],
-        status="pending_review",
-        confirmation_batch_id="batch-001",
+        filter_id="filter-001",
+        hard_filters='{"city":["Hangzhou"],"salary_min":30000}',
+        ranking_preferences='{"skills":["python"],"prefer_remote":false}',
     )
-    submitted_record = update_job_application_status(
+    save_job_application_evaluation(
         database_path,
+        evaluation_id="eval-001",
         job_id=saved_job["job_id"],
+        score=91.5,
+        hard_filter_status="passed",
+        strengths='["python"]',
+        risks='["none"]',
+        missing_information='[]',
+        resume_improvement_advice='["quantify impact"]',
+        application_message="hello",
+        recommended=True,
+        recommendation_reason="strong fit",
+    )
+
+    filters = get_job_application_filters(database_path, filter_id="filter-001")
+    evaluation = get_job_application_evaluation(database_path, job_id=saved_job["job_id"])
+
+    assert filters is not None
+    assert filters["hard_filters"] == '{"city":["Hangzhou"],"salary_min":30000}'
+    assert filters["ranking_preferences"] == '{"skills":["python"],"prefer_remote":false}'
+    assert evaluation is not None
+    assert evaluation["score"] == 91.5
+    assert evaluation["recommended"] is True
+    assert evaluation["recommendation_reason"] == "strong fit"
+
+
+def test_confirmation_batch_keeps_batch_metadata_and_job_results_separate(tmp_path: Path) -> None:
+    database_path = tmp_path / "storage.sqlite3"
+    initialize_database(database_path)
+    first_job = save_job_application(
+        database_path,
+        platform="lagou",
+        external_job_id="job-002",
+        job_url="https://example.com/jobs/2",
+        company_name="Example",
+        title="Backend Engineer",
+        location="Hangzhou",
+        employment_type="full_time",
+        salary_range="30k-45k",
+        posted_at="2026-06-10T10:00:00+00:00",
+        remote_policy="onsite",
+        level="mid",
+        experience_requirement="3 years",
+        education_requirement="bachelor",
+        industry="saas",
+        company_size="500-999",
+        funding_stage="public",
+        tech_stack="python, postgres",
+        benefits="bonus",
+        published_at="2026-06-10T08:00:00+00:00",
+        detail_url="https://example.com/jobs/2",
+        jd_text="build apis",
+        collected_at="2026-06-10T10:05:00+00:00",
+        field_confidence='{"title":"high"}',
+        normalized_payload='{"platform":"lagou"}',
+    )
+    second_job = save_job_application(
+        database_path,
+        platform="lagou",
+        external_job_id="job-003",
+        job_url="https://example.com/jobs/3",
+        company_name="Example",
+        title="Platform Engineer",
+        location="Hangzhou",
+        employment_type="full_time",
+        salary_range="30k-45k",
+        posted_at="2026-06-10T10:00:00+00:00",
+        remote_policy="onsite",
+        level="mid",
+        experience_requirement="3 years",
+        education_requirement="bachelor",
+        industry="saas",
+        company_size="500-999",
+        funding_stage="public",
+        tech_stack="python, postgres",
+        benefits="bonus",
+        published_at="2026-06-10T08:00:00+00:00",
+        detail_url="https://example.com/jobs/3",
+        jd_text="build platforms",
+        collected_at="2026-06-10T10:06:00+00:00",
+        field_confidence='{"title":"high"}',
+        normalized_payload='{"platform":"lagou"}',
+    )
+    update_job_application_status(
+        database_path,
+        job_id=first_job["job_id"],
         status="submitted",
         confirmation_batch_id="batch-001",
-        submitted_at="2026-06-10T10:05:00+00:00",
+        confirmation_status="confirmed",
+        confirmed_at="2026-06-10T10:08:00+00:00",
+        submitted_at="2026-06-10T10:09:00+00:00",
         platform_message="submitted",
     )
-    failed_record = update_job_application_status(
+    update_job_application_status(
         database_path,
-        job_id=saved_job["job_id"],
+        job_id=second_job["job_id"],
         status="failed",
         confirmation_batch_id="batch-001",
+        confirmation_status="confirmed",
+        confirmed_at="2026-06-10T10:08:00+00:00",
         failure_reason="network",
     )
-    skipped_record = update_job_application_status(
-        database_path,
-        job_id=saved_job["job_id"],
-        status="skipped",
-        confirmation_batch_id="batch-001",
-        failure_reason="stale",
-    )
-    duplicate_record = update_job_application_status(
-        database_path,
-        job_id=saved_job["job_id"],
-        status="duplicate",
-        confirmation_batch_id="batch-001",
-        duplicate_detected=True,
-    )
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
 
-    assert pending_record["status"] == "pending_review"
-    assert submitted_record["status"] == "submitted"
-    assert submitted_record["submitted_at"] == "2026-06-10T10:05:00+00:00"
-    assert failed_record["failure_reason"] == "network"
-    assert skipped_record["status"] == "skipped"
-    assert duplicate_record["duplicate_detected"] is True
+    assert batch is not None
+    assert batch["status"] == "confirmed"
+    assert batch["confirmed_at"] == "2026-06-10T10:08:00+00:00"
+    assert len(batch["records"]) == 2
+    assert batch["records"][0]["status"] == "submitted"
+    assert batch["records"][1]["status"] == "failed"
+    assert batch["records"][1]["failure_reason"] == "network"
 
 
-def test_collection_progress_and_clear_job_application_data_preserve_sessions(tmp_path: Path) -> None:
+def test_collection_progress_is_queryable_and_clear_job_application_data_preserve_sessions(tmp_path: Path) -> None:
     database_path = tmp_path / "storage.sqlite3"
     initialize_database(database_path)
     saved_job = save_job_application(
@@ -328,6 +494,20 @@ def test_collection_progress_and_clear_job_application_data_preserve_sessions(tm
         employment_type="full_time",
         salary_range="35k-50k",
         posted_at="2026-06-10T11:00:00+00:00",
+        remote_policy="remote",
+        level="staff",
+        experience_requirement="6 years",
+        education_requirement="master",
+        industry="ai",
+        company_size="1000+",
+        funding_stage="public",
+        tech_stack="python, ml",
+        benefits="stock",
+        published_at="2026-06-10T10:30:00+00:00",
+        detail_url="https://example.com/jobs/3",
+        jd_text="train models",
+        collected_at="2026-06-10T11:01:00+00:00",
+        field_confidence='{"jd_text":"medium"}',
         normalized_payload='{"platform":"liepin"}',
     )
     save_platform_collection_task(
@@ -348,11 +528,13 @@ def test_collection_progress_and_clear_job_application_data_preserve_sessions(tm
         manual_takeover_required=True,
         status="paused",
     )
+    progress = get_collection_progress(database_path, collection_task_id="task-001", platform="liepin")
     update_job_application_status(
         database_path,
         job_id=saved_job["job_id"],
         status="submitted",
         confirmation_batch_id="batch-002",
+        confirmation_status="confirmed",
         submitted_at="2026-06-10T11:05:00+00:00",
     )
 
@@ -371,6 +553,12 @@ def test_collection_progress_and_clear_job_application_data_preserve_sessions(tm
             """,
             ("session-keep", "plan", "{}", "json", "2026-06-10T11:00:00+00:00"),
         )
+
+    assert progress is not None
+    assert progress["current_page"] == 3
+    assert progress["retry_count"] == 2
+    assert progress["manual_takeover_required"] is True
+    assert progress["failure_reason"] == "captcha"
 
     clear_job_application_data(database_path)
 
@@ -394,3 +582,37 @@ def test_collection_progress_and_clear_job_application_data_preserve_sessions(tm
     assert record_count[0] == 0
     assert session_count[0] == 1
     assert state_count[0] == 1
+
+
+def test_job_application_storage_rejects_sensitive_content(tmp_path: Path) -> None:
+    database_path = tmp_path / "storage.sqlite3"
+    initialize_database(database_path)
+
+    with pytest.raises(ValueError, match="敏感"):
+        save_job_application(
+            database_path,
+            platform="boss",
+            external_job_id="job-sensitive",
+            job_url="https://example.com/jobs/sensitive",
+            company_name="OpenAI",
+            title="Research Engineer",
+            location="Shanghai",
+            employment_type="full_time",
+            salary_range="40k-60k",
+            posted_at="2026-06-10T09:00:00+00:00",
+            remote_policy="hybrid",
+            level="senior",
+            experience_requirement="5 years",
+            education_requirement="bachelor",
+            industry="ai",
+            company_size="100-499",
+            funding_stage="series_c",
+            tech_stack="python, llm",
+            benefits="sms验证码 123456",
+            published_at="2026-06-09T09:00:00+00:00",
+            detail_url="https://example.com/jobs/sensitive",
+            jd_text="cookie=sessionid=abc",
+            collected_at="2026-06-10T09:05:00+00:00",
+            field_confidence='{"token":"secret"}',
+            normalized_payload='{"mobile":"13800000000"}',
+        )
