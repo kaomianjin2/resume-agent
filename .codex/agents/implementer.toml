@@ -1,6 +1,6 @@
 name = "implementer"
 description = "单任务实现 subagent：只在指定 worktree 和 Write Scope 内实现、测试、自检、提交。"
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 

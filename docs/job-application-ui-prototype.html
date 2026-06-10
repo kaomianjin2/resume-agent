@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>求职投递 UI Prototype</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #060715;
+      --panel: rgba(16, 20, 48, 0.78);
+      --panel-strong: rgba(22, 27, 65, 0.92);
+      --panel-soft: rgba(255, 255, 255, 0.045);
+      --line: rgba(146, 151, 255, 0.28);
+      --line-strong: rgba(70, 246, 255, 0.45);
+      --text: #f2f5ff;
+      --muted: #aeb7df;
+      --cyan: #46f6ff;
+      --blue: #6a7dff;
+      --violet: #a855f7;
+      --pink: #ff4fd8;
+      --green: #65ffbd;
+      --warning: #ffd166;
+      --danger: #ff6b9d;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 320px;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 16% 10%, rgba(80, 76, 255, 0.42), transparent 28%),
+        radial-gradient(circle at 80% 0%, rgba(255, 79, 216, 0.24), transparent 26%),
+        linear-gradient(135deg, #050611 0%, #090b21 48%, #120921 100%);
+      font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      content: "";
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 85%);
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 220px minmax(620px, 1fr) 360px;
+      gap: 18px;
+      min-height: 100vh;
+      padding: 22px;
+    }
+
+    .sidebar,
+    .workspace,
+    .review-panel,
+    .modal-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+    }
+
+    .brand {
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      margin-bottom: 14px;
+      border: 1px solid rgba(70, 246, 255, 0.5);
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(70, 246, 255, 0.2), rgba(168, 85, 247, 0.3));
+      box-shadow: 0 0 28px rgba(70, 246, 255, 0.28);
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 760;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 26px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: 17px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .muted,
+    .metric-label,
+    .field-label,
+    .event-text,
+    .tiny {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .nav-button,
+    .step-button,
+    .icon-button,
+    .ghost-button,
+    .primary-button,
+    .danger-button,
+    .filter-chip,
+    .tab-button {
+      min-height: 36px;
+      border: 1px solid rgba(146, 151, 255, 0.26);
+      border-radius: 8px;
+      color: var(--text);
+      background: rgba(8, 11, 31, 0.72);
+    }
+
+    .nav-button,
+    .step-button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-height: 40px;
+      padding: 0 12px;
+      color: var(--muted);
+      text-align: left;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .nav-button.active,
+    .step-button.active,
+    .tab-button.active,
+    .filter-chip.active {
+      color: var(--text);
+      border-color: var(--line-strong);
+      background: linear-gradient(90deg, rgba(70, 246, 255, 0.16), rgba(168, 85, 247, 0.18));
+      box-shadow: 0 0 28px rgba(70, 246, 255, 0.12);
+    }
+
+    .nav-button:hover,
+    .step-button:hover,
+    .ghost-button:hover,
+    .icon-button:hover,
+    .tab-button:hover,
+    .filter-chip:hover {
+      border-color: rgba(70, 246, 255, 0.36);
+      color: var(--text);
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: 3px;
+    }
+
+    .runtime {
+      display: grid;
+      gap: 10px;
+      margin-top: auto;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border: 1px solid rgba(101, 255, 189, 0.25);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(101, 255, 189, 0.08);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 14px var(--green);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 18px;
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .topbar,
+    .panel-head,
+    .row-between,
+    .actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .actions {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .primary-button {
+      padding: 0 14px;
+      border-color: rgba(70, 246, 255, 0.55);
+      background: linear-gradient(90deg, rgba(70, 246, 255, 0.22), rgba(106, 125, 255, 0.28));
+    }
+
+    .ghost-button,
+    .danger-button,
+    .icon-button {
+      padding: 0 12px;
+    }
+
+    .danger-button {
+      border-color: rgba(255, 107, 157, 0.45);
+      color: #ffd9e5;
+      background: rgba(255, 107, 157, 0.1);
+    }
+
+    .icon-button {
+      width: 36px;
+      padding: 0;
+    }
+
+    .tabs,
+    .filters,
+    .step-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tab-button,
+    .filter-chip {
+      padding: 0 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .content {
+      min-height: 0;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .screen {
+      display: none;
+      min-height: 100%;
+    }
+
+    .screen.active {
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .card,
+    .metric-card,
+    .job-detail,
+    .event-row,
+    .profile-field,
+    .platform-row,
+    .result-row {
+      border: 1px solid rgba(146, 151, 255, 0.22);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .card,
+    .job-detail {
+      padding: 16px;
+    }
+
+    .metric-card {
+      display: grid;
+      gap: 6px;
+      min-height: 86px;
+      padding: 14px;
+    }
+
+    .metric-number {
+      font-size: 24px;
+      font-weight: 760;
+      line-height: 1;
+    }
+
+    .profile-field {
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+    }
+
+    .field-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .field-control,
+    .search-input,
+    textarea {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid rgba(146, 151, 255, 0.26);
+      border-radius: 8px;
+      color: var(--text);
+      background: rgba(8, 11, 31, 0.72);
+      padding: 0 10px;
+    }
+
+    textarea {
+      min-height: 112px;
+      padding: 10px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    .tag,
+    .score,
+    .state-tag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border: 1px solid rgba(146, 151, 255, 0.26);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tag.good,
+    .state-tag.good {
+      border-color: rgba(101, 255, 189, 0.36);
+      color: var(--green);
+      background: rgba(101, 255, 189, 0.08);
+    }
+
+    .tag.warn,
+    .state-tag.warn {
+      border-color: rgba(255, 209, 102, 0.42);
+      color: var(--warning);
+      background: rgba(255, 209, 102, 0.09);
+    }
+
+    .tag.bad,
+    .state-tag.bad {
+      border-color: rgba(255, 107, 157, 0.42);
+      color: var(--danger);
+      background: rgba(255, 107, 157, 0.09);
+    }
+
+    .score {
+      min-width: 46px;
+      border-color: rgba(70, 246, 255, 0.36);
+      color: var(--cyan);
+      background: rgba(70, 246, 255, 0.08);
+      font-weight: 760;
+    }
+
+    .platform-row,
+    .event-row,
+    .result-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 0.8fr) minmax(140px, 1fr) minmax(140px, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .platform-row {
+      grid-template-columns: minmax(110px, 0.8fr) minmax(110px, 0.8fr) minmax(150px, 1fr) minmax(130px, 1fr) auto;
+    }
+
+    .result-row {
+      grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr) minmax(130px, 0.9fr) minmax(160px, 1fr) auto;
+    }
+
+    .progress-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--cyan), var(--violet));
+    }
+
+    .job-table {
+      display: grid;
+      overflow: hidden;
+      border: 1px solid rgba(146, 151, 255, 0.22);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .job-row {
+      display: grid;
+      grid-template-columns: 34px 52px 76px 72px minmax(150px, 1fr) minmax(120px, 0.8fr) 82px 70px 84px 84px 86px minmax(130px, 1fr);
+      gap: 10px;
+      align-items: center;
+      min-height: 54px;
+      padding: 0 12px;
+      border-top: 1px solid rgba(146, 151, 255, 0.16);
+      font-size: 13px;
+    }
+
+    .job-row:first-child {
+      border-top: 0;
+    }
+
+    .job-row.header {
+      min-height: 40px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .job-row.selected {
+      background: rgba(70, 246, 255, 0.06);
+    }
+
+    .state-matrix,
+    .audit-grid,
+    .validation-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .state-matrix {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .state-card,
+    .validation-row,
+    .mobile-job-card {
+      display: grid;
+      gap: 6px;
+      padding: 12px;
+      border: 1px solid rgba(146, 151, 255, 0.22);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .state-card strong {
+      font-size: 13px;
+    }
+
+    .state-card.bad {
+      border-color: rgba(255, 107, 157, 0.42);
+      background: rgba(255, 107, 157, 0.08);
+    }
+
+    .state-card.warn {
+      border-color: rgba(255, 209, 102, 0.42);
+      background: rgba(255, 209, 102, 0.08);
+    }
+
+    .state-card.good {
+      border-color: rgba(101, 255, 189, 0.34);
+      background: rgba(101, 255, 189, 0.07);
+    }
+
+    .audit-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .validation-row {
+      grid-template-columns: minmax(150px, 1fr) minmax(110px, 0.7fr) minmax(190px, 1fr) auto;
+      align-items: center;
+    }
+
+    .blocked-card {
+      border-color: rgba(255, 107, 157, 0.45);
+      background:
+        linear-gradient(90deg, rgba(255, 107, 157, 0.12), rgba(255, 209, 102, 0.06)),
+        rgba(255, 255, 255, 0.035);
+    }
+
+    .skeleton {
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.07), rgba(255,255,255,0.16), rgba(255,255,255,0.07));
+      background-size: 220% 100%;
+      animation: shimmer 1.6s infinite linear;
+    }
+
+    @keyframes shimmer {
+      from { background-position: 220% 0; }
+      to { background-position: -220% 0; }
+    }
+
+    .mobile-job-list {
+      display: none;
+    }
+
+    .job-title {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .job-title strong,
+    .truncate {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .job-open-button {
+      width: fit-content;
+      max-width: 100%;
+      min-height: auto;
+      padding: 0;
+      border: 0;
+      color: var(--text);
+      background: transparent;
+      font-weight: 760;
+      text-align: left;
+      text-decoration: underline;
+      text-decoration-color: rgba(70, 246, 255, 0.46);
+      text-underline-offset: 3px;
+    }
+
+    .detail-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 260px;
+      gap: 14px;
+    }
+
+    .detail-tabs {
+      display: grid;
+      gap: 12px;
+    }
+
+    .advice-list,
+    .risk-list,
+    .event-list,
+    .result-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .risk-item,
+    .advice-item {
+      display: grid;
+      gap: 4px;
+      padding: 10px;
+      border-left: 3px solid var(--warning);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .advice-item {
+      border-left-color: var(--cyan);
+    }
+
+    .review-panel {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr) auto;
+      gap: 16px;
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .review-section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .review-scroll {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 32px;
+      padding: 8px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .check-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(101, 255, 189, 0.8);
+    }
+
+    .check-dot.warn {
+      background: var(--warning);
+      box-shadow: 0 0 12px rgba(255, 209, 102, 0.8);
+    }
+
+    .check-dot.bad {
+      background: var(--danger);
+      box-shadow: 0 0 12px rgba(255, 107, 157, 0.8);
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(2, 4, 12, 0.68);
+    }
+
+    .modal.open {
+      display: flex;
+    }
+
+    .modal-card {
+      width: min(780px, 100%);
+      max-height: calc(100vh - 48px);
+      display: grid;
+      gap: 16px;
+      padding: 20px;
+      overflow: auto;
+    }
+
+    .confirm-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .confirm-checkbox {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px;
+      border: 1px solid rgba(255, 209, 102, 0.36);
+      border-radius: 8px;
+      background: rgba(255, 209, 102, 0.08);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1240px) {
+      .app {
+        grid-template-columns: 200px minmax(0, 1fr);
+      }
+
+      .review-panel {
+        grid-column: 2;
+      }
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 14px;
+      }
+
+      .sidebar,
+      .workspace,
+      .review-panel {
+        grid-column: 1;
+      }
+
+      .workspace {
+        overflow: visible;
+      }
+
+      .content,
+      .review-scroll {
+        overflow: visible;
+      }
+
+      .grid-2,
+      .grid-3,
+      .detail-layout,
+      .confirm-grid,
+      .state-matrix,
+      .audit-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .platform-row,
+      .event-row,
+      .result-row,
+      .validation-row {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .job-table {
+        display: none;
+      }
+
+      .mobile-job-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .topbar,
+      .panel-head,
+      .row-between {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" aria-label="模块导航">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <h1>Interview Agent</h1>
+        <p class="muted">桌面工作台</p>
+      </div>
+
+      <nav class="nav" aria-label="主模块">
+        <button class="nav-button">面试准备 <span>01</span></button>
+        <button class="nav-button">模拟面试 <span>02</span></button>
+        <button class="nav-button">算法练习 <span>03</span></button>
+        <button class="nav-button active">求职投递 <span>04</span></button>
+        <button class="nav-button">用户管理 <span>05</span></button>
+      </nav>
+
+      <div class="runtime">
+        <div class="status-pill">
+          <span>Runtime Ready</span>
+          <span class="status-dot"></span>
+        </div>
+        <p class="muted">配置来自 config/interview-agent.toml</p>
+      </div>
+    </aside>
+
+    <main class="workspace" aria-label="求职投递工作区">
+      <div class="topbar">
+        <div>
+          <h2 id="screen-title">候选岗位</h2>
+          <p class="muted" id="screen-subtitle">筛选、查看详情、勾选后再进入批量确认。</p>
+        </div>
+        <div class="actions">
+          <button class="icon-button" title="刷新" aria-label="刷新求职投递数据">⟳</button>
+          <button class="icon-button" title="筛选" aria-label="打开筛选条件">⌕</button>
+          <button class="danger-button" id="cleanup-button">清理数据</button>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="求职投递流程">
+        <button class="step-button" role="tab" aria-selected="false" aria-controls="screen-profile" id="tab-profile" data-screen="profile">画像与筛选 <span class="tag warn">待确认</span></button>
+        <button class="step-button" role="tab" aria-selected="false" aria-controls="screen-collect" id="tab-collect" data-screen="collect">采集进度 <span class="tag good">运行中</span></button>
+        <button class="step-button active" role="tab" aria-selected="true" aria-controls="screen-jobs" id="tab-jobs" data-screen="jobs">候选岗位 <span class="tag">128</span></button>
+        <button class="step-button" role="tab" aria-selected="false" aria-controls="screen-results" id="tab-results" data-screen="results">投递结果 <span class="tag bad">2 失败</span></button>
+      </div>
+
+      <section class="content">
+        <div class="screen" id="screen-profile" role="tabpanel" aria-labelledby="tab-profile">
+          <div class="grid-3">
+            <div class="metric-card">
+              <span class="metric-label">简历画像</span>
+              <strong class="metric-number">92%</strong>
+              <span class="muted">8 个字段已识别</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">待确认字段</span>
+              <strong class="metric-number" style="color: var(--warning)">3</strong>
+              <span class="muted">城市、薪资、融资阶段</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">默认搜索词</span>
+              <strong class="metric-number">6</strong>
+              <span class="muted">后端 / Go / 平台工程</span>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="card">
+              <div class="panel-head">
+                <h3>硬过滤</h3>
+                <span class="tag warn">开始采集前确认</span>
+              </div>
+              <div class="grid-2" style="margin-top: 14px;">
+                <label class="profile-field">
+                  <span class="field-label">城市 <span class="tag warn">缺失</span></span>
+                  <select class="field-control">
+                    <option>上海 / 杭州 / 远程</option>
+                  </select>
+                </label>
+                <label class="profile-field">
+                  <span class="field-label">薪资下限 <span class="tag warn">待确认</span></span>
+                  <input class="field-control" value="35k">
+                </label>
+                <label class="profile-field">
+                  <span class="field-label">经验</span>
+                  <input class="field-control" value="5-8 年">
+                </label>
+                <label class="profile-field">
+                  <span class="field-label">学历</span>
+                  <input class="field-control" value="本科及以上">
+                </label>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="panel-head">
+                <h3>排序偏好</h3>
+                <span class="tag good">不直接排除</span>
+              </div>
+              <div class="filters" style="margin-top: 14px;">
+                <button class="filter-chip active">Go</button>
+                <button class="filter-chip active">分布式系统</button>
+                <button class="filter-chip">平台工程</button>
+                <button class="filter-chip">AI Infra</button>
+                <button class="filter-chip">B 轮以后</button>
+                <button class="filter-chip">远程优先</button>
+              </div>
+              <label style="display: grid; gap: 8px; margin-top: 14px;">
+                <span class="field-label">黑名单公司</span>
+                <textarea>外包公司、低于 50 人且无融资信息、岗位 JD 只写长期出差</textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="ghost-button">重置为简历推导结果</button>
+            <button class="primary-button">保存画像并开始采集</button>
+          </div>
+
+          <div class="card blocked-card">
+            <div class="panel-head">
+              <h3>阻断空态：未找到 resume_profile</h3>
+              <span class="state-tag bad">empty</span>
+            </div>
+            <p class="muted" style="margin-top: 10px;">当用户尚未导入简历或简历解析失败时，只显示“去面试准备”入口，不允许开始采集。</p>
+            <div class="actions" style="margin-top: 12px;">
+              <button class="ghost-button">去面试准备</button>
+              <button class="ghost-button">重新读取画像</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="screen" id="screen-collect" role="tabpanel" aria-labelledby="tab-collect">
+          <div class="grid-3">
+            <div class="metric-card">
+              <span class="metric-label">已采集岗位</span>
+              <strong class="metric-number">128</strong>
+              <span class="muted">97 个已完成详情读取</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">评估队列</span>
+              <strong class="metric-number">31</strong>
+              <span class="muted">后台继续生成报告</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">人工接管</span>
+              <strong class="metric-number" style="color: var(--warning)">1</strong>
+              <span class="muted">拉勾验证码</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <h3>平台进度</h3>
+              <button class="ghost-button">重试失败平台</button>
+            </div>
+            <div class="event-list" style="margin-top: 14px;">
+              <div class="platform-row">
+                <strong>BOSS 直聘</strong>
+                <span class="state-tag good">详情读取中</span>
+                <span class="muted">阶段：第 5 页详情读取</span>
+                <div class="progress-track"><div class="progress-fill" style="width: 74%"></div></div>
+                <span class="muted">74 / 100</span>
+              </div>
+              <div class="platform-row">
+                <strong>拉勾</strong>
+                <span class="state-tag warn">人工接管</span>
+                <span class="muted">验证码 / 重试 1 次</span>
+                <div class="progress-track"><div class="progress-fill" style="width: 42%"></div></div>
+                <button class="ghost-button">Chrome 处理后继续</button>
+              </div>
+              <div class="platform-row">
+                <strong>猎聘</strong>
+                <span class="state-tag good">采集完成</span>
+                <span class="muted">36 个详情已保存</span>
+                <div class="progress-track"><div class="progress-fill" style="width: 100%"></div></div>
+                <span class="muted">36 / 36</span>
+              </div>
+              <div class="platform-row">
+                <strong>登录态检查</strong>
+                <span class="state-tag bad">login expired</span>
+                <span class="muted">BOSS 详情页要求重新登录</span>
+                <span class="muted">重试 0 / 3</span>
+                <button class="ghost-button">Chrome 登录后重试</button>
+              </div>
+              <div class="platform-row">
+                <strong>页面结构</strong>
+                <span class="state-tag bad">page changed</span>
+                <span class="muted">猎聘公司规模字段选择器失效</span>
+                <span class="muted">保留低置信度</span>
+                <button class="ghost-button">查看解析错误</button>
+              </div>
+              <div class="platform-row">
+                <strong>频率限制</strong>
+                <span class="state-tag warn">rate limit</span>
+                <span class="muted">拉勾退避 12 分钟</span>
+                <span class="muted">重试 2 / 3</span>
+                <button class="ghost-button">暂停平台</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <h3>状态矩阵</h3>
+              <span class="tag">用于 JOB-013 验收</span>
+            </div>
+            <div class="state-matrix" style="margin-top: 14px;">
+              <div class="state-card"><strong>loading</strong><span class="skeleton"></span><span class="muted">平台任务创建中</span></div>
+              <div class="state-card warn"><strong>manual handoff</strong><span class="muted">验证码、风控、强制弹窗</span></div>
+              <div class="state-card bad"><strong>security blocked</strong><span class="muted">敏感字段扫描命中，禁止继续投递</span></div>
+              <div class="state-card good"><strong>progress</strong><span class="muted">分页、详情、评估分阶段展示</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <h3>非敏感事件流</h3>
+              <span class="tag good">已脱敏</span>
+            </div>
+            <div class="event-list" style="margin-top: 14px;">
+              <div class="event-row">
+                <span>14:22</span>
+                <strong>BOSS 直聘</strong>
+                <span class="event-text">进入第 5 页详情读取</span>
+                <span class="state-tag good">running</span>
+              </div>
+              <div class="event-row">
+                <span>14:19</span>
+                <strong>拉勾</strong>
+                <span class="event-text">验证码，需要用户在 Chrome 中处理</span>
+                <span class="state-tag warn">handoff</span>
+              </div>
+              <div class="event-row">
+                <span>14:16</span>
+                <strong>猎聘</strong>
+                <span class="event-text">36 个岗位完成详情读取</span>
+                <span class="state-tag good">done</span>
+              </div>
+              <div class="event-row">
+                <span>14:12</span>
+                <strong>安全扫描</strong>
+                <span class="event-text">node_runs 命中疑似 session 字段，已阻断写入</span>
+                <span class="state-tag bad">security blocked</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="screen active" id="screen-jobs" role="tabpanel" aria-labelledby="tab-jobs">
+          <div class="filters" aria-label="候选岗位筛选">
+            <button class="filter-chip active">全部平台</button>
+            <button class="filter-chip active">匹配分 80+</button>
+            <button class="filter-chip">硬条件通过</button>
+            <button class="filter-chip">排序：匹配分↓</button>
+            <button class="filter-chip">远程</button>
+            <button class="filter-chip">低置信度</button>
+            <button class="filter-chip">高风险</button>
+            <input class="search-input" style="max-width: 220px;" value="Go 后端">
+          </div>
+
+          <div class="job-table" role="table" aria-label="候选岗位">
+            <div class="job-row header" role="row">
+              <span></span><span>匹配</span><span>硬过滤</span><span>平台</span><span>岗位</span><span>公司</span><span>薪资</span><span>城市</span><span>评估</span><span>投递</span><span>风险</span><span>排除 / 保留原因</span>
+            </div>
+            <div class="job-row selected" role="row">
+              <input type="checkbox" checked aria-label="选择 Go 后端平台工程师">
+              <span class="score">92</span>
+              <span class="state-tag good">通过</span>
+              <span>BOSS</span>
+              <span class="job-title"><button class="job-open-button" data-open-detail>Go 后端平台工程师</button><span class="muted truncate">分布式任务调度 / 可观测性</span></span>
+              <span class="truncate">极星科技</span>
+              <span>35-55k</span>
+              <span>上海</span>
+              <span class="state-tag good">done</span>
+              <span class="state-tag good">可投递</span>
+              <span class="state-tag good">低</span>
+              <span class="muted truncate">全部硬条件通过</span>
+            </div>
+            <div class="job-row selected" role="row">
+              <input type="checkbox" checked aria-label="选择 AI Infra 后端工程师">
+              <span class="score">88</span>
+              <span class="state-tag good">通过</span>
+              <span>猎聘</span>
+              <span class="job-title"><button class="job-open-button" data-open-detail>AI Infra 后端工程师</button><span class="muted truncate">模型网关 / 推理平台</span></span>
+              <span class="truncate">澜舟智能</span>
+              <span>40-60k</span>
+              <span>杭州</span>
+              <span class="state-tag good">done</span>
+              <span class="state-tag warn">待重校验</span>
+              <span class="state-tag warn">中</span>
+              <span class="state-tag warn">低置信度</span>
+            </div>
+            <div class="job-row" role="row">
+              <input type="checkbox" aria-label="选择 资深服务端工程师">
+              <span class="score">83</span>
+              <span class="state-tag warn">边缘</span>
+              <span>拉勾</span>
+              <span class="job-title"><button class="job-open-button" data-open-detail>资深服务端工程师</button><span class="muted truncate">交易系统 / 高并发</span></span>
+              <span class="truncate">云启网络</span>
+              <span>30-45k</span>
+              <span>远程</span>
+              <span class="state-tag warn">pending</span>
+              <span class="state-tag warn">待话术</span>
+              <span class="state-tag warn">中</span>
+              <span class="state-tag warn">待确认</span>
+            </div>
+            <div class="job-row" role="row">
+              <input type="checkbox" disabled aria-label="重复岗位不可选">
+              <span class="score">76</span>
+              <span class="state-tag bad">不通过</span>
+              <span>BOSS</span>
+              <span class="job-title"><button class="job-open-button" data-open-detail>后端开发工程师</button><span class="muted truncate">外包驻场 / Java</span></span>
+              <span class="truncate">北辰外包</span>
+              <span>25-35k</span>
+              <span>北京</span>
+              <span class="state-tag bad">skipped</span>
+              <span class="state-tag bad">duplicate</span>
+              <span class="state-tag bad">高</span>
+              <span class="muted truncate">历史已投递且公司黑名单</span>
+            </div>
+          </div>
+
+          <div class="mobile-job-list" aria-label="移动端候选岗位卡片">
+            <div class="mobile-job-card">
+              <div class="row-between"><button class="job-open-button" data-open-detail>Go 后端平台工程师</button><span class="score">92</span></div>
+              <p class="muted">BOSS / 极星科技 / 上海 / 35-55k</p>
+              <div class="filters"><span class="tag good">硬过滤通过</span><span class="tag good">可投递</span><span class="tag good">低风险</span></div>
+            </div>
+            <div class="mobile-job-card">
+              <div class="row-between"><button class="job-open-button" data-open-detail>AI Infra 后端工程师</button><span class="score">88</span></div>
+              <p class="muted">猎聘 / 澜舟智能 / 杭州 / 公司规模低置信度</p>
+              <div class="filters"><span class="tag good">硬过滤通过</span><span class="tag warn">待重校验</span><span class="tag warn">中风险</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <h3>空态 / 加载态 / 错误态</h3>
+              <span class="tag">候选清单边界</span>
+            </div>
+            <div class="state-matrix" style="margin-top: 14px;">
+              <div class="state-card"><strong>empty</strong><span class="muted">筛选后 0 个岗位，显示调整筛选入口</span></div>
+              <div class="state-card"><strong>loading</strong><span class="skeleton"></span><span class="muted">评估报告生成中</span></div>
+              <div class="state-card warn"><strong>pending_review</strong><span class="muted">话术未生成，不允许确认投递</span></div>
+              <div class="state-card bad"><strong>error</strong><span class="muted">单岗位评估失败，可重试，不污染其他岗位</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="screen" id="screen-detail" role="tabpanel" aria-labelledby="tab-jobs">
+          <div class="detail-layout">
+            <div class="detail-tabs">
+              <div class="job-detail">
+                <div class="panel-head">
+                  <div>
+                    <button class="ghost-button" id="back-to-jobs" style="margin-bottom: 10px;">返回候选清单</button>
+                    <h3>Go 后端平台工程师</h3>
+                    <p class="muted">极星科技 / BOSS 直聘 / 上海 / 35-55k</p>
+                  </div>
+                  <span class="score">92</span>
+                </div>
+              </div>
+
+              <div class="tabs">
+                <button class="tab-button active">JD 摘要</button>
+                <button class="tab-button">匹配优势</button>
+                <button class="tab-button">风险缺口</button>
+                <button class="tab-button">简历建议</button>
+                <button class="tab-button">投递话术</button>
+              </div>
+
+              <div class="card">
+                <h3>JD 摘要</h3>
+                <p class="muted" style="margin-top: 10px;">负责平台服务治理、任务调度、日志链路和服务可观测性建设。要求 Go、Kubernetes、消息队列和高并发服务经验。</p>
+              </div>
+
+              <div class="state-matrix">
+                <div class="state-card"><strong>无选中岗位</strong><span class="muted">提示先从候选清单选择岗位</span></div>
+                <div class="state-card warn"><strong>JD 读取失败</strong><span class="muted">保留平台 URL 摘要和重试入口</span></div>
+                <div class="state-card"><strong>评估生成中</strong><span class="skeleton"></span><span class="muted">不允许加入投递队列</span></div>
+                <div class="state-card bad"><strong>话术生成失败</strong><span class="muted">允许重试，不自动提交</span></div>
+              </div>
+
+              <div class="grid-2">
+                <div class="card">
+                  <h3>匹配优势</h3>
+                  <div class="advice-list" style="margin-top: 12px;">
+                    <div class="advice-item"><strong>Go 服务治理经验</strong><span class="muted">简历中已有平台服务和链路追踪项目。</span></div>
+                    <div class="advice-item"><strong>分布式系统背景</strong><span class="muted">任务调度和队列处理经验与 JD 高相关。</span></div>
+                  </div>
+                </div>
+                <div class="card">
+                  <h3>风险缺口</h3>
+                  <div class="risk-list" style="margin-top: 12px;">
+                    <div class="risk-item"><strong>Kubernetes 生产经验不足</strong><span class="muted">建议补充部署、扩缩容或故障处理案例。</span></div>
+                    <div class="risk-item"><strong>公司规模字段低置信度</strong><span class="muted">确认前保留，不直接过滤。</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside class="card">
+              <h3>投递话术</h3>
+              <textarea style="margin-top: 12px;">你好，我有 6 年后端与平台工程经验，近期重点做 Go 服务治理、任务调度和可观测性建设。看到岗位关注分布式平台稳定性，和我过往项目匹配度较高，希望进一步沟通。</textarea>
+              <div class="actions" style="margin-top: 12px;">
+                <button class="ghost-button">复制</button>
+                <button class="primary-button">加入投递队列</button>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        <div class="screen" id="screen-results" role="tabpanel" aria-labelledby="tab-results">
+          <div class="grid-3">
+            <div class="metric-card"><span class="metric-label">批次 ID</span><strong class="metric-number">JA-240610-01</strong><span class="muted">2026-06-10 14:40</span></div>
+            <div class="metric-card"><span class="metric-label">已提交</span><strong class="metric-number" style="color: var(--green)">8</strong><span class="muted">平台返回成功</span></div>
+            <div class="metric-card"><span class="metric-label">失败 / 跳过</span><strong class="metric-number" style="color: var(--danger)">4</strong><span class="muted">支持按项重试</span></div>
+          </div>
+
+          <div class="card">
+            <div class="panel-head">
+              <h3>投递结果</h3>
+              <button class="ghost-button">导出摘要</button>
+            </div>
+            <div class="result-list" style="margin-top: 14px;">
+              <div class="result-row">
+                <strong>Go 后端平台工程师</strong>
+                <span class="muted">BOSS / 极星科技</span>
+                <span class="state-tag good">submitted</span>
+                <span class="muted">平台提示：已发送招呼</span>
+                <button class="ghost-button">查看</button>
+              </div>
+              <div class="result-row">
+                <strong>AI Infra 后端工程师</strong>
+                <span class="muted">猎聘 / 澜舟智能</span>
+                <span class="state-tag warn">skipped: JD 变化</span>
+                <span class="muted">重校验发现核心职责变化</span>
+                <button class="ghost-button">重新确认</button>
+              </div>
+              <div class="result-row">
+                <strong>资深服务端工程师</strong>
+                <span class="muted">拉勾 / 云启网络</span>
+                <span class="state-tag bad">failed: 验证码</span>
+                <span class="muted">人工接管后可继续</span>
+                <button class="ghost-button">重试</button>
+              </div>
+              <div class="result-row">
+                <strong>后端开发工程师</strong>
+                <span class="muted">BOSS / 北辰外包</span>
+                <span class="state-tag bad">duplicate</span>
+                <span class="muted">历史投递记录命中</span>
+                <button class="ghost-button">忽略</button>
+              </div>
+              <div class="result-row">
+                <strong>安全阻断样例</strong>
+                <span class="muted">全平台 / prompt scan</span>
+                <span class="state-tag bad">security blocked</span>
+                <span class="muted">疑似 token 字段，未写入 node_runs</span>
+                <button class="ghost-button">查看扫描摘要</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="review-panel" aria-label="检查面板">
+      <div class="review-section">
+        <div class="panel-head">
+          <h3>投递检查</h3>
+          <span class="tag warn" id="review-screen-label">候选岗位</span>
+        </div>
+        <p class="muted" id="review-summary">已选择 2 个岗位，包含 1 个低置信度字段，需要批量确认。</p>
+      </div>
+
+      <div class="grid-2">
+        <div class="metric-card">
+          <span class="metric-label">已选岗位</span>
+          <strong class="metric-number" id="selected-count">2</strong>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">高风险</span>
+          <strong class="metric-number" style="color: var(--warning)">1</strong>
+        </div>
+      </div>
+
+      <div class="review-scroll">
+        <div class="check-row"><span class="check-dot"></span><span class="truncate">Chrome 登录态不入库</span><span class="tag good">OK</span></div>
+        <div class="check-row"><span class="check-dot"></span><span class="truncate">LLM 输入不含 cookie/token</span><span class="tag good">OK</span></div>
+        <div class="check-row"><span class="check-dot warn"></span><span class="truncate">1 个岗位字段低置信度</span><span class="tag warn">确认</span></div>
+        <div class="check-row"><span class="check-dot bad"></span><span class="truncate">重复岗位不可投递</span><span class="tag bad">拦截</span></div>
+        <div class="check-row"><span class="check-dot warn"></span><span class="truncate">1 个确认批次待重校验</span><span class="tag warn">stale</span></div>
+        <div class="check-row"><span class="check-dot bad"></span><span class="truncate">安全扫描失败时阻断提交</span><span class="tag bad">block</span></div>
+
+        <div class="card">
+          <div class="panel-head">
+            <h3>平台分布</h3>
+            <span class="tag">2 个平台</span>
+          </div>
+          <div class="filters" style="margin-top: 12px;">
+            <span class="tag good">BOSS 1</span>
+            <span class="tag warn">猎聘 1</span>
+            <span class="tag">拉勾 0</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>下一步</h3>
+          <p class="muted" style="margin-top: 8px;">进入批量确认前，系统会展示批次摘要、风险、简历摘要、每个平台的话术策略和逐岗位重校验结果。</p>
+        </div>
+
+        <div class="card blocked-card">
+          <div class="panel-head">
+            <h3>安全阻断态</h3>
+            <span class="state-tag bad">security blocked</span>
+          </div>
+          <p class="muted" style="margin-top: 8px;">如果日志、SQLite、session state 或 prompt 命中 cookie、token、session id，主操作只保留回退、清理和重新扫描。</p>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="ghost-button">返回调整</button>
+        <button class="primary-button" id="open-confirm">批量确认</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="modal" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-card">
+      <div class="panel-head">
+        <div>
+          <h2 id="modal-title" tabindex="-1">批量确认投递</h2>
+          <p class="muted">投递前最后确认，本批次提交后逐个平台执行。</p>
+        </div>
+        <button class="icon-button" id="close-confirm" aria-label="关闭">×</button>
+      </div>
+
+      <div class="confirm-grid">
+        <div class="metric-card"><span class="metric-label">岗位</span><strong class="metric-number">2</strong></div>
+        <div class="metric-card"><span class="metric-label">平台</span><strong class="metric-number">2</strong></div>
+        <div class="metric-card"><span class="metric-label">高风险</span><strong class="metric-number" style="color: var(--warning)">1</strong></div>
+        <div class="metric-card"><span class="metric-label">重复拦截</span><strong class="metric-number" style="color: var(--danger)">1</strong></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3>风险提示</h3>
+          <div class="risk-list" style="margin-top: 12px;">
+            <div class="risk-item"><strong>猎聘岗位字段低置信度</strong><span class="muted">公司规模和融资阶段缺失，投递前保留风险提示。</span></div>
+            <div class="risk-item"><strong>拉勾处于人工接管</strong><span class="muted">验证码处理完成前不会提交拉勾岗位。</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>简历摘要</h3>
+          <p class="muted" style="margin-top: 10px;">后端 / Go / 平台工程，6 年经验，重点项目包含服务治理、任务调度、可观测性建设。</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="panel-head">
+          <h3>投递前重校验结果</h3>
+          <span class="tag warn">提交集合会按此列表执行</span>
+        </div>
+        <div class="validation-list" style="margin-top: 12px;">
+          <div class="validation-row">
+            <strong>Go 后端平台工程师</strong>
+            <span class="state-tag good">ready</span>
+            <span class="muted">岗位在线，JD 未变化，按钮可用</span>
+            <span class="tag good">将提交</span>
+          </div>
+          <div class="validation-row">
+            <strong>AI Infra 后端工程师</strong>
+            <span class="state-tag warn">stale-skipped</span>
+            <span class="muted">JD 核心职责变化，需要重新确认</span>
+            <button class="ghost-button">重新确认</button>
+          </div>
+          <div class="validation-row">
+            <strong>后端开发工程师</strong>
+            <span class="state-tag bad">duplicate-blocked</span>
+            <span class="muted">历史投递记录命中</span>
+            <span class="tag bad">不提交</span>
+          </div>
+          <div class="validation-row">
+            <strong>资深服务端工程师</strong>
+            <span class="state-tag bad">button-disabled</span>
+            <span class="muted">平台按钮不可用，写入 skipped</span>
+            <span class="tag bad">跳过</span>
+          </div>
+        </div>
+      </div>
+
+      <label class="confirm-checkbox">
+        <input type="checkbox" id="final-confirm">
+        <span>已审核岗位、风险和投递话术，允许本批次执行投递。未确认、重复或陈旧岗位会在提交前被跳过。</span>
+      </label>
+
+      <div class="actions">
+        <button class="ghost-button" id="back-confirm">返回修改选择</button>
+        <button class="primary-button" id="submit-confirm" disabled>确认并创建批次</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="cleanup-modal" role="dialog" aria-modal="true" aria-labelledby="cleanup-title">
+    <div class="modal-card">
+      <div class="panel-head">
+        <div>
+          <h2 id="cleanup-title" tabindex="-1">清空求职数据</h2>
+          <p class="muted">只删除本模块的本地数据，不影响简历原文件和 Chrome 登录态。</p>
+        </div>
+        <button class="icon-button" id="close-cleanup" aria-label="关闭">×</button>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>将删除</h3>
+          <div class="filters" style="margin-top: 12px;">
+            <span class="tag bad">岗位</span>
+            <span class="tag bad">评估报告</span>
+            <span class="tag bad">投递记录</span>
+            <span class="tag bad">采集进度</span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>不会删除</h3>
+          <div class="filters" style="margin-top: 12px;">
+            <span class="tag good">简历原文件</span>
+            <span class="tag good">Chrome 登录态</span>
+            <span class="tag good">平台账号</span>
+            <span class="tag good">面试资料</span>
+          </div>
+        </div>
+      </div>
+      <div class="card blocked-card">
+        <div class="panel-head">
+          <h3>运行中批次保护</h3>
+          <span class="state-tag warn">cleanup guard</span>
+        </div>
+        <p class="muted" style="margin-top: 8px;">存在采集或投递执行中的批次时，清理按钮进入禁用态；用户必须先暂停平台任务或等待批次完成。</p>
+      </div>
+      <div class="actions">
+        <button class="ghost-button" id="cancel-cleanup">取消</button>
+        <button class="danger-button">确认清空本地求职数据</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const screenCopy = {
+      profile: ["画像与筛选", "确认 resume_profile 推导出的求职画像和硬过滤条件。"],
+      collect: ["采集进度", "查看 BOSS 直聘、拉勾、猎聘的平台级采集状态。"],
+      jobs: ["候选岗位", "筛选、查看详情、勾选后再进入批量确认。"],
+      detail: ["岗位详情", "查看 JD 摘要、匹配优势、风险缺口和投递话术。"],
+      results: ["投递结果", "按批次查看 submitted、failed、skipped、duplicate。"]
+    };
+
+    const stepButtons = document.querySelectorAll("[data-screen]");
+    const screens = document.querySelectorAll(".screen");
+    const title = document.getElementById("screen-title");
+    const subtitle = document.getElementById("screen-subtitle");
+    const reviewLabel = document.getElementById("review-screen-label");
+    const openDetailButtons = document.querySelectorAll("[data-open-detail]");
+    const backToJobsButton = document.getElementById("back-to-jobs");
+    let lastFocusedElement = null;
+
+    const showScreen = (nextScreen) => {
+      const selectedTopLevelScreen = nextScreen === "detail" ? "jobs" : nextScreen;
+      stepButtons.forEach((item) => {
+        const isSelected = item.dataset.screen === selectedTopLevelScreen;
+        item.classList.toggle("active", isSelected);
+        item.setAttribute("aria-selected", String(isSelected));
+      });
+      screens.forEach((screen) => {
+        const isActive = screen.id === `screen-${nextScreen}`;
+        screen.classList.toggle("active", isActive);
+        screen.toggleAttribute("hidden", !isActive);
+      });
+      title.textContent = screenCopy[nextScreen][0];
+      subtitle.textContent = screenCopy[nextScreen][1];
+      reviewLabel.textContent = screenCopy[nextScreen][0];
+    };
+
+    stepButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        showScreen(button.dataset.screen);
+      });
+    });
+
+    openDetailButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        showScreen("detail");
+      });
+    });
+
+    backToJobsButton.addEventListener("click", () => {
+      showScreen("jobs");
+    });
+
+    const confirmModal = document.getElementById("confirm-modal");
+    const cleanupModal = document.getElementById("cleanup-modal");
+    const finalConfirm = document.getElementById("final-confirm");
+    const submitConfirm = document.getElementById("submit-confirm");
+    const openConfirmButton = document.getElementById("open-confirm");
+    const cleanupButton = document.getElementById("cleanup-button");
+
+    const getFocusableElements = (container) => Array.from(container.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )).filter((element) => !element.disabled && !element.hidden);
+
+    const openModal = (modal, titleElement) => {
+      lastFocusedElement = document.activeElement;
+      modal.classList.add("open");
+      titleElement.focus();
+    };
+
+    const closeModal = (modal) => {
+      modal.classList.remove("open");
+      if (lastFocusedElement && typeof lastFocusedElement.focus === "function") {
+        lastFocusedElement.focus();
+      }
+    };
+
+    const trapFocus = (event, modal) => {
+      if (event.key !== "Tab" || !modal.classList.contains("open")) {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(modal);
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (!firstElement || !lastElement) {
+        return;
+      }
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    openConfirmButton.addEventListener("click", () => {
+      openModal(confirmModal, document.getElementById("modal-title"));
+    });
+
+    document.getElementById("close-confirm").addEventListener("click", () => {
+      closeModal(confirmModal);
+    });
+
+    document.getElementById("back-confirm").addEventListener("click", () => {
+      closeModal(confirmModal);
+    });
+
+    finalConfirm.addEventListener("change", () => {
+      submitConfirm.disabled = !finalConfirm.checked;
+    });
+
+    cleanupButton.addEventListener("click", () => {
+      openModal(cleanupModal, document.getElementById("cleanup-title"));
+    });
+
+    document.getElementById("close-cleanup").addEventListener("click", () => {
+      closeModal(cleanupModal);
+    });
+
+    document.getElementById("cancel-cleanup").addEventListener("click", () => {
+      closeModal(cleanupModal);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      trapFocus(event, confirmModal);
+      trapFocus(event, cleanupModal);
+
+      if (event.key === "Escape") {
+        closeModal(confirmModal);
+        closeModal(cleanupModal);
+      }
+    });
+  </script>
+</body>
+</html>
