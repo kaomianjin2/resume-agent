@@ -665,6 +665,179 @@ def test_runtime_prepares_jd_after_resume_import_without_reparsing_resume(tmp_pa
     }
 
 
+def test_runtime_prepares_complete_job_search_profile_from_resume_profile(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("job-session")
+    runtime.session_store.set_state(
+        "job-session",
+        "resume_profile",
+        {
+            "name": "Alice",
+            "headline": "Golang 后端工程师",
+            "skills": ["Golang", "MySQL", "Redis"],
+            "target_roles": ["后端工程师", "平台工程师"],
+            "years_of_experience": 6,
+            "education_level": "本科",
+            "preferred_cities": ["上海", "杭州"],
+            "remote_preference": "hybrid",
+            "salary_expectation": {"min": 35, "max": 50, "currency": "CNY", "period": "month"},
+            "preferred_industries": ["AI 工具", "企业服务"],
+            "preferred_company_sizes": ["100-500人"],
+            "preferred_funding_stages": ["B轮", "C轮"],
+            "preferred_benefits": ["五险一金", "弹性工作"],
+        },
+    )
+
+    view_model = runtime.prepare_job_search_profile(session_id="job-session")
+
+    assert view_model == {
+        "session_id": "job-session",
+        "status": "ready",
+        "job_profile": {
+            "candidate_name": "Alice",
+            "target_roles": ["后端工程师", "平台工程师"],
+            "headline": "Golang 后端工程师",
+            "years_of_experience": 6,
+            "education_level": "本科",
+            "technical_skills": ["Golang", "MySQL", "Redis"],
+            "project_keywords": [],
+        },
+        "default_search_keywords": ["后端工程师 Golang", "平台工程师 Golang"],
+        "hard_filters": {
+            "cities": ["上海", "杭州"],
+            "remote_policy": "hybrid",
+            "salary_min": 35,
+            "levels": [],
+            "experience_years_min": 6,
+            "experience_years_max": 6,
+            "education": "本科",
+            "company_blacklist": [],
+            "company_whitelist": [],
+        },
+        "ranking_preferences": {
+            "industries": ["AI 工具", "企业服务"],
+            "company_sizes": ["100-500人"],
+            "funding_stages": ["B轮", "C轮"],
+            "technical_skills": ["Golang", "MySQL", "Redis"],
+            "benefits": ["五险一金", "弹性工作"],
+            "published_within_days": 30,
+        },
+        "pending_confirmation_fields": [],
+    }
+    assert runtime.get_session_state("job-session")["job_search_profile"] == view_model
+
+
+def test_runtime_marks_missing_job_search_profile_fields_for_confirmation(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("job-session")
+    runtime.session_store.set_state(
+        "job-session",
+        "resume_profile",
+        {
+            "name": "Alice",
+            "headline": "后端工程师",
+            "education_level": "本科",
+        },
+    )
+
+    view_model = runtime.prepare_job_search_profile(session_id="job-session")
+
+    assert view_model["status"] == "needs_confirmation"
+    assert view_model["pending_confirmation_fields"] == ["technical_skills", "years_of_experience", "cities"]
+    assert view_model["default_search_keywords"] == ["后端工程师"]
+    assert view_model["hard_filters"]["cities"] == []
+
+
+def test_runtime_saves_job_search_profile_with_user_overrides(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_prep_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("job-session")
+    runtime.session_store.set_state(
+        "job-session",
+        "resume_profile",
+        {
+            "name": "Alice",
+            "headline": "Python 后端工程师",
+            "skills": ["Python"],
+            "years_of_experience": 4,
+            "preferred_cities": ["上海"],
+        },
+    )
+
+    view_model = runtime.prepare_job_search_profile(
+        session_id="job-session",
+        overrides={
+            "cities": ["深圳"],
+            "remote_policy": "remote",
+            "salary_min": 45,
+            "levels": ["高级"],
+            "experience_years_min": 5,
+            "experience_years_max": 8,
+            "education": "硕士",
+            "industries": ["AI 应用"],
+            "company_sizes": ["500-1000人"],
+            "funding_stages": ["D轮及以上"],
+            "technical_skills": ["Python", "LLM"],
+            "benefits": ["补充医疗"],
+            "published_within_days": 7,
+            "company_blacklist": ["低效科技"],
+            "company_whitelist": ["理想公司"],
+        },
+    )
+
+    assert view_model["status"] == "ready"
+    assert view_model["job_profile"]["technical_skills"] == ["Python", "LLM"]
+    assert view_model["hard_filters"] == {
+        "cities": ["深圳"],
+        "remote_policy": "remote",
+        "salary_min": 45,
+        "levels": ["高级"],
+        "experience_years_min": 5,
+        "experience_years_max": 8,
+        "education": "硕士",
+        "company_blacklist": ["低效科技"],
+        "company_whitelist": ["理想公司"],
+    }
+    assert view_model["ranking_preferences"] == {
+        "industries": ["AI 应用"],
+        "company_sizes": ["500-1000人"],
+        "funding_stages": ["D轮及以上"],
+        "technical_skills": ["Python", "LLM"],
+        "benefits": ["补充医疗"],
+        "published_within_days": 7,
+    }
+    assert runtime.get_session_state("job-session")["job_search_filters"] == {
+        "hard_filters": view_model["hard_filters"],
+        "ranking_preferences": view_model["ranking_preferences"],
+    }
+
+
 def test_runtime_starts_mock_interview_and_returns_first_question_only(tmp_path: Path) -> None:
     from interview_agent.gui_runtime import load_runtime
 

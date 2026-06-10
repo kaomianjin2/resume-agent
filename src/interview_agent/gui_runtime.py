@@ -23,6 +23,8 @@ ServicesBuilder = Callable[[AppConfig], ServiceMap]
 ExecutorBuilder = Callable[[Path, NodeRegistry, ServiceMap], NodeExecutor]
 MOCK_INTERVIEW_STATE_KEY = "mock_interview_state"
 MOCK_INTERVIEW_VIEW_KEY = "mock_interview_view"
+JOB_SEARCH_PROFILE_KEY = "job_search_profile"
+JOB_SEARCH_FILTERS_KEY = "job_search_filters"
 ALGORITHM_PRACTICE_BANK_KEY = "algorithm_practice_bank"
 DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT = 3
 DEFAULT_ALGORITHM_PRACTICE_BANK_PATH = Path(__file__).with_name("algorithm_practice_bank.json")
@@ -167,6 +169,26 @@ class GuiRuntime:
 
         session_state = self.session_store.get_all_state(session_id)
         return _prep_view_model(session_id, session_state)
+
+    def prepare_job_search_profile(
+        self,
+        *,
+        session_id: str,
+        overrides: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        session_state = self.session_store.get_all_state(session_id)
+        view_model = _job_search_profile_view_model(session_id, session_state.get("resume_profile"), overrides or {})
+        if view_model["status"] != "missing_inputs":
+            self.session_store.set_state(session_id, JOB_SEARCH_PROFILE_KEY, view_model)
+            self.session_store.set_state(
+                session_id,
+                JOB_SEARCH_FILTERS_KEY,
+                {
+                    "hard_filters": view_model["hard_filters"],
+                    "ranking_preferences": view_model["ranking_preferences"],
+                },
+            )
+        return view_model
 
     def start_mock_interview(
         self,
@@ -414,6 +436,15 @@ def prepare_interview_materials(
     jd_text: str,
 ) -> dict[str, object]:
     return runtime.prepare_interview_materials(session_id=session_id, resume_text=resume_text, jd_text=jd_text)
+
+
+def prepare_job_search_profile(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    overrides: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return runtime.prepare_job_search_profile(session_id=session_id, overrides=overrides)
 
 
 def start_mock_interview(
@@ -801,6 +832,123 @@ def _prep_view_model(session_id: str, session_state: dict[str, object]) -> dict[
         "match_summary": _match_summary(session_state.get("match_report"), include_empty=True),
         "missing_inputs": [],
     }
+
+
+def _job_search_profile_view_model(
+    session_id: str,
+    resume_profile: object,
+    overrides: dict[str, object],
+) -> dict[str, object]:
+    if not isinstance(resume_profile, dict):
+        return {
+            "session_id": session_id,
+            "status": "missing_inputs",
+            "job_profile": {},
+            "default_search_keywords": [],
+            "hard_filters": {},
+            "ranking_preferences": {},
+            "pending_confirmation_fields": ["resume_profile"],
+        }
+
+    basic_info = _dict_value(resume_profile.get("basic_info"))
+    technical_skills = _override_list(overrides, "technical_skills", _resume_list(resume_profile, ("skills", "core_skills", "technical_skills")))
+    years_of_experience = _override_value(
+        overrides,
+        "years_of_experience",
+        _first_present_value(resume_profile, ("years_of_experience", "work_years", "experience_years")) or basic_info.get("years_of_experience"),
+    )
+    cities = _override_list(overrides, "cities", _resume_list(resume_profile, ("preferred_cities", "cities", "locations")))
+    target_roles = _resume_list(resume_profile, ("target_roles", "preferred_roles", "roles"))
+    if not target_roles:
+        target_roles = [_resume_headline(resume_profile, basic_info)]
+
+    education = _override_value(
+        overrides,
+        "education",
+        _first_present_value(resume_profile, ("education_level", "education")) or basic_info.get("education_level"),
+    )
+    hard_filters = {
+        "cities": cities,
+        "remote_policy": _override_value(overrides, "remote_policy", _first_present_value(resume_profile, ("remote_preference", "remote_policy"))) or "onsite",
+        "salary_min": _override_value(overrides, "salary_min", _salary_min(resume_profile.get("salary_expectation"))),
+        "levels": _override_list(overrides, "levels", _resume_list(resume_profile, ("preferred_levels", "levels"))),
+        "experience_years_min": _override_value(overrides, "experience_years_min", years_of_experience),
+        "experience_years_max": _override_value(overrides, "experience_years_max", years_of_experience),
+        "education": education,
+        "company_blacklist": _override_list(overrides, "company_blacklist", _resume_list(resume_profile, ("company_blacklist", "blacklist_companies"))),
+        "company_whitelist": _override_list(overrides, "company_whitelist", _resume_list(resume_profile, ("company_whitelist", "whitelist_companies"))),
+    }
+    ranking_preferences = {
+        "industries": _override_list(overrides, "industries", _resume_list(resume_profile, ("preferred_industries", "industries"))),
+        "company_sizes": _override_list(overrides, "company_sizes", _resume_list(resume_profile, ("preferred_company_sizes", "company_sizes"))),
+        "funding_stages": _override_list(overrides, "funding_stages", _resume_list(resume_profile, ("preferred_funding_stages", "funding_stages"))),
+        "technical_skills": technical_skills,
+        "benefits": _override_list(overrides, "benefits", _resume_list(resume_profile, ("preferred_benefits", "benefits"))),
+        "published_within_days": _override_value(overrides, "published_within_days", 30),
+    }
+    job_profile = {
+        "candidate_name": _text_value(_first_present_value(resume_profile, ("name",)) or basic_info.get("name"), "未命名候选人"),
+        "target_roles": target_roles,
+        "headline": _resume_headline(resume_profile, basic_info),
+        "years_of_experience": years_of_experience,
+        "education_level": education,
+        "technical_skills": technical_skills,
+        "project_keywords": _resume_list(resume_profile, ("projects", "project_keywords", "project_experience", "project_experiences")),
+    }
+    pending_fields = _pending_job_profile_fields(technical_skills, years_of_experience, cities)
+    return {
+        "session_id": session_id,
+        "status": "needs_confirmation" if pending_fields else "ready",
+        "job_profile": job_profile,
+        "default_search_keywords": _default_job_search_keywords(target_roles, technical_skills),
+        "hard_filters": hard_filters,
+        "ranking_preferences": ranking_preferences,
+        "pending_confirmation_fields": pending_fields,
+    }
+
+
+def _override_value(overrides: dict[str, object], key: str, fallback: object) -> object:
+    value = overrides.get(key)
+    if isinstance(value, str) and value.strip():
+        return value
+    if isinstance(value, int | float):
+        return value
+    return fallback
+
+
+def _override_list(overrides: dict[str, object], key: str, fallback: list[str]) -> list[str]:
+    return _list_value(overrides.get(key)) if key in overrides else fallback
+
+
+def _resume_list(resume_profile: dict[str, object], keys: tuple[str, ...]) -> list[str]:
+    return _merged_list_values(resume_profile, keys)
+
+
+def _salary_min(value: object) -> object:
+    if isinstance(value, dict):
+        return _override_value(value, "min", None)
+    return None
+
+
+def _pending_job_profile_fields(technical_skills: list[str], years_of_experience: object, cities: list[str]) -> list[str]:
+    pending_fields: list[str] = []
+    if not technical_skills:
+        pending_fields.append("technical_skills")
+    if years_of_experience is None:
+        pending_fields.append("years_of_experience")
+    if not cities:
+        pending_fields.append("cities")
+    return pending_fields
+
+
+def _default_job_search_keywords(target_roles: list[str], technical_skills: list[str]) -> list[str]:
+    primary_skill = technical_skills[0] if technical_skills else ""
+    keywords: list[str] = []
+    for role in target_roles:
+        keyword = " ".join(part for part in (role, primary_skill) if part)
+        if keyword and keyword not in keywords:
+            keywords.append(keyword)
+    return keywords
 
 
 def _resume_summary(resume_profile: object) -> dict[str, object]:
