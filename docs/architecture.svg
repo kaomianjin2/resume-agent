@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1180" viewBox="0 0 1800 1180" role="img" aria-labelledby="title desc">
   <title id="title">技术面试 Agent 系统架构图</title>
-  <desc id="desc">展示桌面端、命令行、GUI Runtime、路由规划执行链路、结构化节点运行时、SQLite 会话状态、求职投递存储、知识库检索索引和离线知识库构建之间的关系。</desc>
+  <desc id="desc">展示桌面端、命令行、GUI Runtime、路由规划执行链路、结构化节点运行时、SQLite 会话状态、求职投递存储、平台适配器协议、知识库检索索引和离线知识库构建之间的关系。</desc>
   <defs>
     <marker id="arrow-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2937"/>
@@ -62,7 +62,7 @@
   </g>
 
   <text class="title" x="900" y="70" text-anchor="middle">技术面试 Agent 系统架构图</text>
-  <text class="subtitle" x="900" y="102" text-anchor="middle">本地桌面与 CLI 双入口共用编排核心；运行时只读 ready 知识库，节点和求职数据经边界校验后写入 SQLite。</text>
+  <text class="subtitle" x="900" y="102" text-anchor="middle">本地桌面与 CLI 双入口共用编排核心；运行时只读 ready 知识库，节点、求职数据和平台适配器契约经边界校验后进入本地数据面。</text>
 
   <rect class="band" x="80" y="145" width="1640" height="610"/>
   <text class="section-title" x="115" y="185">运行时主链路</text>
@@ -213,10 +213,15 @@
   <rect class="card data" x="455" y="1018" width="245" height="58"/>
   <text class="label" x="578" y="1052" text-anchor="middle">state_contracts.py</text>
 
+  <rect class="card data" x="140" y="1018" width="245" height="58"/>
+  <text class="label" x="263" y="1040" text-anchor="middle">平台适配器协议</text>
+  <text class="small" x="263" y="1062" text-anchor="middle">StandardJob / errors / fake adapter</text>
+
   <path class="dash-line" d="M 617 534 C 617 735 578 800 578 880"/>
   <path class="dash-line" d="M 1398 390 C 1210 760 760 760 578 880"/>
   <path class="dash-line" d="M 1588 540 C 1460 760 1070 805 913 880"/>
   <path class="dash-line" d="M 936 637 C 900 760 720 820 578 880"/>
+  <path class="dash-line" d="M 936 637 C 760 790 430 860 263 1018"/>
   <path class="dash-line" d="M 617 534 C 710 760 840 880 913 1018"/>
   <path class="dash-line" d="M 578 1018 C 640 805 1030 735 1121 518"/>
   <path class="dash-line" d="M 578 1018 C 820 830 1290 760 1398 390"/>
@@ -254,5 +259,5 @@
   <text class="edge-label" x="1115" y="1080">运行时只读 ready 索引</text>
 
   <rect class="band-light" x="80" y="1092" width="1640" height="58"/>
-  <text class="small" x="115" y="1128">关键约束：配置只来自 config/interview-agent.toml；运行时不构建知识库；GUI Runtime 只输出结构化 view model；节点输出和求职画像写入 session_state；求职存储拒绝明显敏感内容落库。</text>
+  <text class="small" x="115" y="1128">关键约束：配置只来自 config/interview-agent.toml；运行时不构建知识库；GUI Runtime 只输出结构化 view model；求职平台适配器不暴露账号凭据、cookie、token 或 session。</text>
 </svg>

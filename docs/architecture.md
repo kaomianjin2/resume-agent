@@ -41,6 +41,8 @@ flowchart TD
     PrepVM --> State
     GUIRuntime --> JobProfileVM[求职画像生成<br/>prepare_job_search_profile<br/>resume_profile -> job_search_profile / filters]
     JobProfileVM --> State
+    JobAdapterProtocol[求职平台适配器协议<br/>job_platform_adapters.py<br/>StandardJob / errors / fake adapter]
+    JobProfileVM -.后续采集与投递共享契约.-> JobAdapterProtocol
     GUIRuntime --> MockVM[GUI 模拟面试闭环<br/>start_mock_interview / submit_mock_answer / end_mock_interview<br/>question_generate -> mock_followup -> answer_score]
     MockVM --> Executor
     MockVM --> State
@@ -305,6 +307,7 @@ erDiagram
 - 用户可见结果展示集中在 `rendering.py`；`cli.py` 仅保留 `_write_result()`、`_write_line()` 等兼容包装和回调装配。
 - GUI Runtime Facade 的面试准备入口通过 `prepare_interview_materials()` 串联 `resume_parse`、`jd_parse`、`jd_match`，返回简历摘要、岗位重点、匹配度、优势、风险和追问重点。
 - GUI Runtime Facade 的求职画像入口通过 `prepare_job_search_profile()` 从已有 `resume_profile` 生成求职画像、默认搜索词、硬过滤条件、排序偏好和待确认字段，并写入 SQLite `session_state` 的 `job_search_profile`、`job_search_filters`。
+- 求职平台适配器协议位于 `job_platform_adapters.py`，定义标准岗位对象、搜索请求、平台执行结果、确认投递请求、投递结果、浏览器自动化边界和统一错误类型；当前仅作为后续 BOSS 直聘、拉勾、猎聘适配器、采集编排器和投递执行器的共享契约，未接入现有 GUI runtime 执行路径。
 - GUI Runtime Facade 的模拟面试入口通过 `start_mock_interview()`、`submit_mock_answer()`、`end_mock_interview()` 复用 `question_generate`、`mock_followup`、`answer_score`，并把当前题、追问、评分和终态 view model 写入 SQLite `session_state`。
 - Tauri Desktop Shell 位于 `gui/src-tauri/`，负责承载 React Web Shell、本地文件选择、Python runtime 进程启停和窗口关闭清理。
 - Desktop Shell 启动 Python runtime 时使用独立进程组；停止 runtime 或关闭窗口时清理整个进程树，避免残留 `uv` / Python 子进程。

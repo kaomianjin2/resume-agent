@@ -106,7 +106,10 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 
 ### JOB-003 平台适配器接口
 
-- 状态：`pending`
+- 状态：`done`
+- 负责人：implementer / reviewer
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
 - 目标：定义 BOSS 直聘、拉勾、猎聘共享的平台适配器协议。
 - 影响范围：浏览器自动化服务边界、平台适配器接口、错误类型。
 - 输入：求职画像、筛选条件、确认投递请求。
@@ -127,9 +130,13 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py
 ```
 
-- 观测证据：记录 fake adapter 场景和测试输出摘要。
-- 副作用：新增浏览器自动化抽象边界。
-- 影响调用方：三个平台适配器、采集编排器、投递执行器。
+- 验证结果：`49 passed in 0.49s`；reviewer 结论：`可继续`，无阻断问题。
+- 观测证据：
+  - 新增/修改测试：`test_job_platform_fake_adapter_simulates_successful_readonly_search`、`test_job_platform_fake_adapter_simulates_required_platform_errors`、`test_job_platform_fake_adapter_simulates_submission_failure_without_sensitive_payload`。
+  - 红灯证据：新增测试先失败，错误为 `ModuleNotFoundError: No module named 'interview_agent.job_platform_adapters'`，结果 `3 failed, 46 passed`。
+  - 任务提交：`7c53c89`。
+- 副作用：新增浏览器自动化抽象边界和 fake adapter 测试边界；未修改数据库结构、配置、架构运行路径或平台真实投递行为。
+- 影响调用方：三个平台适配器、采集编排器、投递执行器可依赖共享协议、错误类型和 fake adapter；现有 GUI runtime、storage、面试准备、模拟面试、算法练习调用方不变。
 
 ### JOB-004 Chrome 会话隔离与敏感信息脱敏边界
 
