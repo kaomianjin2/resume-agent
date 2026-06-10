@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from interview_agent.nodes.registry import NodeRegistry
 from interview_agent.nodes.spec import NodeContext, validate_required_inputs
+from interview_agent.sensitive import assert_no_sensitive_payload
 from interview_agent.session import SessionStore, encode_json_payload, ensure_session, write_session_state
 from interview_agent.state_contracts import validate_state_entry
 from interview_agent.storage import get_connection, transaction
@@ -39,6 +40,11 @@ class NodeExecutor:
         missing_inputs = validate_required_inputs(spec, merged_inputs)
         run_id = uuid4().hex
         started_at = _current_timestamp()
+
+        try:
+            assert_no_sensitive_payload(merged_inputs, error_message="输入包含敏感字段，已阻止节点执行")
+        except ValueError as exc:
+            return NodeExecutionResult(run_id, session_id, node_name, "failed", {}, [], str(exc))
 
         if missing_inputs:
             result = NodeExecutionResult(
@@ -72,6 +78,9 @@ class NodeExecutor:
 
 def _insert_node_run(connection: sqlite3.Connection, result: NodeExecutionResult, input_payload: dict[str, object], started_at: str) -> None:
     output_payload = encode_json_payload(result.output) if result.status == "success" else None
+    assert_no_sensitive_payload(input_payload, error_message="node run 输入包含敏感字段")
+    assert_no_sensitive_payload(result.output, error_message="node run 输出包含敏感字段")
+    assert_no_sensitive_payload(result.error_message, error_message="node run 错误包含敏感字段")
     connection.execute(
         "INSERT INTO node_runs "
         "(run_id, session_id, node_name, status, input_payload, output_payload, "

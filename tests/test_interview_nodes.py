@@ -670,6 +670,32 @@ def test_knowledge_search_fails_when_llm_response_is_invalid(
     assert run_row == ("failed", None, "LLM 返回空响应")
 
 
+def test_node_executor_rejects_sensitive_inputs_before_node_run_is_persisted(tmp_path: Path) -> None:
+    database_path = tmp_path / "interview.sqlite3"
+    initialize_database(database_path)
+    executor = NodeExecutor(
+        database_path,
+        build_default_registry(),
+        services={"llm": RecordingLLM({"你是知识库检索助手": '{"search_results":[]}'}), "retriever": RecordingRetriever([])},
+    )
+
+    result = executor.execute_node(
+        session_id="session-1",
+        node_name="knowledge_search",
+        inputs={"question": "How to use session_id=chrome-secret and token=secret?"},
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        run_count = connection.execute("SELECT COUNT(*) FROM node_runs").fetchone()
+        state_count = connection.execute("SELECT COUNT(*) FROM session_state").fetchone()
+
+    assert result.status == "failed"
+    assert result.error_message == "输入包含敏感字段，已阻止节点执行"
+    assert result.output == {}
+    assert run_count == (0,)
+    assert state_count == (0,)
+
+
 def test_knowledge_search_uses_retriever_chunks_as_base_and_llm_only_adds_non_source_fields(
     tmp_path: Path,
 ) -> None:
@@ -718,6 +744,24 @@ def test_knowledge_search_uses_retriever_chunks_as_base_and_llm_only_adds_non_so
             }
         ]
     }
+
+
+def test_llm_prompt_rejects_contact_and_browser_session_payload() -> None:
+    from interview_agent.agents import build_prompt
+
+    prompt_inputs = {
+        "resume_profile": {"name": "候选人", "skills": ["Python"]},
+        "jd_requirements": {"must_have": ["Python"]},
+        "browser_session": {"cookie": "sid=secret"},
+        "contact": "手机号 13800000000",
+    }
+
+    try:
+        build_prompt(node_name="jd_match", prompt_inputs=prompt_inputs, rag_results=[])
+    except ValueError as exc:
+        assert str(exc) == "LLM prompt 输入包含敏感字段"
+    else:
+        raise AssertionError("LLM prompt 接受了敏感输入")
 
 
 def test_run_structured_node_preserves_rag_source_metadata_from_retriever(

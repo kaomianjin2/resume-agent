@@ -1135,6 +1135,42 @@ def test_job_platform_fake_adapter_simulates_required_platform_errors() -> None:
         assert result.jobs == []
 
 
+def test_job_platform_adapter_error_redacts_sensitive_message_and_url_summary() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        FakeJobPlatformAdapter,
+        JobSearchRequest,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+    )
+
+    adapter = FakeJobPlatformAdapter(
+        platform="boss",
+        search_error=PlatformAdapterError(
+            error_type=PlatformAdapterErrorType.LOGIN_EXPIRED,
+            platform="boss",
+            stage="search",
+            message="登录失败: account_id=alice 手机号 13800000000 验证码 123456",
+            page_url="https://example.com/jobs?token=secret&session_id=chrome-secret&query=python",
+        ),
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={"target_roles": ["后端工程师"]},
+            hard_filters={},
+            ranking_preferences={},
+            keyword="后端工程师",
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.errors[0].message == "浏览器自动化错误已脱敏"
+    assert result.errors[0].page_url == "https://example.com/jobs"
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
 def test_job_platform_fake_adapter_simulates_submission_failure_without_sensitive_payload() -> None:
     from dataclasses import asdict
 

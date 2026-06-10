@@ -4,10 +4,11 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 import hashlib
 from pathlib import Path
-import re
 import sqlite3
 from typing import Iterator
 from uuid import uuid4
+
+from interview_agent.sensitive import assert_no_sensitive_payload
 
 
 DEFAULT_KNOWLEDGE_BASE_STATUS = "not_ready"
@@ -16,23 +17,6 @@ DEFAULT_ADMIN_PASSWORD = "admin"
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 JOB_APPLICATION_STATUSES = {"pending_review", "approved", "submitted", "failed", "skipped", "duplicate"}
 CONFIRMATION_BATCH_STATUSES = {"pending_review", "confirmed", "submitted", "failed", "skipped"}
-SENSITIVE_PATTERNS = (
-    "cookie",
-    "token",
-    "session",
-    "password",
-    "密码",
-    "credential",
-    "auth",
-    "account_id",
-    "手机号",
-    "mobile",
-    "验证码",
-)
-EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-PHONE_PATTERN = re.compile(r"(?<!\d)(?:1\d{10}|\d{3,4}-?\d{7,8})(?!\d)")
-
-
 def get_connection(database_path: Path | str) -> sqlite3.Connection:
     connection = sqlite3.connect(database_path)
     connection.execute("PRAGMA foreign_keys = ON")
@@ -904,14 +888,7 @@ def _job_application_from_row(row: tuple[object, ...]) -> dict[str, str | None]:
 
 
 def _assert_no_sensitive_content(values: list[str | None]) -> None:
-    for value in values:
-        if value is None:
-            continue
-        lowered_value = value.lower()
-        if any(pattern in lowered_value for pattern in SENSITIVE_PATTERNS):
-            raise ValueError("包含敏感字段，禁止落库")
-        if EMAIL_PATTERN.search(value) or PHONE_PATTERN.search(value):
-            raise ValueError("包含敏感字段，禁止落库")
+    assert_no_sensitive_payload(values, error_message="包含敏感字段，禁止落库")
 
 
 def _optional_input(value: str | None) -> str | None:
