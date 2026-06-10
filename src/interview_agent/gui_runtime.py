@@ -45,6 +45,7 @@ class GuiRuntime:
     session_store: SessionStore
     executor: NodeExecutor
     knowledge_base_status: str
+    job_collection_orchestrators: dict[str, JobCollectionOrchestrator]
 
     def get_status(self) -> dict[str, object]:
         return {
@@ -205,7 +206,12 @@ class GuiRuntime:
         ranking_preferences: dict[str, object],
         keyword: str,
     ) -> dict[str, object]:
-        orchestrator = JobCollectionOrchestrator(adapters, database_path=Path(self.config.storage.database_path))
+        orchestrator = JobCollectionOrchestrator(
+            adapters,
+            database_path=Path(self.config.storage.database_path),
+            progress_callback=lambda result: self._write_job_collection_progress(session_id, result),
+        )
+        self.job_collection_orchestrators[collection_task_id] = orchestrator
         result = orchestrator.collect(
             collection_task_id=collection_task_id,
             platforms=platforms,
@@ -218,9 +224,28 @@ class GuiRuntime:
         self.session_store.set_state(session_id, JOB_COLLECTION_PROGRESS_KEY, view_model)
         return view_model
 
+    def retry_failed_job_collection_platform(
+        self,
+        *,
+        session_id: str,
+        collection_task_id: str,
+        platform: str,
+        adapter: JobPlatformAdapter | None = None,
+    ) -> dict[str, object]:
+        orchestrator = self.job_collection_orchestrators.get(collection_task_id)
+        if orchestrator is None:
+            raise ValueError("采集任务不存在")
+        result = orchestrator.retry_failed_platform(collection_task_id=collection_task_id, platform=platform, adapter=adapter)
+        return self._write_job_collection_progress(session_id, result)
+
     def get_job_collection_progress(self, *, session_id: str) -> dict[str, object]:
         view_model = self.session_store.get_state(session_id, JOB_COLLECTION_PROGRESS_KEY)
         return view_model if isinstance(view_model, dict) else _empty_job_collection_progress_view_model()
+
+    def _write_job_collection_progress(self, session_id: str, result: dict[str, object]) -> dict[str, object]:
+        view_model = job_collection_view_model(result)
+        self.session_store.set_state(session_id, JOB_COLLECTION_PROGRESS_KEY, view_model)
+        return view_model
 
     def start_mock_interview(
         self,
@@ -421,6 +446,7 @@ def load_runtime(
         session_store=SessionStore(database_path),
         executor=executor_builder(database_path, registry, services),
         knowledge_base_status=knowledge_base_status,
+        job_collection_orchestrators={},
     )
 
 
@@ -505,6 +531,22 @@ def collect_job_applications(
 
 def get_job_collection_progress(runtime: GuiRuntime, *, session_id: str) -> dict[str, object]:
     return runtime.get_job_collection_progress(session_id=session_id)
+
+
+def retry_failed_job_collection_platform(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    collection_task_id: str,
+    platform: str,
+    adapter: JobPlatformAdapter | None = None,
+) -> dict[str, object]:
+    return runtime.retry_failed_job_collection_platform(
+        session_id=session_id,
+        collection_task_id=collection_task_id,
+        platform=platform,
+        adapter=adapter,
+    )
 
 
 def start_mock_interview(

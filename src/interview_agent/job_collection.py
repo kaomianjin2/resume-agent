@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from pathlib import Path
 
@@ -15,9 +15,16 @@ from interview_agent.storage import record_collection_progress, save_platform_co
 
 
 class JobCollectionOrchestrator:
-    def __init__(self, adapters: Mapping[str, JobPlatformAdapter], *, database_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        adapters: Mapping[str, JobPlatformAdapter],
+        *,
+        database_path: Path | str | None = None,
+        progress_callback: Callable[[dict[str, object]], None] | None = None,
+    ) -> None:
         self._adapters = dict(adapters)
         self._database_path = database_path
+        self._progress_callback = progress_callback
         self._requests: dict[str, JobSearchRequest] = {}
         self._platform_progress: dict[str, dict[str, object]] = {}
         self._jobs_by_platform: dict[str, list[StandardJob]] = {}
@@ -60,6 +67,8 @@ class JobCollectionOrchestrator:
         next_retry_count = int(progress.get("retry_count", 0)) + 1
         selected_adapter = adapter or self._adapters[platform]
         self._adapters[platform] = selected_adapter
+        progress["events"] = []
+        self._write_progress(collection_task_id, platform, "retrying", retry_count=next_retry_count)
         self._collect_platform(collection_task_id, platform, selected_adapter, self._requests[collection_task_id], retry_count=next_retry_count)
         return self._result()
 
@@ -72,35 +81,38 @@ class JobCollectionOrchestrator:
         *,
         retry_count: int,
     ) -> None:
-        self._write_progress(collection_task_id, platform, "started", retry_count=retry_count)
-        result = adapter.search_jobs(request)
-        if result.status == "failed":
-            self._write_failure(collection_task_id, platform, result.errors, retry_count)
-            return
+        try:
+            self._write_progress(collection_task_id, platform, "started", retry_count=retry_count)
+            result = adapter.search_jobs(request)
+            if result.status == "failed":
+                self._write_failure(collection_task_id, platform, result.errors, retry_count)
+                return
 
-        list_jobs = adapter.collect_job_list(result.search_id)
-        self._write_progress(collection_task_id, platform, "page_collected", current_page=1, last_job_offset=len(list_jobs), retry_count=retry_count)
-        detail_jobs = [adapter.read_job_detail(job.platform_job_id) for job in list_jobs]
-        assert_no_sensitive_payload(detail_jobs, error_message="采集结果包含敏感凭据")
-        self._jobs_by_platform[platform] = detail_jobs
-        self._write_progress(
-            collection_task_id,
-            platform,
-            "detail_collected",
-            current_page=1,
-            last_job_offset=len(detail_jobs),
-            retry_count=retry_count,
-            collected_job_count=len(detail_jobs),
-        )
-        self._write_progress(
-            collection_task_id,
-            platform,
-            "completed",
-            current_page=1,
-            last_job_offset=len(detail_jobs),
-            retry_count=retry_count,
-            collected_job_count=len(detail_jobs),
-        )
+            list_jobs = adapter.collect_job_list(result.search_id)
+            self._write_progress(collection_task_id, platform, "page_collected", current_page=1, last_job_offset=len(list_jobs), retry_count=retry_count)
+            detail_jobs = [adapter.read_job_detail(job.platform_job_id) for job in list_jobs]
+            assert_no_sensitive_payload(detail_jobs, error_message="采集结果包含敏感凭据")
+            self._jobs_by_platform[platform] = detail_jobs
+            self._write_progress(
+                collection_task_id,
+                platform,
+                "detail_collected",
+                current_page=1,
+                last_job_offset=len(detail_jobs),
+                retry_count=retry_count,
+                collected_job_count=len(detail_jobs),
+            )
+            self._write_progress(
+                collection_task_id,
+                platform,
+                "completed",
+                current_page=1,
+                last_job_offset=len(detail_jobs),
+                retry_count=retry_count,
+                collected_job_count=len(detail_jobs),
+            )
+        except Exception:
+            self._write_progress(collection_task_id, platform, "failed", retry_count=retry_count, failure_reason="platform_exception")
 
     def _write_failure(
         self,
@@ -139,8 +151,6 @@ class JobCollectionOrchestrator:
             }
             self._platform_progress[platform] = progress
 
-        if status == "started" and retry_count > 0:
-            progress["events"] = []
         progress.update(
             {
                 "status": status,
@@ -156,6 +166,8 @@ class JobCollectionOrchestrator:
         events.append({"status": status, "current_page": current_page, "last_job_offset": last_job_offset})
         progress["events"] = events
         self._persist_progress(collection_task_id, progress)
+        if self._progress_callback is not None:
+            self._progress_callback(self._result())
 
     def _persist_progress(self, collection_task_id: str, progress: dict[str, object]) -> None:
         if self._database_path is None:
