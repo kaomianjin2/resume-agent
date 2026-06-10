@@ -290,6 +290,8 @@ class _JobFixtureParser(HTMLParser):
         self.job_detail: dict[str, str] = {}
         self._current_fields: dict[str, str] | None = None
         self._current_field_name: str | None = None
+        self._current_field_tag: str | None = None
+        self._current_field_depth = 0
         self._current_field_parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -304,9 +306,14 @@ class _JobFixtureParser(HTMLParser):
         field_name = attributes.get("data-field")
         if field_name and self._current_fields is not None:
             self._current_field_name = field_name
+            self._current_field_tag = tag
+            self._current_field_depth = 1
             self._current_field_parts = []
             if tag == "a" and field_name == "detail_url":
                 self._current_fields[field_name] = attributes.get("href") or ""
+            return
+        if self._current_field_name is not None:
+            self._current_field_depth += 1
 
     def handle_data(self, data: str) -> None:
         if self._current_field_name is not None:
@@ -314,10 +321,15 @@ class _JobFixtureParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if self._current_field_name is not None:
+            if tag != self._current_field_tag or self._current_field_depth > 1:
+                self._current_field_depth -= 1
+                return
             value = " ".join(" ".join(self._current_field_parts).split())
             if value and self._current_field_name != "detail_url":
                 self._current_fields[self._current_field_name] = value
             self._current_field_name = None
+            self._current_field_tag = None
+            self._current_field_depth = 0
             self._current_field_parts = []
         if tag == "article" and self._current_fields is not None:
             self.job_cards.append(self._current_fields)

@@ -1377,6 +1377,91 @@ def test_job_platform_contract_parses_fixture_list_and_detail_fields() -> None:
     assert detail.field_confidence["title"] == "fixture"
 
 
+def test_job_platform_contract_preserves_nested_field_text() -> None:
+    from interview_agent.job_platform_adapters import parse_job_detail_fixture
+
+    detail = parse_job_detail_fixture(
+        """
+        <article data-job-detail>
+          <span data-field="platform">boss</span>
+          <span data-field="platform_job_id">boss-nested-001</span>
+          <h1 data-field="title">后端工程师</h1>
+          <span data-field="company_name">示例科技</span>
+          <span data-field="location">上海</span>
+          <a data-field="detail_url" href="https://example.com/jobs/nested">详情</a>
+          <section data-field="jd_text">
+            负责核心服务 <strong>稳定性</strong> 和 <span>性能优化</span> 建设。
+          </section>
+          <time data-field="collected_at">2026-06-10T09:06:00+08:00</time>
+        </article>
+        """
+    )
+
+    assert detail.jd_text == "负责核心服务 稳定性 和 性能优化 建设。"
+
+
+def test_job_platform_contract_parses_multiple_list_cards_without_cross_contamination() -> None:
+    from interview_agent.job_platform_adapters import parse_job_list_fixture
+
+    jobs = parse_job_list_fixture(
+        """
+        <section data-job-list>
+          <article data-job-card>
+            <span data-field="platform">boss</span>
+            <span data-field="platform_job_id">boss-list-001</span>
+            <h2 data-field="title">后端工程师</h2>
+            <span data-field="company_name">第一家公司</span>
+            <span data-field="location">上海</span>
+            <span data-field="tech_stack">Python,PostgreSQL</span>
+            <a data-field="detail_url" href="https://example.com/jobs/001">详情</a>
+            <p data-field="jd_text">负责服务端。</p>
+            <time data-field="collected_at">2026-06-10T09:05:00+08:00</time>
+          </article>
+          <article data-job-card>
+            <span data-field="platform">boss</span>
+            <span data-field="platform_job_id">boss-list-002</span>
+            <h2 data-field="title">平台工程师</h2>
+            <span data-field="company_name">第二家公司</span>
+            <span data-field="location">杭州</span>
+            <span data-field="benefits">补充医疗,弹性工作</span>
+            <a data-field="detail_url" href="https://example.com/jobs/002">详情</a>
+            <p data-field="jd_text">负责平台建设。</p>
+            <time data-field="collected_at">2026-06-10T09:08:00+08:00</time>
+          </article>
+        </section>
+        """
+    )
+
+    assert [job.platform_job_id for job in jobs] == ["boss-list-001", "boss-list-002"]
+    assert jobs[0].company_name == "第一家公司"
+    assert jobs[0].tech_stack == ["Python", "PostgreSQL"]
+    assert jobs[0].benefits == []
+    assert jobs[1].company_name == "第二家公司"
+    assert jobs[1].tech_stack == []
+    assert jobs[1].benefits == ["补充医疗", "弹性工作"]
+
+
+def test_job_platform_contract_reports_missing_required_fixture_field() -> None:
+    import pytest
+
+    from interview_agent.job_platform_adapters import parse_job_detail_fixture
+
+    with pytest.raises(ValueError, match="company_name"):
+        parse_job_detail_fixture(
+            """
+            <article data-job-detail>
+              <span data-field="platform">boss</span>
+              <span data-field="platform_job_id">boss-missing-001</span>
+              <h1 data-field="title">后端工程师</h1>
+              <span data-field="location">上海</span>
+              <a data-field="detail_url" href="https://example.com/jobs/missing">详情</a>
+              <section data-field="jd_text">负责后端服务。</section>
+              <time data-field="collected_at">2026-06-10T09:06:00+08:00</time>
+            </article>
+            """
+        )
+
+
 def test_job_platform_contract_classifies_fixture_error_states() -> None:
     from interview_agent.job_platform_adapters import (
         PlatformAdapterErrorType,
