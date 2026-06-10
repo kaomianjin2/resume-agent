@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS job_applications (
     job_id TEXT PRIMARY KEY,
     platform TEXT NOT NULL,
-    external_job_id TEXT NOT NULL,
+    platform_job_id TEXT NOT NULL,
     job_url TEXT NOT NULL,
     company_name TEXT NOT NULL,
     title TEXT NOT NULL,

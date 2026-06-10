@@ -220,14 +220,14 @@ def test_default_admin_login_repairs_existing_admin_password(tmp_path: Path) -> 
     assert users[0]["status"] == "enabled"
 
 
-def test_job_application_storage_persists_standard_fields_and_duplicate_detection(tmp_path: Path) -> None:
+def test_job_application_storage_uses_platform_job_id_contract_and_duplicate_detection(tmp_path: Path) -> None:
     database_path = tmp_path / "storage.sqlite3"
     initialize_database(database_path)
 
     first_job = save_job_application(
         database_path,
         platform="boss",
-        external_job_id="job-001",
+        platform_job_id="job-001",
         job_url="https://example.com/jobs/1",
         company_name="OpenAI",
         title="Research Engineer",
@@ -254,7 +254,7 @@ def test_job_application_storage_persists_standard_fields_and_duplicate_detectio
     duplicate_job = save_job_application(
         database_path,
         platform="boss",
-        external_job_id="job-001-reposted",
+        platform_job_id="job-001-reposted",
         job_url="https://example.com/jobs/1?track=xyz",
         company_name="OpenAI",
         title="Research Engineer",
@@ -281,7 +281,7 @@ def test_job_application_storage_persists_standard_fields_and_duplicate_detectio
     cross_platform_job = save_job_application(
         database_path,
         platform="lagou",
-        external_job_id="job-001-reposted",
+        platform_job_id="job-001-reposted",
         job_url="https://example.com/jobs/1?track=lagou",
         company_name="OpenAI",
         title="Research Engineer",
@@ -311,8 +311,12 @@ def test_job_application_storage_persists_standard_fields_and_duplicate_detectio
     assert duplicate_job["is_duplicate"] is True
     assert duplicate_job["job_id"] == first_job["job_id"]
     assert cross_platform_job["is_duplicate"] is False
+    assert "platform_job_id" in first_job
+    assert "external_job_id" not in first_job
     assert len(jobs) == 2
     assert jobs[0]["platform"] == "boss"
+    assert jobs[0]["platform_job_id"] == "job-001"
+    assert "external_job_id" not in jobs[0]
     assert jobs[0]["status"] == "pending_review"
     assert jobs[0]["remote_policy"] == "hybrid"
     assert jobs[0]["level"] == "senior"
@@ -336,7 +340,7 @@ def test_job_application_filters_and_evaluation_are_queryable_after_restart(tmp_
     saved_job = save_job_application(
         database_path,
         platform="lagou",
-        external_job_id="job-002",
+        platform_job_id="job-002",
         job_url="https://example.com/jobs/2",
         company_name="Example",
         title="Backend Engineer",
@@ -399,7 +403,7 @@ def test_confirmation_batch_keeps_batch_metadata_and_job_results_separate(tmp_pa
     first_job = save_job_application(
         database_path,
         platform="lagou",
-        external_job_id="job-002",
+        platform_job_id="job-002",
         job_url="https://example.com/jobs/2",
         company_name="Example",
         title="Backend Engineer",
@@ -426,7 +430,7 @@ def test_confirmation_batch_keeps_batch_metadata_and_job_results_separate(tmp_pa
     second_job = save_job_application(
         database_path,
         platform="lagou",
-        external_job_id="job-003",
+        platform_job_id="job-003",
         job_url="https://example.com/jobs/3",
         company_name="Example",
         title="Platform Engineer",
@@ -486,7 +490,7 @@ def test_collection_progress_is_queryable_and_clear_job_application_data_preserv
     saved_job = save_job_application(
         database_path,
         platform="liepin",
-        external_job_id="job-003",
+        platform_job_id="job-003",
         job_url="https://example.com/jobs/3",
         company_name="Another",
         title="ML Engineer",
@@ -584,7 +588,7 @@ def test_collection_progress_is_queryable_and_clear_job_application_data_preserv
     assert state_count[0] == 1
 
 
-def test_job_application_storage_rejects_sensitive_content(tmp_path: Path) -> None:
+def test_job_application_storage_rejects_sensitive_content_across_all_text_inputs(tmp_path: Path) -> None:
     database_path = tmp_path / "storage.sqlite3"
     initialize_database(database_path)
 
@@ -592,7 +596,7 @@ def test_job_application_storage_rejects_sensitive_content(tmp_path: Path) -> No
         save_job_application(
             database_path,
             platform="boss",
-            external_job_id="job-sensitive",
+            platform_job_id="job-sensitive",
             job_url="https://example.com/jobs/sensitive",
             company_name="OpenAI",
             title="Research Engineer",
@@ -607,12 +611,95 @@ def test_job_application_storage_rejects_sensitive_content(tmp_path: Path) -> No
             industry="ai",
             company_size="100-499",
             funding_stage="series_c",
-            tech_stack="python, llm",
-            benefits="sms验证码 123456",
+            tech_stack="python, llm, credential",
+            benefits="联系邮箱 hr@example.com",
             published_at="2026-06-09T09:00:00+00:00",
             detail_url="https://example.com/jobs/sensitive",
-            jd_text="cookie=sessionid=abc",
+            jd_text="auth flow with account_id=abc",
             collected_at="2026-06-10T09:05:00+00:00",
-            field_confidence='{"token":"secret"}',
-            normalized_payload='{"mobile":"13800000000"}',
+            field_confidence='{"token":"secret","phone":"13800000000"}',
+            normalized_payload='{"contact":"13800000000","note":"password=abc","verify":"验证码 123456"}',
+        )
+
+    saved_job = save_job_application(
+        database_path,
+        platform="lagou",
+        platform_job_id="safe-job",
+        job_url="https://example.com/jobs/safe",
+        company_name="OpenAI",
+        title="Platform Engineer",
+        location="Shanghai",
+        employment_type="full_time",
+        salary_range="40k-60k",
+        posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy="hybrid",
+        level="senior",
+        experience_requirement="5 years",
+        education_requirement="bachelor",
+        industry="ai",
+        company_size="100-499",
+        funding_stage="series_c",
+        tech_stack="python, llm",
+        benefits="meal, stock",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url="https://example.com/jobs/safe",
+        jd_text="build agents",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"salary_range":"high"}',
+        normalized_payload='{"platform":"lagou"}',
+    )
+
+    with pytest.raises(ValueError, match="敏感"):
+        save_job_application_filters(
+            database_path,
+            filter_id="filter-sensitive",
+            hard_filters='{"contact":"hr@example.com"}',
+            ranking_preferences='{"auth":"required"}',
+        )
+
+    with pytest.raises(ValueError, match="敏感"):
+        save_job_application_evaluation(
+            database_path,
+            evaluation_id="eval-sensitive",
+            job_id=saved_job["job_id"],
+            score=88.0,
+            hard_filter_status="passed",
+            strengths='["account_id"]',
+            risks='["电话 13800000000"]',
+            missing_information='["credential"]',
+            resume_improvement_advice='["补充密码"]',
+            application_message="cookie token session",
+            recommended=True,
+            recommendation_reason="auth strong",
+        )
+
+    with pytest.raises(ValueError, match="敏感"):
+        update_job_application_status(
+            database_path,
+            job_id=saved_job["job_id"],
+            status="failed",
+            confirmation_batch_id="batch-sensitive",
+            confirmation_status="confirmed",
+            failure_reason="account_id blocked",
+            platform_message="需要验证码",
+        )
+
+    save_platform_collection_task(
+        database_path,
+        collection_task_id="task-sensitive",
+        platform="lagou",
+        search_keyword="python",
+        status="running",
+    )
+    with pytest.raises(ValueError, match="敏感"):
+        record_collection_progress(
+            database_path,
+            collection_task_id="task-sensitive",
+            platform="lagou",
+            current_page=1,
+            last_job_offset=0,
+            retry_count=1,
+            failure_reason="auth credential account_id=123",
+            manual_takeover_required=True,
+            status="paused",
         )

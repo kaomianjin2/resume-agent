@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 import hashlib
 from pathlib import Path
+import re
 import sqlite3
 from typing import Iterator
 from uuid import uuid4
@@ -15,7 +16,21 @@ DEFAULT_ADMIN_PASSWORD = "admin"
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 JOB_APPLICATION_STATUSES = {"pending_review", "approved", "submitted", "failed", "skipped", "duplicate"}
 CONFIRMATION_BATCH_STATUSES = {"pending_review", "confirmed", "submitted", "failed", "skipped"}
-SENSITIVE_PATTERNS = ("cookie", "token", "session", "password", "手机号", "mobile", "验证码")
+SENSITIVE_PATTERNS = (
+    "cookie",
+    "token",
+    "session",
+    "password",
+    "密码",
+    "credential",
+    "auth",
+    "account_id",
+    "手机号",
+    "mobile",
+    "验证码",
+)
+EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+PHONE_PATTERN = re.compile(r"(?<!\d)(?:1\d{10}|\d{3,4}-?\d{7,8})(?!\d)")
 
 
 def get_connection(database_path: Path | str) -> sqlite3.Connection:
@@ -228,7 +243,7 @@ def save_job_application(
     database_path: Path | str,
     *,
     platform: str,
-    external_job_id: str,
+    platform_job_id: str,
     job_url: str,
     company_name: str,
     title: str,
@@ -254,7 +269,7 @@ def save_job_application(
 ) -> dict[str, str | bool | None]:
     required_fields = _normalize_required_job_fields(
         platform=platform,
-        external_job_id=external_job_id,
+        platform_job_id=platform_job_id,
         job_url=job_url,
         company_name=company_name,
         title=title,
@@ -291,7 +306,7 @@ def save_job_application(
     with get_connection(database_path) as connection:
         existing_row = connection.execute(
             """
-            SELECT job_id, platform, external_job_id, job_url, company_name, title, location,
+            SELECT job_id, platform, platform_job_id, job_url, company_name, title, location,
                    employment_type, salary_range, posted_at, remote_policy, level,
                    experience_requirement, education_requirement, industry, company_size,
                    funding_stage, tech_stack, benefits, published_at, detail_url, jd_text,
@@ -309,7 +324,7 @@ def save_job_application(
         connection.execute(
             """
             INSERT INTO job_applications (
-                job_id, platform, external_job_id, job_url, company_name, title, location,
+                job_id, platform, platform_job_id, job_url, company_name, title, location,
                 employment_type, salary_range, posted_at, remote_policy, level,
                 experience_requirement, education_requirement, industry, company_size,
                 funding_stage, tech_stack, benefits, published_at, detail_url, jd_text,
@@ -321,7 +336,7 @@ def save_job_application(
             (
                 job_id,
                 required_fields["platform"],
-                required_fields["external_job_id"],
+                required_fields["platform_job_id"],
                 required_fields["job_url"],
                 required_fields["company_name"],
                 required_fields["title"],
@@ -364,7 +379,7 @@ def list_job_applications(database_path: Path | str) -> list[dict[str, str | Non
     with get_connection(database_path) as connection:
         rows = connection.execute(
             """
-            SELECT job_id, platform, external_job_id, job_url, company_name, title, location,
+            SELECT job_id, platform, platform_job_id, job_url, company_name, title, location,
                    employment_type, salary_range, posted_at, remote_policy, level,
                    experience_requirement, education_requirement, industry, company_size,
                    funding_stage, tech_stack, benefits, published_at, detail_url, jd_text,
@@ -859,7 +874,7 @@ def _job_application_from_row(row: tuple[object, ...]) -> dict[str, str | None]:
     return {
         "job_id": str(row[0]),
         "platform": str(row[1]),
-        "external_job_id": str(row[2]),
+        "platform_job_id": str(row[2]),
         "job_url": str(row[3]),
         "company_name": str(row[4]),
         "title": str(row[5]),
@@ -894,6 +909,8 @@ def _assert_no_sensitive_content(values: list[str | None]) -> None:
             continue
         lowered_value = value.lower()
         if any(pattern in lowered_value for pattern in SENSITIVE_PATTERNS):
+            raise ValueError("包含敏感字段，禁止落库")
+        if EMAIL_PATTERN.search(value) or PHONE_PATTERN.search(value):
             raise ValueError("包含敏感字段，禁止落库")
 
 
