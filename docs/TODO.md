@@ -285,6 +285,7 @@
    - [x] JOB-004 Chrome 会话隔离与敏感信息脱敏边界 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_interview_nodes.py tests/test_storage.py`：71 passed；reviewer 复审 `可继续`
    - [x] JOB-005 适配器夹具与契约测试基建 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py`：44 passed；reviewer 第四次复审 `可继续`
    - [x] JOB-006 多平台采集编排与进度状态 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`：65 passed；reviewer 第四次复审 `Can proceed: Yes`
+   - [x] JOB-007 平台风控与人工接管 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py`：54 passed；reviewer `可继续`
 2. [操作] 每个任务合并后由主 agent 更新本 TODO 状态与专项任务文档状态 → verify: `rtk git diff -- docs/TODO.md docs/job-application-development-tasks.md`
 3. [操作] 功能完成后由主 agent 更新 `HISTORY.md` → verify: HISTORY 记录包含任务编号、功能名称、测试命令、reviewer 结论和影响范围
 4. [操作] 涉及架构变更后由主 agent 更新 `docs/architecture.md` 与 `docs/architecture.svg` → verify: `rtk xmllint --noout docs/architecture.svg`

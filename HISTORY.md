@@ -2,6 +2,15 @@
 
 ## 2026-06-10
 
+### JOB-007 平台风控与人工接管
+
+- 功能名称：平台风控与人工接管
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py`
+- 测试结果：`54 passed in 0.56s`
+- reviewer 结论：`可继续`，无阻断问题。
+- 影响范围：`src/interview_agent/job_collection.py`、`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 变更摘要：新增求职采集风控状态处理，验证码、账号风控和强制弹窗会进入 `manual_takeover` 并暂停对应平台，限流会进入 `backoff` 并记录退避提示；恢复入口可从普通失败、人工接管和退避状态恢复单个平台，保留其他平台已采集结果；GUI 采集进度 view model 暴露人工接管和退避计数，并继续走敏感信息扫描，避免 cookie、token、session 等浏览器会话信息进入展示状态。
+
 ### JOB-006 多平台采集编排与进度状态
 
 - 功能名称：多平台采集编排与进度状态

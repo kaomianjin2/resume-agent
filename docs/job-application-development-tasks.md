@@ -252,7 +252,10 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 
 ### JOB-007 平台风控与人工接管
 
-- 状态：`pending`
+- 状态：`done`
+- 负责人：implementer / reviewer / main agent
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
 - 目标：处理验证码、频率限制、账号风控、强制弹窗等平台自动化高风险场景。
 - 影响范围：采集编排器、平台适配器错误处理、GUI 状态提示。
 - 输入：平台适配器错误类型、采集进度状态。
@@ -276,6 +279,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 - 观测证据：记录风控状态样例、人工接管状态样例和测试输出摘要。
 - 副作用：平台任务可能暂停等待用户处理。
 - 影响调用方：平台采集、平台投递、GUI 进度页。
+
+#### JOB-007 完成记录
+
+- 状态：done
+- 负责人：implementer / reviewer / main agent
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
+- 修改文件：`src/interview_agent/job_collection.py`、`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py`；`rtk git diff --check main...HEAD`
+- 验证结果：`tests/test_gui_runtime.py` 54 passed；diff check 无输出；reviewer 结论 `可继续`
+- 观测证据：新增验证码、账号风控、强制弹窗进入 `manual_takeover` 的进度状态；新增限流进入 `backoff` 的退避状态；GUI view model summary 新增 `manual_takeover_platform_count` 和 `backoff_platform_count`；测试覆盖人工接管恢复只恢复对应平台并保留其他平台结果，风控 view model 不包含 cookie、token、session 等敏感会话信息。
+- 副作用：平台任务遇到验证码、账号风控、强制弹窗或限流时会暂停，等待用户处理或退避恢复。
+- 影响调用方：平台采集、平台投递、GUI 进度页可读取人工接管、退避和恢复后的平台状态；普通失败平台重试行为保持兼容。
+- 后续风险：真实平台适配器仍需在 JOB-008 到 JOB-010 中接入各平台页面结构，投递阶段风控暂停由 JOB-015 到 JOB-017 继续覆盖。
 
 ### JOB-008 BOSS 直聘只读采集适配器
 
