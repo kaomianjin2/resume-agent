@@ -75,7 +75,10 @@ rtk uv run pytest -p no:cacheprovider tests/test_storage.py
 
 ### JOB-002 求职画像生成
 
-- 状态：`pending`
+- 状态：`done`
+- 负责人：implementer / reviewer
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
 - 目标：从现有 `resume_profile` 生成岗位搜索画像和默认筛选条件。
 - 影响范围：运行时 facade、求职画像服务、GUI 数据模型。
 - 输入：`resume_profile`。
@@ -94,9 +97,12 @@ rtk uv run pytest -p no:cacheprovider tests/test_storage.py
 rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 ```
 
-- 观测证据：记录画像输入输出样例和测试输出摘要。
-- 副作用：新增求职画像状态。
-- 影响调用方：GUI 求职模块、岗位搜索任务。
+- 验证结果：`32 passed in 0.43s`；reviewer 复审结论：`可继续`，无阻断问题。
+- 观测证据：
+  - 新增/修改测试：`test_runtime_prepares_complete_job_search_profile_from_resume_profile`、`test_runtime_marks_missing_job_search_profile_fields_for_confirmation`、`test_runtime_saves_job_search_profile_with_user_overrides`、`test_runtime_keeps_remote_policy_pending_when_resume_profile_has_no_remote_preference`、`test_runtime_saves_false_remote_policy_override_without_falling_back`、`test_runtime_saves_empty_overrides_as_cleared_job_search_conditions`、`test_runtime_job_search_profile_state_contains_all_job_002_override_dimensions`。
+  - 任务提交：`4c75507`、`143f8a4`。
+- 副作用：新增求职画像相关 session state：`job_search_profile`、`job_search_filters`。
+- 影响调用方：GUI 求职模块和后续岗位搜索任务可读取完整求职画像、默认搜索词、硬过滤条件、排序偏好和待确认字段；现有面试准备、模拟面试、算法练习调用方不变。
 
 ### JOB-003 平台适配器接口
 

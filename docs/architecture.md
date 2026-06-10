@@ -39,6 +39,8 @@ flowchart TD
     GUIRuntime --> PrepVM[面试准备聚合<br/>prepare_interview_materials<br/>resume_parse -> jd_parse -> jd_match]
     PrepVM --> Executor
     PrepVM --> State
+    GUIRuntime --> JobProfileVM[求职画像生成<br/>prepare_job_search_profile<br/>resume_profile -> job_search_profile / filters]
+    JobProfileVM --> State
     GUIRuntime --> MockVM[GUI 模拟面试闭环<br/>start_mock_interview / submit_mock_answer / end_mock_interview<br/>question_generate -> mock_followup -> answer_score]
     MockVM --> Executor
     MockVM --> State
@@ -302,6 +304,7 @@ erDiagram
 - CLI 的普通请求路径委派给 `run_user_request()`；模拟面试专属流程委派给 `mock_interview.py`，并复用 CLI 提供的补输入、结果展示和取消异常回调。
 - 用户可见结果展示集中在 `rendering.py`；`cli.py` 仅保留 `_write_result()`、`_write_line()` 等兼容包装和回调装配。
 - GUI Runtime Facade 的面试准备入口通过 `prepare_interview_materials()` 串联 `resume_parse`、`jd_parse`、`jd_match`，返回简历摘要、岗位重点、匹配度、优势、风险和追问重点。
+- GUI Runtime Facade 的求职画像入口通过 `prepare_job_search_profile()` 从已有 `resume_profile` 生成求职画像、默认搜索词、硬过滤条件、排序偏好和待确认字段，并写入 SQLite `session_state` 的 `job_search_profile`、`job_search_filters`。
 - GUI Runtime Facade 的模拟面试入口通过 `start_mock_interview()`、`submit_mock_answer()`、`end_mock_interview()` 复用 `question_generate`、`mock_followup`、`answer_score`，并把当前题、追问、评分和终态 view model 写入 SQLite `session_state`。
 - Tauri Desktop Shell 位于 `gui/src-tauri/`，负责承载 React Web Shell、本地文件选择、Python runtime 进程启停和窗口关闭清理。
 - Desktop Shell 启动 Python runtime 时使用独立进程组；停止 runtime 或关闭窗口时清理整个进程树，避免残留 `uv` / Python 子进程。
@@ -310,6 +313,7 @@ erDiagram
 - 运行时只检查知识库 ready 状态，不构建知识库。
 - 知识库通过离线命令构建到 SQLite。
 - 求职投递数据独立落在 SQLite 求职表中，包含标准岗位、筛选条件、评估报告、确认批次、投递记录、采集任务和平台进度。
+- 求职画像状态复用 SQLite `session_state`，不新增数据库 schema；缺失筛选维度通过待确认字段暴露给 GUI。
 - 求职存储入口拒绝明显账号凭据、联系方式、cookie、token、session、验证码等敏感内容落库。
 - 清空求职数据只删除求职相关表，不删除 `sessions`、`session_state`、知识库索引或 Chrome 登录态。
 - 节点之间只通过 SQLite `session_state` 共享数据。

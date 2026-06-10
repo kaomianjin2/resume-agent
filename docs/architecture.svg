@@ -96,7 +96,7 @@
   <rect class="card hub" x="495" y="430" width="245" height="104"/>
   <text class="label" x="618" y="464" text-anchor="middle">GUI Runtime Facade</text>
   <text class="small" x="618" y="490" text-anchor="middle">gui_runtime.py</text>
-  <text class="tiny" x="618" y="512" text-anchor="middle">status / prep / mock / route</text>
+  <text class="tiny" x="618" y="512" text-anchor="middle">status / prep / job profile / mock / route</text>
 
   <rect class="card hub" x="495" y="575" width="245" height="78"/>
   <text class="label" x="618" y="607" text-anchor="middle">结果展示层</text>
@@ -108,7 +108,7 @@
   <rect class="card runtime" x="858" y="282" width="155" height="94"/>
   <text class="label" x="936" y="316" text-anchor="middle">面试准备</text>
   <text class="small" x="936" y="342" text-anchor="middle">resume / JD / match</text>
-  <text class="tiny" x="936" y="363" text-anchor="middle">聚合 view model</text>
+  <text class="tiny" x="936" y="363" text-anchor="middle">聚合 view model / resume_profile</text>
 
   <rect class="card runtime" x="1043" y="282" width="155" height="94"/>
   <text class="label" x="1121" y="316" text-anchor="middle">模拟面试</text>
@@ -120,14 +120,18 @@
   <text class="small" x="936" y="480" text-anchor="middle">router.py</text>
   <text class="tiny" x="936" y="502" text-anchor="middle">needs_user_choice</text>
 
+  <rect class="card runtime" x="858" y="555" width="155" height="82"/>
+  <text class="label" x="936" y="588" text-anchor="middle">求职画像</text>
+  <text class="small" x="936" y="614" text-anchor="middle">job_search_profile</text>
+
   <rect class="card flow" x="1043" y="420" width="155" height="98"/>
   <text class="label" x="1121" y="454" text-anchor="middle">节点规划器</text>
   <text class="small" x="1121" y="480" text-anchor="middle">planner.py</text>
   <text class="tiny" x="1121" y="502" text-anchor="middle">生成内部步骤</text>
 
-  <rect class="card flow" x="950" y="555" width="155" height="82"/>
-  <text class="label" x="1028" y="588" text-anchor="middle">模拟面试流程</text>
-  <text class="small" x="1028" y="614" text-anchor="middle">mock_interview.py</text>
+  <rect class="card flow" x="1043" y="555" width="155" height="82"/>
+  <text class="label" x="1121" y="588" text-anchor="middle">模拟面试流程</text>
+  <text class="small" x="1121" y="614" text-anchor="middle">mock_interview.py</text>
 
   <rect class="band-light" x="1290" y="220" width="405" height="460"/>
   <text class="chip" x="1315" y="253">EXECUTE + INTELLIGENCE</text>
@@ -163,15 +167,16 @@
   <path class="soft-line" d="M 618 385 L 618 430"/>
   <path class="line" d="M 740 482 C 795 482 805 329 858 329"/>
   <path class="line" d="M 740 482 C 794 482 806 469 858 469"/>
-  <path class="line" d="M 740 482 C 800 482 805 597 950 597"/>
+  <path class="line" d="M 740 482 C 795 482 805 597 858 597"/>
+  <path class="line" d="M 740 482 C 800 482 870 597 1043 597"/>
   <path class="line" d="M 1013 469 L 1043 469"/>
   <path class="line" d="M 1198 469 C 1240 469 1260 337 1320 337"/>
-  <path class="line" d="M 1105 597 C 1205 597 1228 337 1320 337"/>
+  <path class="line" d="M 1198 597 C 1230 597 1245 337 1320 337"/>
   <path class="line" d="M 1475 337 L 1510 337"/>
   <path class="line" d="M 1588 390 L 1588 430"/>
   <path class="line" d="M 1510 485 L 1475 485"/>
   <path class="line" d="M 1588 540 C 1588 558 1545 575 1493 575"/>
-  <path class="soft-line" d="M 1320 485 C 1250 485 1220 597 1105 597"/>
+  <path class="soft-line" d="M 1320 485 C 1250 485 1220 597 1198 597"/>
   <path class="soft-line" d="M 495 615 C 438 625 405 625 380 615"/>
 
   <text class="edge-label" x="424" y="315">CLI 输入</text>
@@ -180,7 +185,7 @@
   <text class="edge-label" x="779" y="454">路由</text>
   <text class="edge-label" x="1210" y="320">计划执行</text>
   <text class="edge-label" x="1478" y="322">注册</text>
-  <text class="edge-label" x="1212" y="581">面试闭环</text>
+  <text class="edge-label" x="1238" y="581">面试闭环</text>
 
   <rect class="band" x="80" y="790" width="1040" height="270"/>
   <text class="section-title" x="115" y="830">共享状态与检索数据面</text>
@@ -211,6 +216,7 @@
   <path class="dash-line" d="M 617 534 C 617 735 578 800 578 880"/>
   <path class="dash-line" d="M 1398 390 C 1210 760 760 760 578 880"/>
   <path class="dash-line" d="M 1588 540 C 1460 760 1070 805 913 880"/>
+  <path class="dash-line" d="M 936 637 C 900 760 720 820 578 880"/>
   <path class="dash-line" d="M 617 534 C 710 760 840 880 913 1018"/>
   <path class="dash-line" d="M 578 1018 C 640 805 1030 735 1121 518"/>
   <path class="dash-line" d="M 578 1018 C 820 830 1290 760 1398 390"/>
@@ -248,5 +254,5 @@
   <text class="edge-label" x="1115" y="1080">运行时只读 ready 索引</text>
 
   <rect class="band-light" x="80" y="1092" width="1640" height="58"/>
-  <text class="small" x="115" y="1128">关键约束：配置只来自 config/interview-agent.toml；运行时不构建知识库；GUI Runtime 只输出结构化 view model；节点输出通过 state_contracts.py 校验后写入 session_state；求职存储拒绝明显敏感内容落库。</text>
+  <text class="small" x="115" y="1128">关键约束：配置只来自 config/interview-agent.toml；运行时不构建知识库；GUI Runtime 只输出结构化 view model；节点输出和求职画像写入 session_state；求职存储拒绝明显敏感内容落库。</text>
 </svg>
