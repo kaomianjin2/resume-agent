@@ -1352,6 +1352,8 @@ def test_job_platform_fake_adapter_simulates_submission_failure_without_sensitiv
 
 
 def test_job_platform_contract_parses_fixture_list_and_detail_fields() -> None:
+    from dataclasses import asdict
+
     from interview_agent.job_platform_adapters import (
         parse_job_detail_fixture,
         parse_job_list_fixture,
@@ -1363,18 +1365,56 @@ def test_job_platform_contract_parses_fixture_list_and_detail_fields() -> None:
     detail = parse_job_detail_fixture((fixture_dir / "detail.html").read_text())
 
     assert len(jobs) == 1
-    assert jobs[0].platform == "boss"
-    assert jobs[0].platform_job_id == "boss-frontend-001"
-    assert jobs[0].title == "资深后端工程师"
-    assert jobs[0].company_name == "示例科技"
-    assert jobs[0].location == "上海"
-    assert jobs[0].salary_range == "35k-50k"
-    assert jobs[0].tech_stack == ["Python", "PostgreSQL", "FastAPI"]
-    assert jobs[0].benefits == ["五险一金", "弹性工作"]
-    assert jobs[0].detail_url == "https://example.com/boss/jobs/boss-frontend-001"
-    assert detail.platform_job_id == jobs[0].platform_job_id
-    assert detail.jd_text == "负责后端服务与平台稳定性。 需要维护 PostgreSQL 查询性能并建设 FastAPI 服务。"
-    assert detail.field_confidence["title"] == "fixture"
+    expected_list_job = {
+        "platform": "boss",
+        "platform_job_id": "boss-frontend-001",
+        "title": "资深后端工程师",
+        "company_name": "示例科技",
+        "location": "上海",
+        "remote_policy": "hybrid",
+        "salary_range": "35k-50k",
+        "level": "高级",
+        "experience_requirement": "5年",
+        "education_requirement": "本科",
+        "industry": "AI 工具",
+        "company_size": "100-500人",
+        "funding_stage": "B轮",
+        "tech_stack": ["Python", "PostgreSQL", "FastAPI"],
+        "benefits": ["五险一金", "弹性工作"],
+        "published_at": "2026-06-10T09:00:00+08:00",
+        "detail_url": "https://example.com/boss/jobs/boss-frontend-001",
+        "jd_text": "负责后端服务与平台稳定性。",
+        "collected_at": "2026-06-10T09:05:00+08:00",
+        "field_confidence": {
+            "platform": "fixture",
+            "platform_job_id": "fixture",
+            "title": "fixture",
+            "company_name": "fixture",
+            "location": "fixture",
+            "remote_policy": "fixture",
+            "salary_range": "fixture",
+            "level": "fixture",
+            "experience_requirement": "fixture",
+            "education_requirement": "fixture",
+            "industry": "fixture",
+            "company_size": "fixture",
+            "funding_stage": "fixture",
+            "tech_stack": "fixture",
+            "benefits": "fixture",
+            "published_at": "fixture",
+            "detail_url": "fixture",
+            "jd_text": "fixture",
+            "collected_at": "fixture",
+        },
+    }
+    expected_detail_job = {
+        **expected_list_job,
+        "jd_text": "负责后端服务与平台稳定性。 需要维护 PostgreSQL 查询性能并建设 FastAPI 服务。",
+        "collected_at": "2026-06-10T09:06:00+08:00",
+    }
+
+    assert asdict(jobs[0]) == expected_list_job
+    assert asdict(detail) == expected_detail_job
 
 
 def test_job_platform_contract_preserves_nested_field_text() -> None:
