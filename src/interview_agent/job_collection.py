@@ -8,10 +8,19 @@ from interview_agent.job_platform_adapters import (
     JobPlatformAdapter,
     JobSearchRequest,
     PlatformAdapterError,
+    PlatformAdapterErrorType,
     StandardJob,
 )
 from interview_agent.sensitive import assert_no_sensitive_payload
 from interview_agent.storage import record_collection_progress, save_platform_collection_task
+
+
+MANUAL_TAKEOVER_ERROR_TYPES = {
+    PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+    PlatformAdapterErrorType.ACCOUNT_RISK_CONTROL,
+    PlatformAdapterErrorType.FORCED_POPUP,
+}
+BACKOFF_ERROR_TYPES = {PlatformAdapterErrorType.RATE_LIMITED}
 
 
 class JobCollectionOrchestrator:
@@ -62,8 +71,8 @@ class JobCollectionOrchestrator:
         if collection_task_id not in self._requests:
             raise ValueError("采集任务不存在")
         progress = self._platform_progress.get(platform)
-        if not progress or progress.get("status") != "failed":
-            raise ValueError("平台没有失败采集状态")
+        if not progress or progress.get("status") not in {"failed", "manual_takeover", "backoff"}:
+            raise ValueError("平台没有可恢复采集状态")
         next_retry_count = int(progress.get("retry_count", 0)) + 1
         selected_adapter = adapter or self._adapters[platform]
         self._adapters[platform] = selected_adapter
@@ -120,7 +129,37 @@ class JobCollectionOrchestrator:
         errors: list[PlatformAdapterError],
         retry_count: int,
     ) -> None:
-        failure_reason = errors[0].error_type.value if errors else "unknown_error"
+        error_type = errors[0].error_type if errors else None
+        failure_reason = error_type.value if error_type is not None else "unknown_error"
+        if error_type in MANUAL_TAKEOVER_ERROR_TYPES:
+            self._write_progress(
+                collection_task_id,
+                platform,
+                "manual_takeover",
+                retry_count=retry_count,
+                failure_reason=failure_reason,
+                manual_takeover_required=True,
+                risk_control={
+                    "type": "manual_takeover",
+                    "reason": failure_reason,
+                    "hint": "平台要求人工处理后再恢复采集",
+                },
+            )
+            return
+        if error_type in BACKOFF_ERROR_TYPES:
+            self._write_progress(
+                collection_task_id,
+                platform,
+                "backoff",
+                retry_count=retry_count,
+                failure_reason=failure_reason,
+                risk_control={
+                    "type": "backoff",
+                    "reason": failure_reason,
+                    "hint": "平台限流，已进入退避状态",
+                },
+            )
+            return
         self._write_progress(collection_task_id, platform, "failed", retry_count=retry_count, failure_reason=failure_reason)
 
     def _write_progress(
@@ -134,6 +173,8 @@ class JobCollectionOrchestrator:
         retry_count: int = 0,
         failure_reason: str | None = None,
         collected_job_count: int = 0,
+        manual_takeover_required: bool = False,
+        risk_control: dict[str, str] | None = None,
     ) -> None:
         progress = self._platform_progress.get(platform)
         if progress is None:
@@ -144,8 +185,9 @@ class JobCollectionOrchestrator:
                 "last_job_offset": last_job_offset,
                 "retry_count": retry_count,
                 "failure_reason": failure_reason,
-                "manual_takeover_required": False,
+                "manual_takeover_required": manual_takeover_required,
                 "collected_job_count": collected_job_count,
+                "risk_control": risk_control,
                 "events": [],
             }
             self._platform_progress[platform] = progress
@@ -157,8 +199,9 @@ class JobCollectionOrchestrator:
                 "last_job_offset": last_job_offset,
                 "retry_count": retry_count,
                 "failure_reason": failure_reason,
-                "manual_takeover_required": False,
+                "manual_takeover_required": manual_takeover_required,
                 "collected_job_count": max(int(progress.get("collected_job_count", 0)), collected_job_count),
+                "risk_control": risk_control,
             }
         )
         events = list(progress["events"])
@@ -199,8 +242,24 @@ class JobCollectionOrchestrator:
         progress = {platform: dict(platform_progress) for platform, platform_progress in self._platform_progress.items()}
         failed_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] == "failed")
         completed_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] == "completed")
-        running_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] not in {"completed", "failed"})
-        status = "running" if running_count else "failed" if failed_count and not completed_count else "partial" if failed_count else "success"
+        manual_takeover_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] == "manual_takeover")
+        backoff_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] == "backoff")
+        stopped_statuses = {"completed", "failed", "manual_takeover", "backoff"}
+        running_count = sum(1 for platform_progress in progress.values() if platform_progress["status"] not in stopped_statuses)
+        risk_control_count = manual_takeover_count + backoff_count
+        status = (
+            "running"
+            if running_count
+            else "manual_takeover"
+            if manual_takeover_count and not completed_count and not failed_count and not backoff_count
+            else "backoff"
+            if backoff_count and not completed_count and not failed_count and not manual_takeover_count
+            else "failed"
+            if failed_count and not completed_count and not risk_control_count
+            else "partial"
+            if failed_count or risk_control_count
+            else "success"
+        )
         return {
             "status": status,
             "jobs": jobs,
@@ -222,6 +281,8 @@ def job_collection_view_model(result: dict[str, object]) -> dict[str, object]:
             "platform_count": len(platform_view_models),
             "completed_platform_count": sum(1 for progress in platform_view_models.values() if progress.get("status") == "completed"),
             "failed_platform_count": sum(1 for progress in platform_view_models.values() if progress.get("status") == "failed"),
+            "manual_takeover_platform_count": sum(1 for progress in platform_view_models.values() if progress.get("status") == "manual_takeover"),
+            "backoff_platform_count": sum(1 for progress in platform_view_models.values() if progress.get("status") == "backoff"),
             "collected_job_count": len(job_view_models),
         },
         "platforms": platform_view_models,

@@ -1739,6 +1739,8 @@ def test_runtime_collects_jobs_and_exposes_collection_progress_view_model(tmp_pa
         "platform_count": 2,
         "completed_platform_count": 1,
         "failed_platform_count": 1,
+        "manual_takeover_platform_count": 0,
+        "backoff_platform_count": 0,
         "collected_job_count": 1,
     }
     assert view_model["platforms"]["boss"]["status"] == "completed"
@@ -1953,7 +1955,7 @@ def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt
 
     assert [event["status"] for event in result["platform_progress"]["lagou"]["events"]] == [
         "started",
-        "failed",
+        "backoff",
         "retrying",
         "started",
         "page_collected",
@@ -1974,6 +1976,176 @@ def test_job_collection_orchestrator_records_retrying_event_before_retry_attempt
             "status": "retrying",
         }
     ]
+
+
+def test_runtime_pauses_manual_takeover_platform_and_resumes_only_that_platform(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter, PlatformAdapterError, PlatformAdapterErrorType
+    from interview_agent.storage import get_collection_progress
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("job-manual-takeover-session")
+
+    view_model = runtime.collect_job_applications(
+        session_id="job-manual-takeover-session",
+        collection_task_id="collection-manual-takeover-001",
+        adapters={
+            "boss": FakeJobPlatformAdapter(platform="boss", jobs=[_standard_job(platform="boss", platform_job_id="boss-manual-001")]),
+            "liepin": FakeJobPlatformAdapter(
+                platform="liepin",
+                search_error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+                    platform="liepin",
+                    stage="search",
+                    message="验证码触发 cookie=sid-secret token=secret account_id=42",
+                    page_url="https://example.com/liepin/search?token=secret",
+                ),
+            ),
+        },
+        platforms=["boss", "liepin"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={},
+        ranking_preferences={},
+        keyword="后端工程师",
+    )
+
+    liepin_progress = view_model["platforms"]["liepin"]
+    assert liepin_progress["status"] == "manual_takeover"
+    assert liepin_progress["failure_reason"] == "captcha_required"
+    assert liepin_progress["manual_takeover_required"] is True
+    assert liepin_progress["risk_control"] == {
+        "type": "manual_takeover",
+        "reason": "captcha_required",
+        "hint": "平台要求人工处理后再恢复采集",
+    }
+    assert view_model["summary"]["manual_takeover_platform_count"] == 1
+    assert view_model["platforms"]["boss"]["status"] == "completed"
+    assert [job["platform_job_id"] for job in view_model["jobs"]] == ["boss-manual-001"]
+    assert _contains_sensitive_adapter_payload(view_model) is False
+
+    persisted_progress = get_collection_progress(database_path, collection_task_id="collection-manual-takeover-001", platform="liepin")
+    assert persisted_progress is not None
+    assert persisted_progress["status"] == "manual_takeover"
+    assert persisted_progress["manual_takeover_required"] is True
+
+    resumed_view_model = runtime.retry_failed_job_collection_platform(
+        session_id="job-manual-takeover-session",
+        collection_task_id="collection-manual-takeover-001",
+        platform="liepin",
+        adapter=FakeJobPlatformAdapter(platform="liepin", jobs=[_standard_job(platform="liepin", platform_job_id="liepin-manual-001")]),
+    )
+
+    assert resumed_view_model["status"] == "success"
+    assert [job["platform_job_id"] for job in resumed_view_model["jobs"]] == ["boss-manual-001", "liepin-manual-001"]
+    assert resumed_view_model["platforms"]["boss"]["status"] == "completed"
+    assert resumed_view_model["platforms"]["boss"]["collected_job_count"] == 1
+    assert resumed_view_model["platforms"]["liepin"]["status"] == "completed"
+    assert resumed_view_model["platforms"]["liepin"]["manual_takeover_required"] is False
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        "ACCOUNT_RISK_CONTROL",
+        "FORCED_POPUP",
+    ],
+)
+def test_runtime_classifies_account_risk_and_forced_popup_as_manual_takeover(tmp_path: Path, error_type: str) -> None:
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter, PlatformAdapterError, PlatformAdapterErrorType
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session(f"job-{error_type.lower()}-session")
+
+    view_model = runtime.collect_job_applications(
+        session_id=f"job-{error_type.lower()}-session",
+        collection_task_id=f"collection-{error_type.lower()}-001",
+        adapters={
+            "boss": FakeJobPlatformAdapter(
+                platform="boss",
+                search_error=PlatformAdapterError(
+                    error_type=getattr(PlatformAdapterErrorType, error_type),
+                    platform="boss",
+                    stage="search",
+                    message="平台要求人工处理 token=secret",
+                ),
+            )
+        },
+        platforms=["boss"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={},
+        ranking_preferences={},
+        keyword="后端工程师",
+    )
+
+    assert view_model["status"] == "manual_takeover"
+    assert view_model["platforms"]["boss"]["status"] == "manual_takeover"
+    assert view_model["platforms"]["boss"]["manual_takeover_required"] is True
+    assert view_model["summary"]["manual_takeover_platform_count"] == 1
+    assert _contains_sensitive_adapter_payload(view_model) is False
+
+
+def test_runtime_records_rate_limit_backoff_without_sensitive_session_payload(tmp_path: Path) -> None:
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter, PlatformAdapterError, PlatformAdapterErrorType
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("job-backoff-session")
+
+    view_model = runtime.collect_job_applications(
+        session_id="job-backoff-session",
+        collection_task_id="collection-backoff-001",
+        adapters={
+            "lagou": FakeJobPlatformAdapter(
+                platform="lagou",
+                search_error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.RATE_LIMITED,
+                    platform="lagou",
+                    stage="search",
+                    message="请求过快 cookie=sid-secret token=secret session=chrome",
+                    page_url="https://example.com/lagou/search?cookie=secret",
+                ),
+            )
+        },
+        platforms=["lagou"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={},
+        ranking_preferences={},
+        keyword="后端工程师",
+    )
+
+    assert view_model["status"] == "backoff"
+    assert view_model["summary"]["backoff_platform_count"] == 1
+    assert view_model["platforms"]["lagou"]["status"] == "backoff"
+    assert view_model["platforms"]["lagou"]["failure_reason"] == "rate_limited"
+    assert view_model["platforms"]["lagou"]["manual_takeover_required"] is False
+    assert view_model["platforms"]["lagou"]["risk_control"] == {
+        "type": "backoff",
+        "reason": "rate_limited",
+        "hint": "平台限流，已进入退避状态",
+    }
+    assert _contains_sensitive_adapter_payload(view_model) is False
 
 
 def _contains_sensitive_adapter_payload(value: object) -> bool:
