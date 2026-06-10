@@ -2,6 +2,15 @@
 
 ## 2026-06-10
 
+### JOB-004 Chrome 会话隔离与敏感信息脱敏边界
+
+- 功能名称：Chrome 会话隔离与敏感信息脱敏边界
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_interview_nodes.py tests/test_storage.py`
+- 测试结果：`71 passed in 0.69s`
+- reviewer 结论：复审 `可继续`，无阻断问题。
+- 影响范围：`src/interview_agent/sensitive.py`、`src/interview_agent/job_platform_adapters.py`、`src/interview_agent/agents.py`、`src/interview_agent/executor.py`、`src/interview_agent/session.py`、`src/interview_agent/storage.py`、`tests/test_gui_runtime.py`、`tests/test_interview_nodes.py`、`tests/test_storage.py`
+- 变更摘要：新增统一敏感信息扫描与 URL 摘要边界，覆盖平台适配器结果、提交错误、LLM prompt、`session_state`、`node_runs` 和求职存储入口；adapter 错误只保留错误类型、平台、阶段和非敏感 URL 摘要；节点 handler 抛出敏感异常时写入固定脱敏失败文案；补充测试证明真实敏感内容会被拒绝或脱敏，正常 JD、简历画像和结构化岗位字段中的 `token`、`auth`、`mobile`、普通 `session_id` 业务词不被误杀。
+
 ### JOB-003 平台适配器接口
 
 - 功能名称：平台适配器接口

@@ -140,7 +140,10 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 
 ### JOB-004 Chrome 会话隔离与敏感信息脱敏边界
 
-- 状态：`pending`
+- 状态：`done`
+- 负责人：implementer / reviewer
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
 - 目标：确保 Chrome 登录态只存在于用户浏览器进程内，敏感信息不入库、不进日志、不进 LLM。
 - 影响范围：浏览器自动化边界、日志、SQLite 写入、session state、prompt 构造。
 - 输入：平台适配器接口、浏览器页面状态。
@@ -159,9 +162,14 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_interview_nodes.py tests/test_storage.py
 ```
 
-- 观测证据：记录敏感字段扫描规则、扫描结果摘要和测试输出摘要。
-- 副作用：新增全链路安全约束。
-- 影响调用方：所有平台适配器、评估服务、投递执行器。
+- 验证结果：`71 passed in 0.69s`；reviewer 复审结论：`可继续`，无阻断问题。
+- 观测证据：
+  - 新增统一敏感扫描工具 `src/interview_agent/sensitive.py`，覆盖敏感字段名、凭据赋值、浏览器会话赋值、邮箱、手机号、验证码和 URL 摘要。
+  - 新增/修改测试：`test_job_platform_adapter_error_redacts_sensitive_message_and_url_summary`、`test_job_platform_adapter_error_summary_does_not_expose_field_name`、`test_job_platform_adapter_sanitizes_sensitive_submit_result_without_raising`、`test_node_executor_rejects_sensitive_inputs_before_node_run_is_persisted`、`test_llm_prompt_rejects_contact_and_browser_session_payload`、`test_llm_prompt_allows_business_terms_that_are_not_credentials`、`test_node_executor_persists_safe_error_summary_when_handler_raises_sensitive_exception`、`test_session_state_rejects_browser_session_and_contact_payload`。
+  - 红灯证据：首轮新增 4 个测试先失败；reviewer 首轮发现普通业务词误杀、提交错误未脱敏、`field_name` 外泄和节点敏感异常二次抛错后，补充 4 个失败测试再修复。
+  - 任务提交：`82cb3c7`、`16eb725`。
+- 副作用：新增全链路安全约束；真实敏感字段、凭据赋值、浏览器会话标识、邮箱、手机号和验证码会在 adapter、LLM prompt、session_state、node_runs 和求职存储入口被拒绝或脱敏。
+- 影响调用方：所有平台适配器、评估服务、投递执行器和节点执行链路；正常 JD、简历画像和结构化岗位字段中的 `token`、`auth`、`mobile`、普通 `session_id` 业务词可继续通过。
 
 ### JOB-005 适配器夹具与契约测试基建
 

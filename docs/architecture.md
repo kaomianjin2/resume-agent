@@ -42,7 +42,9 @@ flowchart TD
     GUIRuntime --> JobProfileVM[求职画像生成<br/>prepare_job_search_profile<br/>resume_profile -> job_search_profile / filters]
     JobProfileVM --> State
     JobAdapterProtocol[求职平台适配器协议<br/>job_platform_adapters.py<br/>StandardJob / errors / fake adapter]
+    SensitiveBoundary[敏感信息边界<br/>sensitive.py<br/>scan / redact / URL summary]
     JobProfileVM -.后续采集与投递共享契约.-> JobAdapterProtocol
+    JobAdapterProtocol --> SensitiveBoundary
     GUIRuntime --> MockVM[GUI 模拟面试闭环<br/>start_mock_interview / submit_mock_answer / end_mock_interview<br/>question_generate -> mock_followup -> answer_score]
     MockVM --> Executor
     MockVM --> State
@@ -66,11 +68,14 @@ flowchart TD
     Executor --> Registry[Node Registry<br/>src/interview_agent/nodes/registry.py]
     StateContracts --> Registry
     StateContracts --> SessionValidation[session_state 写入校验]
+    SensitiveBoundary --> SessionValidation
     Registry --> Handlers[Interview Node Handlers<br/>src/interview_agent/nodes/interview.py<br/>输出归一化]
 
     Executor --> SQLite[(SQLite<br/>sessions / session_state / node_runs)]
+    Executor --> SensitiveBoundary
     SessionValidation --> SQLite
     Handlers --> AgentRuntime[Structured Node Runtime<br/>src/interview_agent/agents.py]
+    AgentRuntime --> SensitiveBoundary
     AgentRuntime --> Prompts[Prompt Templates<br/>src/interview_agent/prompts.py]
     AgentRuntime --> LLM[OpenAI-compatible LLM<br/>src/interview_agent/llm.py]
     AgentRuntime --> Retriever[SQLite Hybrid Retriever<br/>src/interview_agent/kb/retrieval.py]
@@ -308,6 +313,7 @@ erDiagram
 - GUI Runtime Facade 的面试准备入口通过 `prepare_interview_materials()` 串联 `resume_parse`、`jd_parse`、`jd_match`，返回简历摘要、岗位重点、匹配度、优势、风险和追问重点。
 - GUI Runtime Facade 的求职画像入口通过 `prepare_job_search_profile()` 从已有 `resume_profile` 生成求职画像、默认搜索词、硬过滤条件、排序偏好和待确认字段，并写入 SQLite `session_state` 的 `job_search_profile`、`job_search_filters`。
 - 求职平台适配器协议位于 `job_platform_adapters.py`，定义标准岗位对象、搜索请求、平台执行结果、确认投递请求、投递结果、浏览器自动化边界和统一错误类型；当前仅作为后续 BOSS 直聘、拉勾、猎聘适配器、采集编排器和投递执行器的共享契约，未接入现有 GUI runtime 执行路径。
+- 统一敏感信息边界位于 `sensitive.py`，为平台适配器、LLM prompt、`session_state`、`node_runs` 和求职存储入口提供敏感字段扫描、错误摘要脱敏和 URL 摘要能力。
 - GUI Runtime Facade 的模拟面试入口通过 `start_mock_interview()`、`submit_mock_answer()`、`end_mock_interview()` 复用 `question_generate`、`mock_followup`、`answer_score`，并把当前题、追问、评分和终态 view model 写入 SQLite `session_state`。
 - Tauri Desktop Shell 位于 `gui/src-tauri/`，负责承载 React Web Shell、本地文件选择、Python runtime 进程启停和窗口关闭清理。
 - Desktop Shell 启动 Python runtime 时使用独立进程组；停止 runtime 或关闭窗口时清理整个进程树，避免残留 `uv` / Python 子进程。
@@ -317,13 +323,13 @@ erDiagram
 - 知识库通过离线命令构建到 SQLite。
 - 求职投递数据独立落在 SQLite 求职表中，包含标准岗位、筛选条件、评估报告、确认批次、投递记录、采集任务和平台进度。
 - 求职画像状态复用 SQLite `session_state`，不新增数据库 schema；缺失筛选维度通过待确认字段暴露给 GUI。
-- 求职存储入口拒绝明显账号凭据、联系方式、cookie、token、session、验证码等敏感内容落库。
+- 求职存储入口拒绝账号凭据、联系方式、cookie、token、浏览器 session、验证码等敏感内容落库；正常 JD、简历画像和岗位结构化字段中的 `token`、`auth`、`mobile`、普通 `session_id` 业务词不被按词面误杀。
 - 清空求职数据只删除求职相关表，不删除 `sessions`、`session_state`、知识库索引或 Chrome 登录态。
 - 节点之间只通过 SQLite `session_state` 共享数据。
 - 节点输入、可选输入和输出 key 由 `state_contracts.py` 集中定义。
 - Planner 和 Registry 复用同一份 state contract。
-- `session_state` 写入只做轻量结构校验，不强制业务 schema；`search_results = []` 是合法空检索结果。
-- 节点执行结果统一记录到 `node_runs`。
+- `session_state` 写入先做轻量结构校验，再走统一敏感信息扫描；`search_results = []` 是合法空检索结果。
+- 节点执行输入、输出和错误摘要统一记录到 `node_runs` 前先走敏感信息扫描；节点 handler 抛出敏感异常时只持久化固定脱敏失败文案。
 - 路由明确时直接执行内部步骤。
 - Router 通过 `needs_user_choice` 显式告诉 CLI 是否询问用户。
 - CLI 只展示能力方向，不展示 `candidate_nodes` 内部节点名。
