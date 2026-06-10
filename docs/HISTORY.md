@@ -23,6 +23,16 @@
 
 ## 历史记录
 
+## 2026-06-10 - JOB-005: 适配器夹具与契约测试基建
+
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "job_platform_contract"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py`
+- reviewer 结论：第四次复审可继续
+- 影响范围：`src/interview_agent/job_platform_adapters.py` / `parse_job_list_fixture()`、`parse_job_detail_fixture()`、`classify_job_platform_fixture_error()`、`_JobFixtureParser`、`_build_standard_job()`；`tests/test_gui_runtime.py`；`tests/fixtures/job_platform/*.html`
+- 变更摘要：
+  - 新增受控 HTML 夹具，覆盖岗位列表、岗位详情、登录失效、验证码、按钮不可用和已投递状态。
+  - 新增适配器契约测试，覆盖完整 `StandardJob` 字段、`field_confidence` 的 `fixture/missing` 状态、嵌套字段、多岗位卡片、必填字段缺失、4 类错误分类和未确认投递拦截。
+  - 平台自动化测试基建不接入真实浏览器、网络、数据库结构、配置或部署流程。
+
 ## 2026-05-22 - 用户管理模块登录拆分与 UI 文档落盘
 
 - 测试命令：`rtk npm run build`；`rtk npm run test:desktop`；`rtk uv run pytest tests/test_storage.py -k user`；`rtk uv run pytest tests/test_cli.py -k "user_commands_and_login_flow or login_rejects_disabled_user"`；Playwright 预览截图采集

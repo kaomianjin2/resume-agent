@@ -173,7 +173,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_inter
 
 ### JOB-005 适配器夹具与契约测试基建
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：建立受控 HTML/页面夹具和适配器契约测试，避免平台任务只依赖宽泛运行时测试。
 - 影响范围：测试夹具、适配器契约测试、fake browser/fake adapter。
 - 输入：平台适配器接口。
@@ -195,6 +195,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 - 观测证据：记录夹具清单、契约测试名和测试输出摘要。
 - 副作用：新增平台自动化测试基建。
 - 影响调用方：JOB-006 到 JOB-011 的平台实现任务。
+
+#### JOB-005 完成记录
+
+- 状态：done
+- 负责人：implementer / reviewer / main agent
+- 开始时间：2026-06-10
+- 完成时间：2026-06-10
+- 修改文件：`src/interview_agent/job_platform_adapters.py`、`tests/test_gui_runtime.py`、`tests/fixtures/job_platform/*.html`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "job_platform_contract"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py`；`rtk git diff --check main...HEAD`
+- 验证结果：`job_platform_contract` 6 passed；`tests/test_gui_runtime.py` 44 passed；diff check 无输出
+- 观测证据：夹具清单包含列表页、详情页、登录失效、验证码、按钮不可用、已投递；契约测试覆盖完整 `StandardJob` 字段、嵌套字段、多岗位卡片、必填字段缺失、4 类错误分类和未确认投递拦截；reviewer 第四次复审 `可继续`
+- 副作用：新增平台自动化测试基建和 HTML 夹具；未接入真实浏览器、网络、数据库结构、配置或部署流程
+- 影响调用方：JOB-006 到 JOB-011 可复用夹具解析、错误分类和投递约束契约
+- 后续风险：真实平台适配器仍需在 JOB-006 到 JOB-011 中分别接入平台页面结构和人工接管流程
 
 ### JOB-006 多平台采集编排与进度状态
 
