@@ -920,6 +920,8 @@ def _empty_job_collection_progress_view_model() -> dict[str, object]:
             "platform_count": 0,
             "completed_platform_count": 0,
             "failed_platform_count": 0,
+            "manual_takeover_platform_count": 0,
+            "backoff_platform_count": 0,
             "collected_job_count": 0,
         },
         "platforms": {},
