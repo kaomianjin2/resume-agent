@@ -119,6 +119,8 @@ class JobCollectionOrchestrator:
                 retry_count=retry_count,
                 collected_job_count=len(detail_jobs),
             )
+        except PlatformAdapterError as error:
+            self._write_failure(collection_task_id, platform, [error], retry_count)
         except Exception:
             self._write_progress(collection_task_id, platform, "failed", retry_count=retry_count, failure_reason="platform_exception")
 
