@@ -1671,6 +1671,70 @@ def test_boss_readonly_adapter_classifies_platform_states_and_already_applied() 
     assert applied_adapter.is_already_applied("boss-backend-001") is True
 
 
+def test_boss_readonly_adapter_propagates_detail_and_state_platform_errors() -> None:
+    import pytest
+
+    from interview_agent.job_platform_adapters import (
+        BossReadonlyJobPlatformAdapter,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    expected_errors = {
+        "boss_login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "boss_captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "boss_rate_limited.html": PlatformAdapterErrorType.RATE_LIMITED,
+        "boss_structure_changed.html": PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+    }
+
+    for fixture_name, expected_error_type in expected_errors.items():
+        detail_adapter = BossReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / "boss_list.html").read_text(),
+            detail_html_by_job_id={"boss-backend-001": (fixture_dir / fixture_name).read_text()},
+        )
+        state_adapter = BossReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / "boss_list.html").read_text(),
+            detail_html_by_job_id={"boss-backend-001": (fixture_dir / "boss_detail.html").read_text()},
+            state_html_by_job_id={"boss-backend-001": (fixture_dir / fixture_name).read_text()},
+        )
+
+        with pytest.raises(PlatformAdapterError) as detail_error:
+            detail_adapter.read_job_detail("boss-backend-001")
+        with pytest.raises(PlatformAdapterError) as state_error:
+            state_adapter.is_already_applied("boss-backend-001")
+
+        assert detail_error.value.error_type is expected_error_type
+        assert detail_error.value.stage == "detail"
+        assert state_error.value.error_type is expected_error_type
+        assert state_error.value.stage == "state"
+
+
+def test_job_collection_orchestrator_records_boss_detail_platform_errors() -> None:
+    from interview_agent.job_collection import JobCollectionOrchestrator
+    from interview_agent.job_platform_adapters import BossReadonlyJobPlatformAdapter
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = BossReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "boss_list.html").read_text(),
+        detail_html_by_job_id={"boss-backend-001": (fixture_dir / "boss_rate_limited.html").read_text()},
+    )
+    orchestrator = JobCollectionOrchestrator({"boss": adapter})
+
+    result = orchestrator.collect(
+        collection_task_id="collection-boss-detail-error-001",
+        platforms=["boss"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={"technical_skills": ["Python"]},
+        keyword="后端工程师 Python",
+    )
+
+    assert result["status"] == "backoff"
+    assert result["platform_progress"]["boss"]["status"] == "backoff"
+    assert result["platform_progress"]["boss"]["failure_reason"] == "rate_limited"
+
+
 def test_boss_readonly_adapter_never_submits_application() -> None:
     from dataclasses import asdict
 

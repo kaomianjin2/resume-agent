@@ -26,7 +26,7 @@ class PlatformAdapterErrorType(str, Enum):
 
 
 @dataclass(frozen=True)
-class PlatformAdapterError:
+class PlatformAdapterError(Exception):
     error_type: PlatformAdapterErrorType
     platform: str
     stage: str
@@ -256,6 +256,9 @@ class BossReadonlyJobPlatformAdapter:
         html = self._detail_html_by_job_id.get(platform_job_id)
         if html is None:
             raise ValueError("岗位详情不存在")
+        error = classify_job_platform_fixture_error(platform=self.platform, stage="detail", html=html)
+        if error is not None:
+            raise _sanitize_adapter_error(error)
         job = _mark_missing_fields_low_confidence(parse_job_detail_fixture(html))
         _assert_no_sensitive_payload(job)
         return job
@@ -265,6 +268,8 @@ class BossReadonlyJobPlatformAdapter:
         if html is None:
             return False
         error = classify_job_platform_fixture_error(platform=self.platform, stage="state", html=html)
+        if error is not None and error.error_type is not PlatformAdapterErrorType.DUPLICATE_APPLICATION:
+            raise _sanitize_adapter_error(error)
         return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
 
     def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
