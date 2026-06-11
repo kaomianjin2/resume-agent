@@ -1566,6 +1566,171 @@ def test_job_platform_contract_rejects_unconfirmed_submission_without_sensitive_
     assert _contains_sensitive_adapter_payload(asdict(result)) is False
 
 
+def test_boss_readonly_adapter_searches_list_and_reads_full_detail() -> None:
+    from interview_agent.job_platform_adapters import (
+        BossReadonlyJobPlatformAdapter,
+        JobSearchRequest,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = BossReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "boss_list.html").read_text(),
+        detail_html_by_job_id={
+            "boss-backend-001": (fixture_dir / "boss_detail.html").read_text(),
+        },
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={"target_roles": ["后端工程师"]},
+            hard_filters={"cities": ["上海"]},
+            ranking_preferences={"technical_skills": ["Python"]},
+            keyword="后端工程师 Python",
+        )
+    )
+
+    assert result.status == "success"
+    assert result.platform == "boss"
+    assert [job.platform_job_id for job in result.jobs] == ["boss-backend-001"]
+
+    listed_jobs = adapter.collect_job_list(result.search_id)
+    detail = adapter.read_job_detail("boss-backend-001")
+
+    assert listed_jobs[0].title == "BOSS 后端工程师"
+    assert listed_jobs[0].company_name == "直聘样例科技"
+    assert listed_jobs[0].salary_range == "30k-45k"
+    assert listed_jobs[0].tech_stack == ["Python", "FastAPI", "PostgreSQL"]
+    assert detail.jd_text == "负责 BOSS 渠道后端服务。 深入建设岗位推荐、搜索和数据服务。"
+    assert detail.field_confidence["salary_range"] == "fixture"
+    assert adapter.is_already_applied("boss-backend-001") is False
+
+
+def test_boss_readonly_adapter_marks_missing_optional_fields_low_confidence() -> None:
+    from interview_agent.job_platform_adapters import BossReadonlyJobPlatformAdapter, JobSearchRequest
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = BossReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "boss_list_missing_fields.html").read_text(),
+        detail_html_by_job_id={
+            "boss-low-confidence-001": (fixture_dir / "boss_detail.html").read_text(),
+        },
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={},
+            hard_filters={},
+            ranking_preferences={},
+            keyword="后端工程师",
+        )
+    )
+
+    assert result.status == "success"
+    assert result.jobs[0].salary_range is None
+    assert result.jobs[0].company_size is None
+    assert result.jobs[0].field_confidence["salary_range"] == "low_confidence"
+    assert result.jobs[0].field_confidence["company_size"] == "low_confidence"
+
+
+def test_boss_readonly_adapter_classifies_platform_states_and_already_applied() -> None:
+    from interview_agent.job_platform_adapters import (
+        BossReadonlyJobPlatformAdapter,
+        JobSearchRequest,
+        PlatformAdapterErrorType,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    request = JobSearchRequest(job_profile={}, hard_filters={}, ranking_preferences={}, keyword="后端工程师")
+    expected_errors = {
+        "boss_login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "boss_captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "boss_rate_limited.html": PlatformAdapterErrorType.RATE_LIMITED,
+        "boss_structure_changed.html": PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+    }
+
+    for fixture_name, expected_error_type in expected_errors.items():
+        adapter = BossReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / fixture_name).read_text(),
+            detail_html_by_job_id={},
+        )
+
+        result = adapter.search_jobs(request)
+
+        assert result.status == "failed"
+        assert result.errors[0].error_type is expected_error_type
+        assert result.errors[0].platform == "boss"
+        assert result.errors[0].stage == "search"
+        assert _contains_sensitive_adapter_payload(result.errors[0].__dict__) is False
+
+    applied_adapter = BossReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "boss_list.html").read_text(),
+        detail_html_by_job_id={"boss-backend-001": (fixture_dir / "boss_detail.html").read_text()},
+        state_html_by_job_id={"boss-backend-001": (fixture_dir / "boss_already_applied.html").read_text()},
+    )
+
+    assert applied_adapter.is_already_applied("boss-backend-001") is True
+
+
+def test_boss_readonly_adapter_never_submits_application() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        BossReadonlyJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+        parse_job_detail_fixture,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    job = parse_job_detail_fixture((fixture_dir / "boss_detail.html").read_text())
+    adapter = BossReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "boss_list.html").read_text(),
+        detail_html_by_job_id={"boss-backend-001": (fixture_dir / "boss_detail.html").read_text()},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-confirmed",
+            job=job,
+            application_message="您好，我对该岗位感兴趣。",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "skipped"
+    assert result.status != "submitted"
+    assert result.submitted_at is None
+    assert result.error is not None
+    assert result.error.error_type is PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
+def test_job_collection_orchestrator_collects_with_boss_readonly_adapter() -> None:
+    from interview_agent.job_collection import JobCollectionOrchestrator
+    from interview_agent.job_platform_adapters import BossReadonlyJobPlatformAdapter
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = BossReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "boss_list.html").read_text(),
+        detail_html_by_job_id={"boss-backend-001": (fixture_dir / "boss_detail.html").read_text()},
+    )
+    orchestrator = JobCollectionOrchestrator({"boss": adapter})
+
+    result = orchestrator.collect(
+        collection_task_id="collection-boss-readonly-001",
+        platforms=["boss"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={"technical_skills": ["Python"]},
+        keyword="后端工程师 Python",
+    )
+
+    assert result["status"] == "success"
+    assert [job.platform_job_id for job in result["jobs"]] == ["boss-backend-001"]
+    assert result["jobs"][0].jd_text == "负责 BOSS 渠道后端服务。 深入建设岗位推荐、搜索和数据服务。"
+    assert result["platform_progress"]["boss"]["status"] == "completed"
+
+
 def test_job_collection_orchestrator_keeps_successful_platform_results_and_retries_failed_platform() -> None:
     from interview_agent.job_collection import JobCollectionOrchestrator
     from interview_agent.job_platform_adapters import (

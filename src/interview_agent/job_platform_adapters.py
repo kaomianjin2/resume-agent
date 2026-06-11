@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from html.parser import HTMLParser
 from typing import Literal, Protocol
@@ -210,6 +210,80 @@ class FakeJobPlatformAdapter:
         )
 
 
+class BossReadonlyJobPlatformAdapter:
+    platform = "boss"
+
+    def __init__(
+        self,
+        *,
+        list_html: str,
+        detail_html_by_job_id: dict[str, str],
+        state_html_by_job_id: dict[str, str] | None = None,
+    ) -> None:
+        self._list_html = list_html
+        self._detail_html_by_job_id = dict(detail_html_by_job_id)
+        self._state_html_by_job_id = dict(state_html_by_job_id or {})
+        self._last_search_id: str | None = None
+        self._list_jobs: list[StandardJob] = []
+
+    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
+        _assert_no_sensitive_payload(request)
+        self._last_search_id = f"{self.platform}-search-{uuid4()}"
+        error = classify_job_platform_fixture_error(platform=self.platform, stage="search", html=self._list_html)
+        if error is not None:
+            return PlatformExecutionResult(
+                platform=self.platform,
+                status="failed",
+                search_id=self._last_search_id,
+                errors=[_sanitize_adapter_error(error)],
+            )
+        self._list_jobs = [_mark_missing_fields_low_confidence(job) for job in parse_job_list_fixture(self._list_html)]
+        _assert_no_sensitive_payload(self._list_jobs)
+        return PlatformExecutionResult(
+            platform=self.platform,
+            status="success",
+            search_id=self._last_search_id,
+            jobs=list(self._list_jobs),
+        )
+
+    def collect_job_list(self, search_id: str) -> list[StandardJob]:
+        if not self._last_search_id or search_id != self._last_search_id:
+            raise ValueError("搜索任务不存在")
+        _assert_no_sensitive_payload(self._list_jobs)
+        return list(self._list_jobs)
+
+    def read_job_detail(self, platform_job_id: str) -> StandardJob:
+        html = self._detail_html_by_job_id.get(platform_job_id)
+        if html is None:
+            raise ValueError("岗位详情不存在")
+        job = _mark_missing_fields_low_confidence(parse_job_detail_fixture(html))
+        _assert_no_sensitive_payload(job)
+        return job
+
+    def is_already_applied(self, platform_job_id: str) -> bool:
+        html = self._state_html_by_job_id.get(platform_job_id)
+        if html is None:
+            return False
+        error = classify_job_platform_fixture_error(platform=self.platform, stage="state", html=html)
+        return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
+
+    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
+        _assert_no_sensitive_payload(request)
+        result = ApplicationSubmissionResult(
+            platform=self.platform,
+            platform_job_id=request.job.platform_job_id,
+            status="skipped",
+            error=PlatformAdapterError(
+                error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
+                platform=self.platform,
+                stage="submit",
+                message="BOSS 只读适配器不执行投递",
+            ),
+        )
+        _assert_no_sensitive_payload(result)
+        return result
+
+
 def _assert_no_sensitive_payload(value: object) -> None:
     assert_no_sensitive_payload(value, error_message="适配器结果包含敏感凭据")
 
@@ -271,6 +345,8 @@ def classify_job_platform_fixture_error(*, platform: str, stage: str, html: str)
         "captcha_required": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
         "button_unavailable": PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
         "already_applied": PlatformAdapterErrorType.DUPLICATE_APPLICATION,
+        "rate_limited": PlatformAdapterErrorType.RATE_LIMITED,
+        "page_structure_changed": PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
     }.get(parser.fixture_state)
     if error_type is None:
         return None
@@ -404,3 +480,11 @@ def _split_fixture_list(value: str | None) -> list[str]:
     if not value:
         return []
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _mark_missing_fields_low_confidence(job: StandardJob) -> StandardJob:
+    field_confidence = {
+        field_name: "low_confidence" if confidence == "missing" else confidence
+        for field_name, confidence in job.field_confidence.items()
+    }
+    return replace(job, field_confidence=field_confidence)
