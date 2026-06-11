@@ -45,7 +45,7 @@ flowchart TD
     JobCollectionVM --> JobAdapterProtocol
     JobCollectionVM --> JobProgress[(collection_platform_progress)]
     JobCollectionVM --> State
-    JobAdapterProtocol[求职平台适配器协议<br/>job_platform_adapters.py<br/>StandardJob / errors / fake adapter]
+    JobAdapterProtocol[求职平台适配器协议<br/>job_platform_adapters.py<br/>StandardJob / BOSS readonly / errors]
     SensitiveBoundary[敏感信息边界<br/>sensitive.py<br/>scan / redact / URL summary]
     JobProfileVM -.采集与投递共享契约.-> JobAdapterProtocol
     JobAdapterProtocol --> SensitiveBoundary
@@ -316,8 +316,8 @@ erDiagram
 - 用户可见结果展示集中在 `rendering.py`；`cli.py` 仅保留 `_write_result()`、`_write_line()` 等兼容包装和回调装配。
 - GUI Runtime Facade 的面试准备入口通过 `prepare_interview_materials()` 串联 `resume_parse`、`jd_parse`、`jd_match`，返回简历摘要、岗位重点、匹配度、优势、风险和追问重点。
 - GUI Runtime Facade 的求职画像入口通过 `prepare_job_search_profile()` 从已有 `resume_profile` 生成求职画像、默认搜索词、硬过滤条件、排序偏好和待确认字段，并写入 SQLite `session_state` 的 `job_search_profile`、`job_search_filters`。
-- 求职采集编排器位于 `job_collection.py`，由 GUI Runtime Facade 的 `collect_job_applications()` 和 `retry_failed_job_collection_platform()` 调用；它按平台记录 `started`、`page_collected`、`detail_collected`、`completed`、`failed`、`retrying`、`manual_takeover`、`backoff` 状态，单个平台失败、风控暂停、退避或抛异常不清空其他平台结果，并把进度写入 SQLite `collection_platform_progress` 与 GUI `job_collection_progress` view model。
-- 求职平台适配器协议位于 `job_platform_adapters.py`，定义标准岗位对象、搜索请求、平台执行结果、确认投递请求、投递结果、浏览器自动化边界和统一错误类型；当前为 BOSS 直聘、拉勾、猎聘适配器、采集编排器和投递执行器提供共享契约。
+- 求职采集编排器位于 `job_collection.py`，由 GUI Runtime Facade 的 `collect_job_applications()` 和 `retry_failed_job_collection_platform()` 调用；它按平台记录 `started`、`page_collected`、`detail_collected`、`completed`、`failed`、`retrying`、`manual_takeover`、`backoff` 状态，单个平台失败、风控暂停、退避、详情阶段平台错误或抛异常不清空其他平台结果，并把进度写入 SQLite `collection_platform_progress` 与 GUI `job_collection_progress` view model。
+- 求职平台适配器协议位于 `job_platform_adapters.py`，定义标准岗位对象、搜索请求、平台执行结果、确认投递请求、投递结果、浏览器自动化边界和统一错误类型；当前包含 BOSS 直聘只读采集适配器与 fake adapter，为拉勾、猎聘适配器、采集编排器和投递执行器提供共享契约。
 - 统一敏感信息边界位于 `sensitive.py`，为平台适配器、LLM prompt、`session_state`、`node_runs` 和求职存储入口提供敏感字段扫描、错误摘要脱敏和 URL 摘要能力。
 - GUI Runtime Facade 的模拟面试入口通过 `start_mock_interview()`、`submit_mock_answer()`、`end_mock_interview()` 复用 `question_generate`、`mock_followup`、`answer_score`，并把当前题、追问、评分和终态 view model 写入 SQLite `session_state`。
 - Tauri Desktop Shell 位于 `gui/src-tauri/`，负责承载 React Web Shell、本地文件选择、Python runtime 进程启停和窗口关闭清理。

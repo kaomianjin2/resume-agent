@@ -224,7 +224,7 @@
 
   <rect class="card data" x="140" y="1018" width="245" height="58"/>
   <text class="label" x="263" y="1040" text-anchor="middle">平台适配器协议</text>
-  <text class="small" x="263" y="1062" text-anchor="middle">StandardJob / errors / fake adapter</text>
+  <text class="small" x="263" y="1062" text-anchor="middle">StandardJob / BOSS readonly / errors</text>
 
   <path class="dash-line" d="M 617 534 C 617 735 578 800 578 880"/>
   <path class="dash-line" d="M 1398 390 C 1210 760 760 760 578 880"/>

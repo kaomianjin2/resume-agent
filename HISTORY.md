@@ -1,5 +1,16 @@
 # 功能变更历史
 
+## 2026-06-11
+
+### JOB-008 BOSS 直聘只读采集适配器
+
+- 功能名称：BOSS 直聘只读采集适配器
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`
+- 测试结果：`76 passed in 0.72s`
+- reviewer 结论：复审 `可继续`，无阻断问题。
+- 影响范围：`src/interview_agent/job_platform_adapters.py`、`src/interview_agent/job_collection.py`、`tests/test_gui_runtime.py`、`tests/fixtures/job_platform/boss_*.html`
+- 变更摘要：新增 BOSS 直聘只读采集适配器和受控 HTML 夹具，支持列表搜索、列表采集、详情完整 JD 读取、已投递识别、缺失字段低置信度标记，以及登录失效、验证码、限流和页面结构变化在 search/detail/state 阶段的错误传播；采集编排器可把详情阶段平台错误归类到既有 `manual_takeover`、`backoff`、`failed` 状态；BOSS 适配器保持只读，确认投递入口固定返回 `skipped`，不产生真实投递动作。
+
 ## 2026-06-10
 
 ### JOB-007 平台风控与人工接管
