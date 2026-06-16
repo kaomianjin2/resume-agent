@@ -3908,6 +3908,453 @@ def test_runtime_end_mock_interview_resets_view_state_without_writing_unrelated_
     }
 
 
+# ---------------------------------------------------------------------------
+# JOB-014 确认批次重校验测试
+# ---------------------------------------------------------------------------
+
+
+def _make_standard_job(
+    *,
+    platform: str = "boss",
+    platform_job_id: str = "pj-1",
+    title: str = "后端工程师",
+    company_name: str = "测试公司",
+    location: str = "上海",
+    salary_range: str = "30k-50k",
+    education_requirement: str = "本科",
+    experience_requirement: str = "3年",
+    level: str = "mid",
+    jd_text: str = "负责后端开发",
+) -> "StandardJob":
+    from interview_agent.job_platform_adapters import StandardJob
+    return StandardJob(
+        platform=platform,
+        platform_job_id=platform_job_id,
+        title=title,
+        company_name=company_name,
+        location=location,
+        remote_policy=None,
+        salary_range=salary_range,
+        level=level,
+        experience_requirement=experience_requirement,
+        education_requirement=education_requirement,
+        industry=None,
+        company_size=None,
+        funding_stage=None,
+        tech_stack=[],
+        benefits=[],
+        published_at=None,
+        detail_url=f"https://example.com/jobs/{platform_job_id}",
+        jd_text=jd_text,
+        collected_at="2026-06-10T09:00:00+00:00",
+        field_confidence={},
+    )
+
+
+def _save_job_and_approve(
+    database_path,
+    *,
+    platform: str = "boss",
+    platform_job_id: str = "pj-1",
+    title: str = "后端工程师",
+    company_name: str = "测试公司",
+    location: str = "上海",
+    salary_range: str = "30k-50k",
+    jd_text: str = "负责后端开发",
+    education_requirement: str = "本科",
+    experience_requirement: str = "3年",
+    level: str = "mid",
+    batch_id: str = "batch-001",
+) -> str:
+    from interview_agent.storage import save_job_application, update_job_application_status
+    job = save_job_application(
+        database_path,
+        platform=platform,
+        platform_job_id=platform_job_id,
+        job_url=f"https://example.com/jobs/{platform_job_id}",
+        company_name=company_name,
+        title=title,
+        location=location,
+        employment_type="full_time",
+        salary_range=salary_range,
+        posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy=None,
+        level=level,
+        experience_requirement=experience_requirement,
+        education_requirement=education_requirement,
+        industry="tech",
+        company_size="100-499",
+        funding_stage="series_a",
+        tech_stack="python",
+        benefits="meal",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url=f"https://example.com/jobs/{platform_job_id}",
+        jd_text=jd_text,
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"title":"high"}',
+        normalized_payload=f'{{"platform":"{platform}"}}',
+    )
+    update_job_application_status(
+        database_path,
+        job_id=job["job_id"],
+        status="approved",
+        confirmation_batch_id=batch_id,
+        confirmation_status="confirmed",
+    )
+    return job["job_id"]
+
+
+def test_revalidate_skips_offline_job(tmp_path: Path) -> None:
+    """岗位下线时跳过，标记为 skipped，原因 job_offline。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    job_id = _save_job_and_approve(database_path, platform_job_id="offline-1")
+    # 适配器中没有这个岗位 → read_job_detail 抛异常
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[])
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "ready"
+    assert result["submittable_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped_jobs"][0]["reason"] == "job_offline"
+    assert result["stale_reasons"][job_id] == "job_offline"
+
+
+def test_revalidate_marks_duplicate_when_already_applied(tmp_path: Path) -> None:
+    """已投递时写入 duplicate。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    job = _make_standard_job(platform_job_id="dup-1")
+    job_id = _save_job_and_approve(database_path, platform_job_id="dup-1")
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job], applied_job_ids={"dup-1"})
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "ready"
+    assert result["submittable_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped_jobs"][0]["reason"] == "already_applied"
+    assert result["stale_reasons"][job_id] == "already_applied"
+
+    # 验证存储中状态已更新为 duplicate
+    from interview_agent.storage import get_confirmation_batch
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    record = [r for r in batch["records"] if r["job_id"] == job_id][0]
+    assert record["status"] == "duplicate"
+    assert record["duplicate_detected"] is True
+
+
+def test_revalidate_skips_when_button_unavailable(tmp_path: Path) -> None:
+    """按钮失效时写入 skipped。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    job = _make_standard_job(platform_job_id="btn-1")
+    job_id = _save_job_and_approve(database_path, platform_job_id="btn-1")
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job], unavailable_button_job_ids={"btn-1"})
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "ready"
+    assert result["submittable_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped_jobs"][0]["reason"] == "button_unavailable"
+    assert result["stale_reasons"][job_id] == "button_unavailable"
+
+
+def test_revalidate_skips_when_jd_changed(tmp_path: Path) -> None:
+    """JD 变化时跳过，原因 jd_changed。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    job_id = _save_job_and_approve(database_path, platform_job_id="jd-1", salary_range="30k-50k")
+    # 平台返回的薪资发生了变化
+    changed_job = _make_standard_job(platform_job_id="jd-1", salary_range="20k-35k")
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[changed_job])
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "ready"
+    assert result["submittable_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped_jobs"][0]["reason"] == "jd_changed"
+    assert result["stale_reasons"][job_id] == "jd_changed"
+
+
+def test_revalidate_keeps_approved_when_all_checks_pass(tmp_path: Path) -> None:
+    """正常通过所有检查时保持 approved。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    job = _make_standard_job(platform_job_id="ok-1")
+    job_id = _save_job_and_approve(database_path, platform_job_id="ok-1")
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job])
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "ready"
+    assert result["submittable_count"] == 1
+    assert result["skipped_count"] == 0
+    assert result["submittable_jobs"][0]["job_id"] == job_id
+    assert result["submittable_jobs"][0]["platform"] == "boss"
+    assert result["submittable_jobs"][0]["platform_job_id"] == "ok-1"
+
+    # 验证存储中状态仍为 approved
+    from interview_agent.storage import get_confirmation_batch
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    record = [r for r in batch["records"] if r["job_id"] == job_id][0]
+    assert record["status"] == "approved"
+
+
+def test_revalidate_mixed_scenario(tmp_path: Path) -> None:
+    """混合场景：部分通过，部分跳过。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    # 岗位 1：正常通过
+    good_job = _make_standard_job(platform_job_id="mix-ok")
+    good_id = _save_job_and_approve(database_path, platform_job_id="mix-ok")
+    # 岗位 2：已下线（不在适配器中）
+    _save_job_and_approve(database_path, platform_job_id="mix-offline")
+    # 岗位 3：已投递
+    dup_job = _make_standard_job(platform_job_id="mix-dup")
+    _save_job_and_approve(database_path, platform_job_id="mix-dup")
+    # 岗位 4：JD 变化（location 改变）
+    changed_job = _make_standard_job(platform_job_id="mix-changed", location="北京")
+    _save_job_and_approve(database_path, platform_job_id="mix-changed", location="上海")
+
+    adapter = FakeJobPlatformAdapter(
+        platform="boss",
+        jobs=[good_job, dup_job, changed_job],
+        applied_job_ids={"mix-dup"},
+    )
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "ready"
+    assert result["total_count"] == 4
+    assert result["submittable_count"] == 1
+    assert result["skipped_count"] == 3
+    assert result["submittable_jobs"][0]["job_id"] == good_id
+
+    reasons = {s["reason"] for s in result["skipped_jobs"]}
+    assert "job_offline" in reasons
+    assert "already_applied" in reasons
+    assert "jd_changed" in reasons
+
+
+def test_revalidate_empty_batch(tmp_path: Path) -> None:
+    """空批次处理：无 approved 岗位时返回 empty。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.storage import save_job_application, update_job_application_status
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    # 保存一个岗位但不标记为 approved（保持 pending_review）
+    job = save_job_application(
+        database_path,
+        platform="boss",
+        platform_job_id="pj-empty",
+        job_url="https://example.com/jobs/pj-empty",
+        company_name="测试公司",
+        title="后端工程师",
+        location="上海",
+        employment_type="full_time",
+        salary_range="30k-50k",
+        posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy=None,
+        level="mid",
+        experience_requirement="3年",
+        education_requirement="本科",
+        industry="tech",
+        company_size="100-499",
+        funding_stage="series_a",
+        tech_stack="python",
+        benefits="meal",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url="https://example.com/jobs/pj-empty",
+        jd_text="负责后端开发",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"title":"high"}',
+        normalized_payload='{"platform":"boss"}',
+    )
+    update_job_application_status(
+        database_path,
+        job_id=job["job_id"],
+        status="submitted",
+        confirmation_batch_id="batch-empty",
+        confirmation_status="confirmed",
+    )
+
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[])
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-empty",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "empty"
+    assert result["total_count"] == 0
+    assert result["submittable_count"] == 0
+    assert result["skipped_count"] == 0
+
+
+def test_revalidate_nonexistent_batch_returns_not_found(tmp_path: Path) -> None:
+    """不存在的批次返回 not_found。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[])
+
+    result = runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="nonexistent-batch",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "not_found"
+    assert result["total_count"] == 0
+
+
+def test_revalidate_storage_status_correctly_updated(tmp_path: Path) -> None:
+    """验证重校验后存储中各岗位状态正确更新。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+    from interview_agent.storage import get_confirmation_batch
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+
+    # 岗位 1：正常通过
+    good_job = _make_standard_job(platform_job_id="st-ok")
+    good_id = _save_job_and_approve(database_path, platform_job_id="st-ok")
+    # 岗位 2：已投递 → duplicate
+    dup_job = _make_standard_job(platform_job_id="st-dup")
+    dup_id = _save_job_and_approve(database_path, platform_job_id="st-dup")
+    # 岗位 3：按钮不可用 → skipped
+    btn_job = _make_standard_job(platform_job_id="st-btn")
+    btn_id = _save_job_and_approve(database_path, platform_job_id="st-btn")
+
+    adapter = FakeJobPlatformAdapter(
+        platform="boss",
+        jobs=[good_job, dup_job, btn_job],
+        applied_job_ids={"st-dup"},
+        unavailable_button_job_ids={"st-btn"},
+    )
+
+    runtime.revalidate_confirmation_batch(
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    records_by_id = {r["job_id"]: r for r in batch["records"]}
+
+    # 正常通过的岗位保持 approved
+    assert records_by_id[good_id]["status"] == "approved"
+    # 已投递的岗位标记为 duplicate
+    assert records_by_id[dup_id]["status"] == "duplicate"
+    assert records_by_id[dup_id]["duplicate_detected"] is True
+    # 按钮不可用的岗位标记为 skipped
+    assert records_by_id[btn_id]["status"] == "skipped"
+    assert records_by_id[btn_id]["failure_reason"] == "button_unavailable"
+
+
+def test_revalidate_jd_changed_detects_location_education_and_experience(tmp_path: Path) -> None:
+    """验证 JD 变化检测覆盖地点、学历和经验字段。"""
+    from interview_agent.gui_runtime import _jd_critical_fields_changed
+
+    stored_job = {
+        "salary_range": "30k-50k",
+        "location": "上海",
+        "education_requirement": "本科",
+        "experience_requirement": "3年",
+        "level": "mid",
+        "jd_text": "负责后端开发",
+    }
+
+    # 地点变化
+    changed_location = _make_standard_job(location="北京")
+    assert _jd_critical_fields_changed(stored_job, changed_location) is True
+
+    # 学历变化
+    changed_education = _make_standard_job(education_requirement="硕士")
+    assert _jd_critical_fields_changed(stored_job, changed_education) is True
+
+    # 经验变化
+    changed_experience = _make_standard_job(experience_requirement="5年")
+    assert _jd_critical_fields_changed(stored_job, changed_experience) is True
+
+    # 级别变化
+    changed_level = _make_standard_job(level="senior")
+    assert _jd_critical_fields_changed(stored_job, changed_level) is True
+
+    # 没有变化
+    unchanged = _make_standard_job()
+    assert _jd_critical_fields_changed(stored_job, unchanged) is False
+
+
 def build_registry() -> NodeRegistry:
     return NodeRegistry(
         [

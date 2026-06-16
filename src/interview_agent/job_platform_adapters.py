@@ -115,6 +115,10 @@ class JobPlatformAdapter(Protocol):
     def is_already_applied(self, platform_job_id: str) -> bool:
         pass
 
+    def is_button_available(self, platform_job_id: str) -> bool:
+        """检查投递按钮是否可用。"""
+        pass
+
     def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
         pass
 
@@ -128,12 +132,14 @@ class FakeJobPlatformAdapter:
         applied_job_ids: set[str] | None = None,
         search_error: PlatformAdapterError | None = None,
         submit_results: dict[str, ApplicationSubmissionResult] | None = None,
+        unavailable_button_job_ids: set[str] | None = None,
     ) -> None:
         self.platform = platform
         self._jobs = jobs or []
         self._applied_job_ids = applied_job_ids or set()
         self._search_error = search_error
         self._submit_results = submit_results or {}
+        self._unavailable_button_job_ids = unavailable_button_job_ids or set()
         self._last_search_id: str | None = None
 
     def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
@@ -170,6 +176,9 @@ class FakeJobPlatformAdapter:
 
     def is_already_applied(self, platform_job_id: str) -> bool:
         return platform_job_id in self._applied_job_ids
+
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return platform_job_id not in self._unavailable_button_job_ids
 
     def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
         _assert_no_sensitive_payload(request)
@@ -272,6 +281,9 @@ class BossReadonlyJobPlatformAdapter:
             raise _sanitize_adapter_error(error)
         return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
 
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return True
+
     def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
         _assert_no_sensitive_payload(request)
         result = ApplicationSubmissionResult(
@@ -351,6 +363,9 @@ class LiepinReadonlyJobPlatformAdapter:
             raise _sanitize_adapter_error(error)
         return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
 
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return True
+
     def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
         _assert_no_sensitive_payload(request)
         result = ApplicationSubmissionResult(
@@ -429,6 +444,9 @@ class LagouReadonlyJobPlatformAdapter:
         if error is not None and error.error_type is not PlatformAdapterErrorType.DUPLICATE_APPLICATION:
             raise _sanitize_adapter_error(error)
         return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
+
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return True
 
     def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
         _assert_no_sensitive_payload(request)

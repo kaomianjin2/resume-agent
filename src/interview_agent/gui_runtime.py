@@ -16,7 +16,7 @@ from interview_agent.nodes.registry import NodeRegistry, build_default_registry
 from interview_agent.planner import ExecutionPlan, build_execution_plan
 from interview_agent.router import RouteResult, route_conversation
 from interview_agent.session import SessionStore
-from interview_agent.storage import get_knowledge_base_status
+from interview_agent.storage import get_confirmation_batch, get_job_application_by_id, get_knowledge_base_status, update_job_application_status
 
 
 ServiceMap = Mapping[str, object]
@@ -30,6 +30,7 @@ JOB_SEARCH_FILTERS_KEY = "job_search_filters"
 JOB_COLLECTION_PROGRESS_KEY = "job_collection_progress"
 JOB_FILTER_RESULTS_KEY = "job_filter_results"
 JOB_EVALUATION_RESULTS_KEY = "job_evaluation_results"
+JOB_REVALIDATION_RESULTS_KEY = "job_revalidation_results"
 ALGORITHM_PRACTICE_BANK_KEY = "algorithm_practice_bank"
 DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT = 3
 DEFAULT_ALGORITHM_PRACTICE_BANK_PATH = Path(__file__).with_name("algorithm_practice_bank.json")
@@ -364,6 +365,130 @@ class GuiRuntime:
 
     def get_job_evaluation_results(self, *, session_id: str) -> dict[str, object] | None:
         view_model = self.session_store.get_state(session_id, JOB_EVALUATION_RESULTS_KEY)
+        return view_model if isinstance(view_model, dict) else None
+
+    def revalidate_confirmation_batch(
+        self,
+        *,
+        confirmation_batch_id: str,
+        adapters: Mapping[str, JobPlatformAdapter],
+    ) -> dict[str, object]:
+        database_path = Path(self.config.storage.database_path)
+        batch = get_confirmation_batch(database_path, confirmation_batch_id=confirmation_batch_id)
+        if batch is None:
+            return {
+                "confirmation_batch_id": confirmation_batch_id,
+                "status": "not_found",
+                "submittable_jobs": [],
+                "skipped_jobs": [],
+                "stale_reasons": {},
+                "total_count": 0,
+                "submittable_count": 0,
+                "skipped_count": 0,
+            }
+
+        approved_records = [record for record in batch["records"] if record["status"] == "approved"]
+        if not approved_records:
+            return {
+                "confirmation_batch_id": confirmation_batch_id,
+                "status": "empty",
+                "submittable_jobs": [],
+                "skipped_jobs": [],
+                "stale_reasons": {},
+                "total_count": 0,
+                "submittable_count": 0,
+                "skipped_count": 0,
+            }
+
+        job_details: dict[str, dict[str, str | None]] = {}
+        for record in approved_records:
+            job_data = get_job_application_by_id(database_path, job_id=record["job_id"])
+            if job_data is not None:
+                job_details[record["job_id"]] = job_data
+
+        submittable_jobs: list[dict[str, object]] = []
+        skipped_jobs: list[dict[str, object]] = []
+        stale_reasons: dict[str, str] = {}
+
+        for record in approved_records:
+            job_id = record["job_id"]
+            platform = record["platform"]
+            job_data = job_details.get(job_id)
+            if job_data is None:
+                _mark_job_skipped(database_path, job_id, confirmation_batch_id, "job_not_found")
+                stale_reasons[job_id] = "job_not_found"
+                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "job_not_found"})
+                continue
+
+            platform_job_id = str(job_data["platform_job_id"])
+            adapter = adapters.get(platform)
+            if adapter is None:
+                _mark_job_skipped(database_path, job_id, confirmation_batch_id, "adapter_not_found")
+                stale_reasons[job_id] = "adapter_not_found"
+                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "adapter_not_found"})
+                continue
+
+            try:
+                fresh_job = adapter.read_job_detail(platform_job_id)
+            except Exception:
+                _mark_job_skipped(database_path, job_id, confirmation_batch_id, "job_offline")
+                stale_reasons[job_id] = "job_offline"
+                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "job_offline"})
+                continue
+
+            if fresh_job is None:
+                _mark_job_skipped(database_path, job_id, confirmation_batch_id, "job_offline")
+                stale_reasons[job_id] = "job_offline"
+                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "job_offline"})
+                continue
+
+            if adapter.is_already_applied(platform_job_id):
+                update_job_application_status(
+                    database_path,
+                    job_id=job_id,
+                    status="duplicate",
+                    confirmation_batch_id=confirmation_batch_id,
+                    confirmation_status="confirmed",
+                    duplicate_detected=True,
+                )
+                stale_reasons[job_id] = "already_applied"
+                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "already_applied"})
+                continue
+
+            if not adapter.is_button_available(platform_job_id):
+                _mark_job_skipped(database_path, job_id, confirmation_batch_id, "button_unavailable")
+                stale_reasons[job_id] = "button_unavailable"
+                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "button_unavailable"})
+                continue
+
+            if _jd_critical_fields_changed(job_data, fresh_job):
+                _mark_job_skipped(database_path, job_id, confirmation_batch_id, "jd_changed")
+                stale_reasons[job_id] = "jd_changed"
+                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "jd_changed"})
+                continue
+
+            submittable_jobs.append({
+                "job_id": job_id,
+                "platform": platform,
+                "platform_job_id": platform_job_id,
+                "title": job_data.get("title"),
+                "company_name": job_data.get("company_name"),
+            })
+
+        view_model = {
+            "confirmation_batch_id": confirmation_batch_id,
+            "status": "ready",
+            "submittable_jobs": submittable_jobs,
+            "skipped_jobs": skipped_jobs,
+            "stale_reasons": stale_reasons,
+            "total_count": len(approved_records),
+            "submittable_count": len(submittable_jobs),
+            "skipped_count": len(skipped_jobs),
+        }
+        return view_model
+
+    def get_revalidation_results(self, *, session_id: str) -> dict[str, object] | None:
+        view_model = self.session_store.get_state(session_id, JOB_REVALIDATION_RESULTS_KEY)
         return view_model if isinstance(view_model, dict) else None
 
     def start_mock_interview(
@@ -706,6 +831,18 @@ def evaluate_jobs(
 
 def get_job_evaluation_results(runtime: GuiRuntime, *, session_id: str) -> dict[str, object] | None:
     return runtime.get_job_evaluation_results(session_id=session_id)
+
+
+def revalidate_confirmation_batch(
+    runtime: GuiRuntime,
+    *,
+    confirmation_batch_id: str,
+    adapters: Mapping[str, JobPlatformAdapter],
+) -> dict[str, object]:
+    return runtime.revalidate_confirmation_batch(
+        confirmation_batch_id=confirmation_batch_id,
+        adapters=adapters,
+    )
 
 
 def start_mock_interview(
@@ -1635,3 +1772,63 @@ def _job_structured_from_standard_job(job: StandardJob) -> dict[str, object]:
         "benefits": list(job.benefits),
         "published_at": job.published_at,
     }
+
+
+# ---------------------------------------------------------------------------
+# JOB-014 确认批次重校验辅助函数
+# ---------------------------------------------------------------------------
+
+
+def _mark_job_skipped(
+    database_path: Path,
+    job_id: str,
+    confirmation_batch_id: str,
+    reason: str,
+) -> None:
+    """将岗位标记为 skipped 并记录原因。"""
+    update_job_application_status(
+        database_path,
+        job_id=job_id,
+        status="skipped",
+        confirmation_batch_id=confirmation_batch_id,
+        confirmation_status="confirmed",
+        failure_reason=reason,
+    )
+
+
+def _jd_critical_fields_changed(
+    stored_job: dict[str, str | None],
+    fresh_job: StandardJob,
+) -> bool:
+    """检查存储的岗位与平台最新详情之间的关键 JD 字段是否发生变化。"""
+    _stored_salary = (stored_job.get("salary_range") or "").strip()
+    _fresh_salary = (fresh_job.salary_range or "").strip()
+    if _stored_salary and _fresh_salary and _stored_salary != _fresh_salary:
+        return True
+
+    _stored_location = (stored_job.get("location") or "").strip()
+    _fresh_location = (fresh_job.location or "").strip()
+    if _stored_location and _fresh_location and _stored_location != _fresh_location:
+        return True
+
+    _stored_education = (stored_job.get("education_requirement") or "").strip()
+    _fresh_education = (fresh_job.education_requirement or "").strip()
+    if _stored_education and _fresh_education and _stored_education != _fresh_education:
+        return True
+
+    _stored_experience = (stored_job.get("experience_requirement") or "").strip()
+    _fresh_experience = (fresh_job.experience_requirement or "").strip()
+    if _stored_experience and _fresh_experience and _stored_experience != _fresh_experience:
+        return True
+
+    _stored_level = (stored_job.get("level") or "").strip()
+    _fresh_level = (fresh_job.level or "").strip()
+    if _stored_level and _fresh_level and _stored_level != _fresh_level:
+        return True
+
+    _stored_jd = " ".join((stored_job.get("jd_text") or "").split())
+    _fresh_jd = " ".join((fresh_job.jd_text or "").split())
+    if _stored_jd and _fresh_jd and _stored_jd != _fresh_jd:
+        return True
+
+    return False

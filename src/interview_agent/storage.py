@@ -375,6 +375,25 @@ def list_job_applications(database_path: Path | str) -> list[dict[str, str | Non
     return [_job_application_from_row(row) for row in rows]
 
 
+def get_job_application_by_id(database_path: Path | str, *, job_id: str) -> dict[str, str | None] | None:
+    with get_connection(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT job_id, platform, platform_job_id, job_url, company_name, title, location,
+                   employment_type, salary_range, posted_at, remote_policy, level,
+                   experience_requirement, education_requirement, industry, company_size,
+                   funding_stage, tech_stack, benefits, published_at, detail_url, jd_text,
+                   collected_at, field_confidence, normalized_payload, status, created_at, updated_at
+            FROM job_applications
+            WHERE job_id = ?
+            """,
+            (job_id.strip(),),
+        ).fetchone()
+    if row is None:
+        return None
+    return _job_application_from_row(row)
+
+
 def save_job_application_filters(
     database_path: Path | str,
     *,
