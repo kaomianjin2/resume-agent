@@ -423,30 +423,30 @@ class GuiRuntime:
             job_data = job_details.get(job_id)
             if job_data is None:
                 _mark_job_skipped(database_path, job_id, confirmation_batch_id, "job_not_found")
-                stale_reasons.append({"job_id": job_id, "reason": "job_not_found"})
-                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "job_not_found"})
+                stale_reasons.append({"job_id": record.get("platform_job_id", job_id), "reason": "job_not_found"})
+                skipped_jobs.append({"job_id": record.get("platform_job_id", job_id), "platform": platform, "reason": "job_not_found"})
                 continue
 
             platform_job_id = str(job_data["platform_job_id"])
             adapter = adapters.get(platform)
             if adapter is None:
                 _mark_job_skipped(database_path, job_id, confirmation_batch_id, "adapter_not_found")
-                stale_reasons.append({"job_id": job_id, "reason": "adapter_not_found"})
-                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "adapter_not_found"})
+                stale_reasons.append({"job_id": platform_job_id, "reason": "adapter_not_found"})
+                skipped_jobs.append({"job_id": platform_job_id, "platform": platform, "reason": "adapter_not_found"})
                 continue
 
             try:
                 fresh_job = adapter.read_job_detail(platform_job_id)
             except Exception:
                 _mark_job_skipped(database_path, job_id, confirmation_batch_id, "job_offline")
-                stale_reasons.append({"job_id": job_id, "reason": "job_offline"})
-                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "job_offline"})
+                stale_reasons.append({"job_id": platform_job_id, "reason": "job_offline"})
+                skipped_jobs.append({"job_id": platform_job_id, "platform": platform, "reason": "job_offline"})
                 continue
 
             if fresh_job is None:
                 _mark_job_skipped(database_path, job_id, confirmation_batch_id, "job_offline")
-                stale_reasons.append({"job_id": job_id, "reason": "job_offline"})
-                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "job_offline"})
+                stale_reasons.append({"job_id": platform_job_id, "reason": "job_offline"})
+                skipped_jobs.append({"job_id": platform_job_id, "platform": platform, "reason": "job_offline"})
                 continue
 
             if adapter.is_already_applied(platform_job_id):
@@ -458,24 +458,23 @@ class GuiRuntime:
                     confirmation_status="confirmed",
                     duplicate_detected=True,
                 )
-                stale_reasons.append({"job_id": job_id, "reason": "already_applied"})
-                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "already_applied"})
+                stale_reasons.append({"job_id": platform_job_id, "reason": "already_applied"})
+                skipped_jobs.append({"job_id": platform_job_id, "platform": platform, "reason": "already_applied"})
                 continue
 
             if not adapter.is_button_available(platform_job_id):
                 _mark_job_skipped(database_path, job_id, confirmation_batch_id, "button_unavailable")
-                stale_reasons.append({"job_id": job_id, "reason": "button_unavailable"})
-                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "button_unavailable"})
+                stale_reasons.append({"job_id": platform_job_id, "reason": "button_unavailable"})
+                skipped_jobs.append({"job_id": platform_job_id, "platform": platform, "reason": "button_unavailable"})
                 continue
 
             if _jd_critical_fields_changed(job_data, fresh_job):
                 _mark_job_skipped(database_path, job_id, confirmation_batch_id, "jd_changed")
-                stale_reasons.append({"job_id": job_id, "reason": "jd_changed"})
-                skipped_jobs.append({"job_id": job_id, "platform": platform, "reason": "jd_changed"})
+                stale_reasons.append({"job_id": platform_job_id, "reason": "jd_changed"})
+                skipped_jobs.append({"job_id": platform_job_id, "platform": platform, "reason": "jd_changed"})
                 continue
 
             submittable_jobs.append({
-                "job_id": job_id,
                 "platform": platform,
                 "platform_job_id": platform_job_id,
                 "title": job_data.get("title"),

@@ -4029,7 +4029,7 @@ def test_revalidate_skips_offline_job(tmp_path: Path) -> None:
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "job_offline"
-    assert any(r["job_id"] == job_id and r["reason"] == "job_offline" for r in result["stale_reasons"])
+    assert any(r["job_id"] == "offline-1" and r["reason"] == "job_offline" for r in result["stale_reasons"])
 
 
 def test_revalidate_marks_duplicate_when_already_applied(tmp_path: Path) -> None:
@@ -4057,7 +4057,7 @@ def test_revalidate_marks_duplicate_when_already_applied(tmp_path: Path) -> None
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "already_applied"
-    assert any(r["job_id"] == job_id and r["reason"] == "already_applied" for r in result["stale_reasons"])
+    assert any(r["job_id"] == "dup-1" and r["reason"] == "already_applied" for r in result["stale_reasons"])
 
     # 验证存储中状态已更新为 duplicate
     from interview_agent.storage import get_confirmation_batch
@@ -4092,7 +4092,7 @@ def test_revalidate_skips_when_button_unavailable(tmp_path: Path) -> None:
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "button_unavailable"
-    assert any(r["job_id"] == job_id and r["reason"] == "button_unavailable" for r in result["stale_reasons"])
+    assert any(r["job_id"] == "btn-1" and r["reason"] == "button_unavailable" for r in result["stale_reasons"])
 
 
 def test_revalidate_skips_when_jd_changed(tmp_path: Path) -> None:
@@ -4121,7 +4121,7 @@ def test_revalidate_skips_when_jd_changed(tmp_path: Path) -> None:
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "jd_changed"
-    assert any(r["job_id"] == job_id and r["reason"] == "jd_changed" for r in result["stale_reasons"])
+    assert any(r["job_id"] == "jd-1" and r["reason"] == "jd_changed" for r in result["stale_reasons"])
 
 
 def test_revalidate_keeps_approved_when_all_checks_pass(tmp_path: Path) -> None:
@@ -4148,7 +4148,6 @@ def test_revalidate_keeps_approved_when_all_checks_pass(tmp_path: Path) -> None:
     assert result["status"] == "ready"
     assert result["submittable_count"] == 1
     assert result["skipped_count"] == 0
-    assert result["submittable_jobs"][0]["job_id"] == job_id
     assert result["submittable_jobs"][0]["platform"] == "boss"
     assert result["submittable_jobs"][0]["platform_job_id"] == "ok-1"
 
@@ -4198,7 +4197,7 @@ def test_revalidate_mixed_scenario(tmp_path: Path) -> None:
     assert result["total_count"] == 4
     assert result["submittable_count"] == 1
     assert result["skipped_count"] == 3
-    assert result["submittable_jobs"][0]["job_id"] == good_id
+    assert result["submittable_jobs"][0]["platform_job_id"] == "mix-ok"
 
     reasons = {s["reason"] for s in result["skipped_jobs"]}
     assert "job_offline" in reasons
