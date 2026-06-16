@@ -462,7 +462,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 
 ### JOB-012 岗位评估与建议
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：批量执行 JD 解析、简历匹配、风险识别、改进建议、投递话术生成。
 - 影响范围：节点契约、prompt、评估服务、LLM 安全边界。
 - 输入：`resume_profile`、标准岗位对象、JD 文本。
@@ -485,6 +485,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_interview_nodes.py tests/test_g
 - 观测证据：记录评估输出样例、敏感字段扫描结果和测试输出摘要。
 - 副作用：新增岗位评估结果。
 - 影响调用方：GUI 岗位详情、批量确认弹窗。
+
+#### JOB-012 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-16
+- 完成时间：2026-06-16
+- 修改文件：`src/interview_agent/prompts.py`、`src/interview_agent/state_contracts.py`、`src/interview_agent/nodes/interview.py`、`src/interview_agent/nodes/registry.py`、`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`、`tests/test_node_registry.py`、`tests/test_llm.py`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "evaluate_jobs"`；`rtk uv run pytest -p no:cacheprovider tests/test_interview_nodes.py tests/test_gui_runtime.py`；`rtk uv run pytest -p no:cacheprovider`
+- 验证结果：JOB-012 定向 8 passed；`tests/test_interview_nodes.py tests/test_gui_runtime.py` 115 passed；全量 322 passed
+- 观测证据：新增 `job_evaluation` prompt 模板、节点契约和 handler；新增 `GuiRuntime.evaluate_jobs()` 和 `get_job_evaluation_results()`；新增 `JOB_EVALUATION_RESULTS_KEY` session state；新增 `_job_structured_from_standard_job` 辅助函数；测试覆盖评估报告字段完整性、批量多岗位评估、单岗位失败不影响其他岗位、session state 存储、空结果查询、空列表场景和敏感字段扫描
+- 副作用：新增 `job_evaluation` 节点和批量评估服务；不执行真实浏览器访问、投递动作或数据库 schema 变更
+- 影响调用方：GUI 岗位详情和批量确认弹窗可消费评估报告、匹配分、优势、风险、缺失信息、简历建议和投递话术；现有采集、筛选、投递、面试、算法调用方不变
+- 后续风险：真实 LLM 输出可能需根据字段契约做微调；GUI 岗位详情展示仍由 JOB-013 处理
 
 ### JOB-013 GUI 求职模块
 

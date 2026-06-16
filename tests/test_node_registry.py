@@ -29,6 +29,7 @@ EXPECTED_NODE_NAMES = {
     "project_extract",
     "jd_parse",
     "jd_match",
+    "job_evaluation",
     "question_generate",
     "mock_followup",
     "answer_score",

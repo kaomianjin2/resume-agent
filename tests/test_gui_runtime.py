@@ -3263,6 +3263,255 @@ def test_filter_jobs_returns_none_when_no_results(tmp_path: Path) -> None:
     assert result is None
 
 
+# ---------------------------------------------------------------------------
+# JOB-012 岗位评估与建议定向测试
+# ---------------------------------------------------------------------------
+
+
+def _make_evaluation_report(*, score: int = 85) -> dict[str, object]:
+    return {
+        "score": score,
+        "hard_filter_status": "pass",
+        "strengths": ["Python 经验丰富", "检索系统背景匹配"],
+        "risks": ["缺少分布式系统经验"],
+        "missing_information": [],
+        "resume_improvement_advice": ["突出分布式项目经验"],
+        "application_message": "您好，我对该岗位非常感兴趣……",
+        "recommended": True,
+        "recommendation_reason": "技能匹配度高，建议投递。",
+    }
+
+
+def job_evaluation_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    del context
+    job_structured = inputs.get("job_structured", {})
+    resume_profile = inputs.get("resume_profile", {})
+    assert isinstance(resume_profile, dict)
+    assert isinstance(job_structured, dict)
+    title = str(job_structured.get("title", ""))
+    if "评估失败岗位" in title:
+        raise RuntimeError("模拟评估失败")
+    return {"evaluation_report": _make_evaluation_report()}
+
+
+def build_job_evaluation_registry() -> NodeRegistry:
+    return NodeRegistry(
+        [
+            NodeSpec(
+                name="job_evaluation",
+                description="Evaluate job match.",
+                required_inputs=("resume_profile", "job_structured", "jd_text"),
+                optional_inputs=(),
+                outputs=("evaluation_report",),
+                handler=job_evaluation_handler,
+            ),
+        ]
+    )
+
+
+def _setup_evaluation_runtime(tmp_path: Path):
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_job_evaluation_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("eval-session")
+    return runtime
+
+
+def _make_eval_job(
+    *,
+    platform: str = "boss",
+    platform_job_id: str = "j1",
+    title: str = "后端工程师",
+    jd_text: str = "负责后端服务开发。",
+) -> object:
+    from interview_agent.job_platform_adapters import StandardJob
+
+    return StandardJob(
+        platform=platform,
+        platform_job_id=platform_job_id,
+        title=title,
+        company_name="示例科技",
+        location="上海",
+        remote_policy="hybrid",
+        salary_range="35k-50k",
+        level="高级",
+        experience_requirement="5年",
+        education_requirement="本科",
+        industry="AI 工具",
+        company_size="100-500人",
+        funding_stage="B轮",
+        tech_stack=["Python", "Go"],
+        benefits=["年终奖"],
+        published_at="2026-06-10T09:00:00+08:00",
+        detail_url=f"https://example.com/{platform}/jobs/{platform_job_id}",
+        jd_text=jd_text,
+        collected_at="2026-06-10T09:05:00+08:00",
+        field_confidence={},
+    )
+
+
+def test_evaluate_jobs_returns_complete_evaluation_report(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+    jobs = [_make_eval_job(platform_job_id="j1")]
+    resume_profile = {"name": "Alice", "skills": ["Python", "Go"], "years_of_experience": 5}
+
+    result = runtime.evaluate_jobs(
+        session_id="eval-session",
+        resume_profile=resume_profile,
+        jobs=jobs,
+    )
+
+    assert result["status"] == "ready"
+    assert result["total_job_count"] == 1
+    assert result["evaluated_count"] == 1
+    assert result["failed_count"] == 0
+    evaluation = result["evaluations"][0]
+    assert evaluation["platform_job_id"] == "j1"
+    report = evaluation["evaluation_report"]
+    assert report["score"] == 85
+    assert isinstance(report["strengths"], list) and report["strengths"]
+    assert isinstance(report["risks"], list)
+    assert isinstance(report["application_message"], str) and report["application_message"]
+    assert report["recommended"] is True
+    assert isinstance(report["recommendation_reason"], str)
+
+
+def test_evaluate_jobs_batch_multiple_jobs(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+    jobs = [
+        _make_eval_job(platform_job_id="j1"),
+        _make_eval_job(platform_job_id="j2", platform="lagou"),
+        _make_eval_job(platform_job_id="j3", platform="liepin"),
+    ]
+    resume_profile = {"name": "Bob", "skills": ["Python"]}
+
+    result = runtime.evaluate_jobs(
+        session_id="eval-session",
+        resume_profile=resume_profile,
+        jobs=jobs,
+    )
+
+    assert result["total_job_count"] == 3
+    assert result["evaluated_count"] == 3
+    assert result["failed_count"] == 0
+    platform_ids = [(e["platform"], e["platform_job_id"]) for e in result["evaluations"]]
+    assert ("boss", "j1") in platform_ids
+    assert ("lagou", "j2") in platform_ids
+    assert ("liepin", "j3") in platform_ids
+
+
+def test_evaluate_jobs_single_failure_does_not_affect_others(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+    jobs = [
+        _make_eval_job(platform_job_id="j-ok"),
+        _make_eval_job(platform_job_id="j-fail", title="评估失败岗位"),
+        _make_eval_job(platform_job_id="j-ok2"),
+    ]
+    resume_profile = {"name": "Alice"}
+
+    result = runtime.evaluate_jobs(
+        session_id="eval-session",
+        resume_profile=resume_profile,
+        jobs=jobs,
+    )
+
+    assert result["total_job_count"] == 3
+    assert result["evaluated_count"] == 2
+    assert result["failed_count"] == 1
+    ok_ids = [e["platform_job_id"] for e in result["evaluations"]]
+    assert "j-ok" in ok_ids
+    assert "j-ok2" in ok_ids
+    failed = result["failed_jobs"][0]
+    assert failed["platform_job_id"] == "j-fail"
+    assert "模拟评估失败" in failed["error_message"]
+
+
+def test_evaluate_jobs_stores_results_in_session_state(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+    jobs = [_make_eval_job(platform_job_id="j1")]
+    resume_profile = {"name": "Alice"}
+
+    runtime.evaluate_jobs(
+        session_id="eval-session",
+        resume_profile=resume_profile,
+        jobs=jobs,
+    )
+
+    stored = runtime.get_job_evaluation_results(session_id="eval-session")
+    assert stored is not None
+    assert stored["status"] == "ready"
+    assert stored["evaluated_count"] == 1
+
+
+def test_evaluate_jobs_returns_none_when_no_results(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+
+    result = runtime.get_job_evaluation_results(session_id="eval-session")
+    assert result is None
+
+
+def test_evaluate_jobs_empty_job_list(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+    resume_profile = {"name": "Alice"}
+
+    result = runtime.evaluate_jobs(
+        session_id="eval-session",
+        resume_profile=resume_profile,
+        jobs=[],
+    )
+
+    assert result["total_job_count"] == 0
+    assert result["evaluated_count"] == 0
+    assert result["failed_count"] == 0
+    assert result["evaluations"] == []
+    assert result["failed_jobs"] == []
+
+
+def test_evaluate_jobs_evaluation_report_fields_complete(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+    jobs = [_make_eval_job(platform_job_id="j1")]
+    resume_profile = {"name": "Alice", "skills": ["Python"]}
+
+    result = runtime.evaluate_jobs(
+        session_id="eval-session",
+        resume_profile=resume_profile,
+        jobs=jobs,
+    )
+
+    report = result["evaluations"][0]["evaluation_report"]
+    required_fields = [
+        "score", "hard_filter_status", "strengths", "risks",
+        "missing_information", "resume_improvement_advice",
+        "application_message", "recommended", "recommendation_reason",
+    ]
+    for field_name in required_fields:
+        assert field_name in report, f"评估报告缺少字段: {field_name}"
+
+
+def test_evaluate_jobs_prompt_does_not_contain_sensitive_payload(tmp_path: Path) -> None:
+    runtime = _setup_evaluation_runtime(tmp_path)
+    jobs = [_make_eval_job(platform_job_id="j1")]
+    resume_profile = {"name": "Alice", "skills": ["Python"]}
+
+    result = runtime.evaluate_jobs(
+        session_id="eval-session",
+        resume_profile=resume_profile,
+        jobs=jobs,
+    )
+
+    assert result["evaluated_count"] == 1
+    from interview_agent.sensitive import contains_sensitive_payload
+    assert not contains_sensitive_payload(resume_profile)
+    assert not contains_sensitive_payload(result["evaluations"])
+
+
 def _contains_sensitive_adapter_payload(value: object) -> bool:
     sensitive_markers = ("cookie", "token", "session", "password", "credential", "account_id")
     return any(marker in _flatten_text(value).lower() for marker in sensitive_markers)

@@ -182,6 +182,7 @@ def test_prompt_templates_cover_all_runtime_nodes() -> None:
         "project_extract",
         "jd_parse",
         "jd_match",
+        "job_evaluation",
         "question_generate",
         "mock_followup",
         "answer_score",

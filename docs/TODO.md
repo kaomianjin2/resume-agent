@@ -290,6 +290,7 @@
    - [x] JOB-009 拉勾只读采集适配器 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`：83 passed
    - [x] JOB-010 猎聘只读采集适配器 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`：90 passed
    - [x] JOB-011 岗位筛选与排序 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`：104 passed；全量 314 passed
+   - [x] JOB-012 岗位评估与建议 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_interview_nodes.py tests/test_gui_runtime.py`：115 passed；全量 322 passed
 2. [操作] 每个任务合并后由主 agent 更新本 TODO 状态与专项任务文档状态 → verify: `rtk git diff -- docs/TODO.md docs/job-application-development-tasks.md`
 3. [操作] 功能完成后由主 agent 更新 `HISTORY.md` → verify: HISTORY 记录包含任务编号、功能名称、测试命令、reviewer 结论和影响范围
 4. [操作] 涉及架构变更后由主 agent 更新 `docs/architecture.md` 与 `docs/architecture.svg` → verify: `rtk xmllint --noout docs/architecture.svg`

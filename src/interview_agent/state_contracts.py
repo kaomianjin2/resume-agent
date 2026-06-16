@@ -33,6 +33,8 @@ OPTIMIZATION_ADVICE = "optimization_advice"
 SESSION_TRANSCRIPT = "session_transcript"
 SUMMARY = "summary"
 SEARCH_RESULTS = "search_results"
+EVALUATION_REPORT = "evaluation_report"
+JOB_STRUCTURED = "job_structured"
 
 ALLOWED_EMPTY_LIST_STATE_KEYS = frozenset({SEARCH_RESULTS, QUESTIONS, FOLLOWUP_QUESTIONS})
 
@@ -65,6 +67,11 @@ DEFAULT_NODE_STATE_CONTRACTS: dict[str, NodeStateContract] = {
         (OPTIMIZATION_ADVICE,),
     ),
     "session_summary": ((SESSION_TRANSCRIPT,), (), (SUMMARY,)),
+    "job_evaluation": (
+        (RESUME_PROFILE, JOB_STRUCTURED, JD_TEXT),
+        (),
+        (EVALUATION_REPORT,),
+    ),
 }
 
 

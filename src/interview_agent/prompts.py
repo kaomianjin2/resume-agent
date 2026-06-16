@@ -80,6 +80,17 @@ PROMPT_TEMPLATES: dict[str, str] = {
         "会话记录：{session_transcript}\n"
         "请输出总结 JSON。"
     ),
+    "job_evaluation": (
+        "你是岗位评估与投递建议助手。\n"
+        "候选人画像：{resume_profile}\n"
+        "岗位结构化信息：{job_structured}\n"
+        "岗位 JD 文本：{jd_text}\n"
+        "请对候选人与该岗位的匹配度进行评估，输出结构化 JSON。\n"
+        "JSON 必须包含：score（0-100 整数）、hard_filter_status（字符串）、"
+        "strengths（字符串数组）、risks（字符串数组）、missing_information（字符串数组）、"
+        "resume_improvement_advice（字符串数组）、application_message（字符串）、"
+        "recommended（布尔值）、recommendation_reason（字符串）。"
+    ),
 }
 
 
@@ -97,6 +108,7 @@ PROMPT_OUTPUT_KEYS: dict[str, tuple[str, ...]] = {
     "weakness_train": ("training_plan",),
     "resume_optimize": ("optimization_advice",),
     "session_summary": ("summary",),
+    "job_evaluation": ("evaluation_report",),
 }
 
 PROMPT_OUTPUT_SCHEMA_HINTS: dict[str, str] = {
@@ -113,6 +125,11 @@ PROMPT_OUTPUT_SCHEMA_HINTS: dict[str, str] = {
     "weakness_train": "training_plan 必须是对象，且包含 focus、steps、drills、schedule。",
     "resume_optimize": "optimization_advice 必须是对象，且包含 summary、bullets、risks、rewrite_examples。",
     "session_summary": "summary 必须是对象。",
+    "job_evaluation": (
+        "evaluation_report 必须是对象，且包含 score、hard_filter_status、strengths、"
+        "risks、missing_information、resume_improvement_advice、application_message、"
+        "recommended、recommendation_reason。"
+    ),
 }
 
 

@@ -29,6 +29,7 @@ JOB_SEARCH_PROFILE_KEY = "job_search_profile"
 JOB_SEARCH_FILTERS_KEY = "job_search_filters"
 JOB_COLLECTION_PROGRESS_KEY = "job_collection_progress"
 JOB_FILTER_RESULTS_KEY = "job_filter_results"
+JOB_EVALUATION_RESULTS_KEY = "job_evaluation_results"
 ALGORITHM_PRACTICE_BANK_KEY = "algorithm_practice_bank"
 DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT = 3
 DEFAULT_ALGORITHM_PRACTICE_BANK_PATH = Path(__file__).with_name("algorithm_practice_bank.json")
@@ -298,6 +299,71 @@ class GuiRuntime:
 
     def get_job_filter_results(self, *, session_id: str) -> dict[str, object] | None:
         view_model = self.session_store.get_state(session_id, JOB_FILTER_RESULTS_KEY)
+        return view_model if isinstance(view_model, dict) else None
+
+    def evaluate_jobs(
+        self,
+        *,
+        session_id: str,
+        resume_profile: dict[str, object],
+        jobs: list[StandardJob],
+    ) -> dict[str, object]:
+        evaluations: list[dict[str, object]] = []
+        failed_jobs: list[dict[str, object]] = []
+        for job in jobs:
+            job_structured = _job_structured_from_standard_job(job)
+            try:
+                result = self.executor.execute_node(
+                    session_id=session_id,
+                    node_name="job_evaluation",
+                    inputs={
+                        "resume_profile": resume_profile,
+                        "job_structured": job_structured,
+                        "jd_text": job.jd_text or job.title,
+                    },
+                )
+                if result.status != "success":
+                    failed_jobs.append({
+                        "platform": job.platform,
+                        "platform_job_id": job.platform_job_id,
+                        "error_message": result.error_message or "评估节点执行失败",
+                    })
+                    continue
+                evaluation_report = result.output.get("evaluation_report")
+                if not isinstance(evaluation_report, dict):
+                    failed_jobs.append({
+                        "platform": job.platform,
+                        "platform_job_id": job.platform_job_id,
+                        "error_message": "评估报告输出缺失",
+                    })
+                    continue
+                evaluations.append({
+                    "platform": job.platform,
+                    "platform_job_id": job.platform_job_id,
+                    "title": job.title,
+                    "company_name": job.company_name,
+                    "evaluation_report": evaluation_report,
+                })
+            except Exception as exc:
+                failed_jobs.append({
+                    "platform": job.platform,
+                    "platform_job_id": job.platform_job_id,
+                    "error_message": str(exc),
+                })
+        view_model = {
+            "session_id": session_id,
+            "status": "ready",
+            "total_job_count": len(jobs),
+            "evaluated_count": len(evaluations),
+            "failed_count": len(failed_jobs),
+            "evaluations": evaluations,
+            "failed_jobs": failed_jobs,
+        }
+        self.session_store.set_state(session_id, JOB_EVALUATION_RESULTS_KEY, view_model)
+        return view_model
+
+    def get_job_evaluation_results(self, *, session_id: str) -> dict[str, object] | None:
+        view_model = self.session_store.get_state(session_id, JOB_EVALUATION_RESULTS_KEY)
         return view_model if isinstance(view_model, dict) else None
 
     def start_mock_interview(
@@ -622,6 +688,24 @@ def filter_and_rank_jobs(
 
 def get_job_filter_results(runtime: GuiRuntime, *, session_id: str) -> dict[str, object] | None:
     return runtime.get_job_filter_results(session_id=session_id)
+
+
+def evaluate_jobs(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    resume_profile: dict[str, object],
+    jobs: list[StandardJob],
+) -> dict[str, object]:
+    return runtime.evaluate_jobs(
+        session_id=session_id,
+        resume_profile=resume_profile,
+        jobs=jobs,
+    )
+
+
+def get_job_evaluation_results(runtime: GuiRuntime, *, session_id: str) -> dict[str, object] | None:
+    return runtime.get_job_evaluation_results(session_id=session_id)
 
 
 def start_mock_interview(
@@ -1524,3 +1608,30 @@ def _parse_experience_years(experience_requirement: str | None) -> float | None:
     if match:
         return float(match.group(1))
     return None
+
+
+# ---------------------------------------------------------------------------
+# JOB-012 岗位评估与建议辅助函数
+# ---------------------------------------------------------------------------
+
+
+def _job_structured_from_standard_job(job: StandardJob) -> dict[str, object]:
+    """从 StandardJob 构建岗位结构化信息，供 LLM 评估使用。"""
+    return {
+        "platform": job.platform,
+        "platform_job_id": job.platform_job_id,
+        "title": job.title,
+        "company_name": job.company_name,
+        "location": job.location,
+        "remote_policy": job.remote_policy,
+        "salary_range": job.salary_range,
+        "level": job.level,
+        "experience_requirement": job.experience_requirement,
+        "education_requirement": job.education_requirement,
+        "industry": job.industry,
+        "company_size": job.company_size,
+        "funding_stage": job.funding_stage,
+        "tech_stack": list(job.tech_stack),
+        "benefits": list(job.benefits),
+        "published_at": job.published_at,
+    }

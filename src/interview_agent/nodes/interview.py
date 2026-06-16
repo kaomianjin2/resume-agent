@@ -206,6 +206,38 @@ def session_summary_handler(context: NodeContext, inputs: dict[str, object]) -> 
     return _normalize_node_output(result, {"summary": dict})
 
 
+def job_evaluation_handler(context: NodeContext, inputs: dict[str, object]) -> dict[str, object]:
+    resume_profile = inputs["resume_profile"]
+    job_structured = inputs["job_structured"]
+    jd_text = _require_text(inputs, "jd_text")
+    result = run_structured_node(
+        "job_evaluation",
+        services=_mutable_services(context),
+        prompt_inputs={
+            "resume_profile": resume_profile,
+            "job_structured": job_structured,
+            "jd_text": jd_text,
+        },
+    )
+    output = _normalize_node_output(result, {"evaluation_report": dict})
+    _require_object_fields(
+        output["evaluation_report"],
+        "evaluation_report",
+        {
+            "score": (int, float),
+            "hard_filter_status": str,
+            "strengths": list,
+            "risks": list,
+            "missing_information": list,
+            "resume_improvement_advice": list,
+            "application_message": str,
+            "recommended": bool,
+            "recommendation_reason": str,
+        },
+    )
+    return output
+
+
 def _mutable_services(context: NodeContext) -> dict[str, object]:
     return dict(context.services)
 
