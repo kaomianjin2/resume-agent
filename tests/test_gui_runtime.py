@@ -1795,6 +1795,464 @@ def test_job_collection_orchestrator_collects_with_boss_readonly_adapter() -> No
     assert result["platform_progress"]["boss"]["status"] == "completed"
 
 
+def test_lagou_readonly_adapter_searches_list_and_reads_full_detail() -> None:
+    from interview_agent.job_platform_adapters import (
+        LagouReadonlyJobPlatformAdapter,
+        JobSearchRequest,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LagouReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "lagou_list.html").read_text(),
+        detail_html_by_job_id={
+            "lagou-backend-001": (fixture_dir / "lagou_detail.html").read_text(),
+        },
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={"target_roles": ["后端工程师"]},
+            hard_filters={"cities": ["北京"]},
+            ranking_preferences={"technical_skills": ["Go"]},
+            keyword="后端工程师 Go",
+        )
+    )
+
+    assert result.status == "success"
+    assert result.platform == "lagou"
+    assert [job.platform_job_id for job in result.jobs] == ["lagou-backend-001"]
+
+    listed_jobs = adapter.collect_job_list(result.search_id)
+    detail = adapter.read_job_detail("lagou-backend-001")
+
+    assert listed_jobs[0].title == "拉勾后端工程师"
+    assert listed_jobs[0].company_name == "拉勾样例科技"
+    assert listed_jobs[0].salary_range == "25k-40k"
+    assert listed_jobs[0].tech_stack == ["Go", "Kubernetes", "MySQL"]
+    assert detail.jd_text == "负责拉勾渠道后端微服务开发。 参与岗位搜索、推荐系统与数据平台建设。"
+    assert detail.field_confidence["salary_range"] == "fixture"
+    assert adapter.is_already_applied("lagou-backend-001") is False
+
+
+def test_lagou_readonly_adapter_marks_missing_optional_fields_low_confidence() -> None:
+    from interview_agent.job_platform_adapters import LagouReadonlyJobPlatformAdapter, JobSearchRequest
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LagouReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "lagou_list_missing_fields.html").read_text(),
+        detail_html_by_job_id={
+            "lagou-low-confidence-001": (fixture_dir / "lagou_detail.html").read_text(),
+        },
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={},
+            hard_filters={},
+            ranking_preferences={},
+            keyword="后端工程师",
+        )
+    )
+
+    assert result.status == "success"
+    assert result.jobs[0].salary_range is None
+    assert result.jobs[0].company_size is None
+    assert result.jobs[0].field_confidence["salary_range"] == "low_confidence"
+    assert result.jobs[0].field_confidence["company_size"] == "low_confidence"
+
+
+def test_lagou_readonly_adapter_classifies_platform_states_and_already_applied() -> None:
+    from interview_agent.job_platform_adapters import (
+        LagouReadonlyJobPlatformAdapter,
+        JobSearchRequest,
+        PlatformAdapterErrorType,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    request = JobSearchRequest(job_profile={}, hard_filters={}, ranking_preferences={}, keyword="后端工程师")
+    expected_errors = {
+        "lagou_login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "lagou_captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "lagou_rate_limited.html": PlatformAdapterErrorType.RATE_LIMITED,
+        "lagou_structure_changed.html": PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+    }
+
+    for fixture_name, expected_error_type in expected_errors.items():
+        adapter = LagouReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / fixture_name).read_text(),
+            detail_html_by_job_id={},
+        )
+
+        result = adapter.search_jobs(request)
+
+        assert result.status == "failed"
+        assert result.errors[0].error_type is expected_error_type
+        assert result.errors[0].platform == "lagou"
+        assert result.errors[0].stage == "search"
+        assert _contains_sensitive_adapter_payload(result.errors[0].__dict__) is False
+
+    applied_adapter = LagouReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "lagou_list.html").read_text(),
+        detail_html_by_job_id={"lagou-backend-001": (fixture_dir / "lagou_detail.html").read_text()},
+        state_html_by_job_id={"lagou-backend-001": (fixture_dir / "lagou_already_applied.html").read_text()},
+    )
+
+    assert applied_adapter.is_already_applied("lagou-backend-001") is True
+
+
+def test_lagou_readonly_adapter_propagates_detail_and_state_platform_errors() -> None:
+    import pytest
+
+    from interview_agent.job_platform_adapters import (
+        LagouReadonlyJobPlatformAdapter,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    expected_errors = {
+        "lagou_login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "lagou_captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "lagou_rate_limited.html": PlatformAdapterErrorType.RATE_LIMITED,
+        "lagou_structure_changed.html": PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+    }
+
+    for fixture_name, expected_error_type in expected_errors.items():
+        detail_adapter = LagouReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / "lagou_list.html").read_text(),
+            detail_html_by_job_id={"lagou-backend-001": (fixture_dir / fixture_name).read_text()},
+        )
+        state_adapter = LagouReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / "lagou_list.html").read_text(),
+            detail_html_by_job_id={"lagou-backend-001": (fixture_dir / "lagou_detail.html").read_text()},
+            state_html_by_job_id={"lagou-backend-001": (fixture_dir / fixture_name).read_text()},
+        )
+
+        with pytest.raises(PlatformAdapterError) as detail_error:
+            detail_adapter.read_job_detail("lagou-backend-001")
+        with pytest.raises(PlatformAdapterError) as state_error:
+            state_adapter.is_already_applied("lagou-backend-001")
+
+        assert detail_error.value.error_type is expected_error_type
+        assert detail_error.value.stage == "detail"
+        assert state_error.value.error_type is expected_error_type
+        assert state_error.value.stage == "state"
+
+
+def test_job_collection_orchestrator_records_lagou_detail_platform_errors() -> None:
+    from interview_agent.job_collection import JobCollectionOrchestrator
+    from interview_agent.job_platform_adapters import LagouReadonlyJobPlatformAdapter
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LagouReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "lagou_list.html").read_text(),
+        detail_html_by_job_id={"lagou-backend-001": (fixture_dir / "lagou_rate_limited.html").read_text()},
+    )
+    orchestrator = JobCollectionOrchestrator({"lagou": adapter})
+
+    result = orchestrator.collect(
+        collection_task_id="collection-lagou-detail-error-001",
+        platforms=["lagou"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["北京"]},
+        ranking_preferences={"technical_skills": ["Go"]},
+        keyword="后端工程师 Go",
+    )
+
+    assert result["status"] == "backoff"
+    assert result["platform_progress"]["lagou"]["status"] == "backoff"
+    assert result["platform_progress"]["lagou"]["failure_reason"] == "rate_limited"
+
+
+def test_lagou_readonly_adapter_never_submits_application() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        LagouReadonlyJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+        parse_job_detail_fixture,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    job = parse_job_detail_fixture((fixture_dir / "lagou_detail.html").read_text())
+    adapter = LagouReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "lagou_list.html").read_text(),
+        detail_html_by_job_id={"lagou-backend-001": (fixture_dir / "lagou_detail.html").read_text()},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-confirmed",
+            job=job,
+            application_message="您好，我对该岗位感兴趣。",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "skipped"
+    assert result.status != "submitted"
+    assert result.submitted_at is None
+    assert result.error is not None
+    assert result.error.error_type is PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
+def test_job_collection_orchestrator_collects_with_lagou_readonly_adapter() -> None:
+    from interview_agent.job_collection import JobCollectionOrchestrator
+    from interview_agent.job_platform_adapters import LagouReadonlyJobPlatformAdapter
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LagouReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "lagou_list.html").read_text(),
+        detail_html_by_job_id={"lagou-backend-001": (fixture_dir / "lagou_detail.html").read_text()},
+    )
+    orchestrator = JobCollectionOrchestrator({"lagou": adapter})
+
+    result = orchestrator.collect(
+        collection_task_id="collection-lagou-readonly-001",
+        platforms=["lagou"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["北京"]},
+        ranking_preferences={"technical_skills": ["Go"]},
+        keyword="后端工程师 Go",
+    )
+
+    assert result["status"] == "success"
+    assert [job.platform_job_id for job in result["jobs"]] == ["lagou-backend-001"]
+    assert result["jobs"][0].jd_text == "负责拉勾渠道后端微服务开发。 参与岗位搜索、推荐系统与数据平台建设。"
+    assert result["platform_progress"]["lagou"]["status"] == "completed"
+
+
+def test_liepin_readonly_adapter_searches_list_and_reads_full_detail() -> None:
+    from interview_agent.job_platform_adapters import (
+        LiepinReadonlyJobPlatformAdapter,
+        JobSearchRequest,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LiepinReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "liepin_list.html").read_text(),
+        detail_html_by_job_id={
+            "liepin-backend-001": (fixture_dir / "liepin_detail.html").read_text(),
+        },
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={"target_roles": ["后端工程师"]},
+            hard_filters={"cities": ["上海"]},
+            ranking_preferences={"technical_skills": ["Python"]},
+            keyword="后端工程师 Python",
+        )
+    )
+
+    assert result.status == "success"
+    assert result.platform == "liepin"
+    assert [job.platform_job_id for job in result.jobs] == ["liepin-backend-001"]
+
+    listed_jobs = adapter.collect_job_list(result.search_id)
+    detail = adapter.read_job_detail("liepin-backend-001")
+
+    assert listed_jobs[0].title == "猎聘后端工程师"
+    assert listed_jobs[0].company_name == "猎聘样例科技"
+    assert listed_jobs[0].salary_range == "30k-50k"
+    assert listed_jobs[0].tech_stack == ["Python", "Go", "Kubernetes"]
+    assert detail.jd_text == "负责猎聘渠道后端微服务开发。 参与搜索推荐系统与数据中台建设。"
+    assert detail.field_confidence["salary_range"] == "fixture"
+    assert adapter.is_already_applied("liepin-backend-001") is False
+
+
+def test_liepin_readonly_adapter_marks_missing_optional_fields_low_confidence() -> None:
+    from interview_agent.job_platform_adapters import LiepinReadonlyJobPlatformAdapter, JobSearchRequest
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LiepinReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "liepin_list_missing_fields.html").read_text(),
+        detail_html_by_job_id={
+            "liepin-low-confidence-001": (fixture_dir / "liepin_detail.html").read_text(),
+        },
+    )
+
+    result = adapter.search_jobs(
+        JobSearchRequest(
+            job_profile={},
+            hard_filters={},
+            ranking_preferences={},
+            keyword="后端工程师",
+        )
+    )
+
+    assert result.status == "success"
+    assert result.jobs[0].salary_range is None
+    assert result.jobs[0].company_size is None
+    assert result.jobs[0].field_confidence["salary_range"] == "low_confidence"
+    assert result.jobs[0].field_confidence["company_size"] == "low_confidence"
+
+
+def test_liepin_readonly_adapter_classifies_platform_states_and_already_applied() -> None:
+    from interview_agent.job_platform_adapters import (
+        LiepinReadonlyJobPlatformAdapter,
+        JobSearchRequest,
+        PlatformAdapterErrorType,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    request = JobSearchRequest(job_profile={}, hard_filters={}, ranking_preferences={}, keyword="后端工程师")
+    expected_errors = {
+        "liepin_login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "liepin_captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "liepin_rate_limited.html": PlatformAdapterErrorType.RATE_LIMITED,
+        "liepin_structure_changed.html": PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+    }
+
+    for fixture_name, expected_error_type in expected_errors.items():
+        adapter = LiepinReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / fixture_name).read_text(),
+            detail_html_by_job_id={},
+        )
+
+        result = adapter.search_jobs(request)
+
+        assert result.status == "failed"
+        assert result.errors[0].error_type is expected_error_type
+        assert result.errors[0].platform == "liepin"
+        assert result.errors[0].stage == "search"
+        assert _contains_sensitive_adapter_payload(result.errors[0].__dict__) is False
+
+    applied_adapter = LiepinReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "liepin_list.html").read_text(),
+        detail_html_by_job_id={"liepin-backend-001": (fixture_dir / "liepin_detail.html").read_text()},
+        state_html_by_job_id={"liepin-backend-001": (fixture_dir / "liepin_already_applied.html").read_text()},
+    )
+
+    assert applied_adapter.is_already_applied("liepin-backend-001") is True
+
+
+def test_liepin_readonly_adapter_propagates_detail_and_state_platform_errors() -> None:
+    import pytest
+
+    from interview_agent.job_platform_adapters import (
+        LiepinReadonlyJobPlatformAdapter,
+        PlatformAdapterError,
+        PlatformAdapterErrorType,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    expected_errors = {
+        "liepin_login_expired.html": PlatformAdapterErrorType.LOGIN_EXPIRED,
+        "liepin_captcha.html": PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+        "liepin_rate_limited.html": PlatformAdapterErrorType.RATE_LIMITED,
+        "liepin_structure_changed.html": PlatformAdapterErrorType.PAGE_STRUCTURE_CHANGED,
+    }
+
+    for fixture_name, expected_error_type in expected_errors.items():
+        detail_adapter = LiepinReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / "liepin_list.html").read_text(),
+            detail_html_by_job_id={"liepin-backend-001": (fixture_dir / fixture_name).read_text()},
+        )
+        state_adapter = LiepinReadonlyJobPlatformAdapter(
+            list_html=(fixture_dir / "liepin_list.html").read_text(),
+            detail_html_by_job_id={"liepin-backend-001": (fixture_dir / "liepin_detail.html").read_text()},
+            state_html_by_job_id={"liepin-backend-001": (fixture_dir / fixture_name).read_text()},
+        )
+
+        with pytest.raises(PlatformAdapterError) as detail_error:
+            detail_adapter.read_job_detail("liepin-backend-001")
+        with pytest.raises(PlatformAdapterError) as state_error:
+            state_adapter.is_already_applied("liepin-backend-001")
+
+        assert detail_error.value.error_type is expected_error_type
+        assert detail_error.value.stage == "detail"
+        assert state_error.value.error_type is expected_error_type
+        assert state_error.value.stage == "state"
+
+
+def test_job_collection_orchestrator_records_liepin_detail_platform_errors() -> None:
+    from interview_agent.job_collection import JobCollectionOrchestrator
+    from interview_agent.job_platform_adapters import LiepinReadonlyJobPlatformAdapter
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LiepinReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "liepin_list.html").read_text(),
+        detail_html_by_job_id={"liepin-backend-001": (fixture_dir / "liepin_rate_limited.html").read_text()},
+    )
+    orchestrator = JobCollectionOrchestrator({"liepin": adapter})
+
+    result = orchestrator.collect(
+        collection_task_id="collection-liepin-detail-error-001",
+        platforms=["liepin"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={"technical_skills": ["Python"]},
+        keyword="后端工程师 Python",
+    )
+
+    assert result["status"] == "backoff"
+    assert result["platform_progress"]["liepin"]["status"] == "backoff"
+    assert result["platform_progress"]["liepin"]["failure_reason"] == "rate_limited"
+
+
+def test_liepin_readonly_adapter_never_submits_application() -> None:
+    from dataclasses import asdict
+
+    from interview_agent.job_platform_adapters import (
+        LiepinReadonlyJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+        parse_job_detail_fixture,
+    )
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    job = parse_job_detail_fixture((fixture_dir / "liepin_detail.html").read_text())
+    adapter = LiepinReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "liepin_list.html").read_text(),
+        detail_html_by_job_id={"liepin-backend-001": (fixture_dir / "liepin_detail.html").read_text()},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-confirmed",
+            job=job,
+            application_message="您好，我对该岗位很感兴趣。",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "skipped"
+    assert result.status != "submitted"
+    assert result.submitted_at is None
+    assert result.error is not None
+    assert result.error.error_type is PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+    assert _contains_sensitive_adapter_payload(asdict(result)) is False
+
+
+def test_job_collection_orchestrator_collects_with_liepin_readonly_adapter() -> None:
+    from interview_agent.job_collection import JobCollectionOrchestrator
+    from interview_agent.job_platform_adapters import LiepinReadonlyJobPlatformAdapter
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "job_platform"
+    adapter = LiepinReadonlyJobPlatformAdapter(
+        list_html=(fixture_dir / "liepin_list.html").read_text(),
+        detail_html_by_job_id={"liepin-backend-001": (fixture_dir / "liepin_detail.html").read_text()},
+    )
+    orchestrator = JobCollectionOrchestrator({"liepin": adapter})
+
+    result = orchestrator.collect(
+        collection_task_id="collection-liepin-readonly-001",
+        platforms=["liepin"],
+        job_profile={"target_roles": ["后端工程师"]},
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={"technical_skills": ["Python"]},
+        keyword="后端工程师 Python",
+    )
+
+    assert result["status"] == "success"
+    assert [job.platform_job_id for job in result["jobs"]] == ["liepin-backend-001"]
+    assert result["jobs"][0].jd_text == "负责猎聘渠道后端微服务开发。 参与搜索推荐系统与数据中台建设。"
+    assert result["platform_progress"]["liepin"]["status"] == "completed"
+
+
 def test_job_collection_orchestrator_keeps_successful_platform_results_and_retries_failed_platform() -> None:
     from interview_agent.job_collection import JobCollectionOrchestrator
     from interview_agent.job_platform_adapters import (

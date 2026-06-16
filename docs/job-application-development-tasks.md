@@ -340,7 +340,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 
 ### JOB-009 拉勾只读采集适配器
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：实现拉勾搜索、列表采集、详情解析和已投递识别，不执行投递。
 - 影响范围：拉勾只读适配器、测试夹具。
 - 输入：求职画像、筛选条件。
@@ -365,9 +365,23 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 - 副作用：只读浏览器访问，不产生投递动作。
 - 影响调用方：采集编排器、筛选服务。
 
+#### JOB-009 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-16
+- 完成时间：2026-06-16
+- 修改文件：`src/interview_agent/job_platform_adapters.py`、`tests/test_gui_runtime.py`、`tests/fixtures/job_platform/lagou_*.html`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "lagou"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`；`rtk uv run pytest -p no:cacheprovider`
+- 验证结果：拉勾定向 7 passed；`tests/test_gui_runtime.py tests/test_storage.py` 83 passed；全量 293 passed
+- 观测证据：新增拉勾列表、详情、缺失字段、已投递、登录失效、验证码、限流和页面结构变化夹具；测试覆盖列表字段解析、详情完整 JD、缺失字段低置信度、search/detail/state 错误传播、已投递识别、只读不投递和编排器详情阶段限流归类为 `backoff`
+- 副作用：新增拉勾只读夹具适配器和平台错误传播；不执行真实浏览器访问或投递动作
+- 影响调用方：采集编排器可通过拉勾只读适配器读取标准岗位和完整 JD，并复用既有 `manual_takeover`、`backoff`、`failed` 状态展示平台异常；后续筛选服务可消费标准岗位对象
+- 后续风险：真实拉勾页面选择器、分页、搜索参数映射和人工接管恢复仍需在真实浏览器接入时验证
+
 ### JOB-010 猎聘只读采集适配器
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：实现猎聘搜索、列表采集、详情解析和已投递识别，不执行投递。
 - 影响范围：猎聘只读适配器、测试夹具。
 - 输入：求职画像、筛选条件。
@@ -391,6 +405,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 - 观测证据：记录猎聘夹具、解析输出样例和测试输出摘要。
 - 副作用：只读浏览器访问，不产生投递动作。
 - 影响调用方：采集编排器、筛选服务。
+
+#### JOB-010 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-16
+- 完成时间：2026-06-16
+- 修改文件：`src/interview_agent/job_platform_adapters.py`、`tests/test_gui_runtime.py`、`tests/fixtures/job_platform/liepin_*.html`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "liepin"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`；`rtk uv run pytest -p no:cacheprovider`
+- 验证结果：猎聘定向 7 passed；`tests/test_gui_runtime.py tests/test_storage.py` 90 passed；全量 300 passed
+- 观测证据：新增猎聘列表、详情、缺失字段、已投递、登录失效、验证码、限流和页面结构变化夹具；测试覆盖列表字段解析、详情完整 JD、缺失字段低置信度、search/detail/state 错误传播、已投递识别、只读不投递和编排器详情阶段限流归类为 `backoff`
+- 副作用：新增猎聘只读夹具适配器和平台错误传播；不执行真实浏览器访问或投递动作
+- 影响调用方：采集编排器可通过猎聘只读适配器读取标准岗位和完整 JD，并复用既有 `manual_takeover`、`backoff`、`failed` 状态展示平台异常；后续筛选服务可消费标准岗位对象
+- 后续风险：真实猎聘页面选择器、分页、搜索参数映射和人工接管恢复仍需在真实浏览器接入时验证
 
 ### JOB-011 岗位筛选与排序
 
