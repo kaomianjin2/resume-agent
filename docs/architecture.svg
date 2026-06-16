@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1180" viewBox="0 0 1800 1180" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
   <title id="title">技术面试 Agent 系统架构图</title>
-  <desc id="desc">展示桌面端、命令行、GUI Runtime、路由规划执行链路、结构化节点运行时、SQLite 会话状态、求职采集编排、求职投递存储、平台适配器协议、知识库检索索引和离线知识库构建之间的关系。</desc>
+  <desc id="desc">展示桌面端、命令行、GUI Runtime、路由规划执行链路、结构化节点运行时、SQLite 会话状态、求职采集编排、确认批次重校验、求职投递存储、平台适配器协议、知识库检索索引和离线知识库构建之间的关系。</desc>
   <defs>
     <marker id="arrow-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2937"/>
@@ -129,6 +129,11 @@
   <text class="small" x="936" y="708" text-anchor="middle">job_collection.py</text>
   <text class="tiny" x="936" y="728" text-anchor="middle">manual_takeover / backoff</text>
 
+  <rect class="card runtime" x="858" y="755" width="155" height="72"/>
+  <text class="label" x="936" y="783" text-anchor="middle">确认批次重校验</text>
+  <text class="small" x="936" y="803" text-anchor="middle">revalidate_batch</text>
+  <text class="tiny" x="936" y="823" text-anchor="middle">下线/已投递/按钮/JD</text>
+
   <rect class="card flow" x="1043" y="420" width="155" height="98"/>
   <text class="label" x="1121" y="454" text-anchor="middle">节点规划器</text>
   <text class="small" x="1121" y="480" text-anchor="middle">planner.py</text>
@@ -233,6 +238,7 @@
   <path class="dash-line" d="M 936 637 C 760 790 430 860 263 1018"/>
   <path class="dash-line" d="M 936 660 C 895 785 900 920 913 1018"/>
   <path class="dash-line" d="M 936 660 C 760 800 440 900 263 1018"/>
+  <path class="dash-line" d="M 936 827 C 800 900 450 950 263 1018"/>
   <path class="dash-line" d="M 617 534 C 710 760 840 880 913 1018"/>
   <path class="dash-line" d="M 1588 540 C 1588 780 1340 900 1203 1018"/>
   <path class="dash-line" d="M 1398 390 C 1398 760 1280 900 1203 1018"/>

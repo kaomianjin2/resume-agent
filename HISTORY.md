@@ -1,5 +1,34 @@
 # 功能变更历史
 
+## 2026-06-16
+
+### JOB-014 确认批次重校验
+
+- 功能名称：确认批次重校验
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`
+- 测试结果：`124 passed in 0.95s`；全量 `330 passed`
+- reviewer 结论：`可继续`，无阻断问题。
+- 影响范围：`src/interview_agent/gui_runtime.py`、`src/interview_agent/job_platform_adapters.py`、`src/interview_agent/storage.py`、`tests/test_gui_runtime.py`
+- 变更摘要：新增确认批次重校验功能，投递提交前重新校验用户确认的岗位。对每个 `approved` 岗位依次执行五项检查：岗位下线（`read_job_detail` 异常或返回 None → `job_offline`）、已投递（`is_already_applied` → `duplicate`）、按钮不可用（`is_button_available` → `button_unavailable`）、JD 关键字段变化（薪资/地点/学历/经验/级别/JD 文本 → `jd_changed`）、通过检查保持 `approved`。`JobPlatformAdapter` 协议新增 `is_button_available()` 方法，所有适配器均已实现。存储层新增 `get_job_application_by_id()` 查询方法。重校验结果保存到 session state，支持后续查询。
+
+### JOB-013 GUI 求职模块前端测试与 ESM 导入修复
+
+- 功能名称：GUI 求职模块前端测试与 ESM 导入修复
+- 测试命令：`rtk npm --prefix gui test`
+- 测试结果：前端测试通过
+- reviewer 结论：`可继续`
+- 影响范围：`gui/src/modules/job/ConfirmModal.tsx`、`gui/src/modules/job/JobModule.tsx`、`gui/tests/desktopSnapshot.test.mjs`、`gui/tsconfig.desktop-test.json`
+- 变更摘要：修复 GUI 求职模块 ESM 导入问题，补充桌面快照测试覆盖确认弹窗和求职模块交互场景。
+
+### JOB-012 岗位评估与建议
+
+- 功能名称：岗位评估与建议
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_interview_nodes.py tests/test_gui_runtime.py`
+- 测试结果：`115 passed`；全量 `322 passed`
+- reviewer 结论：`可继续`
+- 影响范围：`src/interview_agent/gui_runtime.py`、`src/interview_agent/nodes/interview.py`、`src/interview_agent/nodes/registry.py`、`src/interview_agent/prompts.py`、`src/interview_agent/state_contracts.py`、`tests/test_gui_runtime.py`、`tests/test_llm.py`、`tests/test_node_registry.py`
+- 变更摘要：新增岗位评估与建议功能，支持对已采集岗位进行匹配度评估、优劣势分析和发展建议生成；注册 `job_evaluation` 节点及对应 prompt 模板；GUI Runtime 提供 `evaluate_jobs()` facade 并保存评估结果到 session state。
+
 ## 2026-06-11
 
 ### JOB-008 BOSS 直聘只读采集适配器
