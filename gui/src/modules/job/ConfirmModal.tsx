@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ConfirmationBatch } from "../../shared/api/job";
+import { ConfirmationBatch } from "../../shared/api/job.js";
 
 type ConfirmModalProps = {
   open: boolean;

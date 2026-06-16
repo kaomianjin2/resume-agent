@@ -15,10 +15,14 @@
     "src/shared/api/algorithm.ts",
     "src/shared/api/mock.ts",
     "src/shared/api/prep.ts",
+    "src/shared/api/job.ts",
     "src/shared/desktop/desktopSnapshot.ts",
     "src/modules/algorithm/AlgorithmModule.tsx",
     "src/modules/mock/MockModule.tsx",
     "src/modules/prep/PrepModule.tsx",
-    "src/modules/users/UserModule.tsx"
+    "src/modules/users/UserModule.tsx",
+    "src/modules/job/JobModule.tsx",
+    "src/modules/job/ConfirmModal.tsx",
+    "src/modules/job/CleanupModal.tsx"
   ]
 }

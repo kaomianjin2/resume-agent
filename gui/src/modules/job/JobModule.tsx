@@ -11,7 +11,7 @@ import {
   defaultCollectionProgress,
   defaultJobSearchProfile,
   fixtureApplicationResults,
-} from "../../shared/api/job";
+} from "../../shared/api/job.js";
 
 export type JobScreenId = "profile" | "collect" | "jobs" | "detail" | "results";
 
