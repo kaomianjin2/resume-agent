@@ -4013,12 +4013,14 @@ def test_revalidate_skips_offline_job(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     job_id = _save_job_and_approve(database_path, platform_job_id="offline-1")
     # 适配器中没有这个岗位 → read_job_detail 抛异常
     adapter = FakeJobPlatformAdapter(platform="boss", jobs=[])
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-001",
         adapters={"boss": adapter},
     )
@@ -4027,7 +4029,7 @@ def test_revalidate_skips_offline_job(tmp_path: Path) -> None:
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "job_offline"
-    assert result["stale_reasons"][job_id] == "job_offline"
+    assert any(r["job_id"] == job_id and r["reason"] == "job_offline" for r in result["stale_reasons"])
 
 
 def test_revalidate_marks_duplicate_when_already_applied(tmp_path: Path) -> None:
@@ -4039,12 +4041,14 @@ def test_revalidate_marks_duplicate_when_already_applied(tmp_path: Path) -> None
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     job = _make_standard_job(platform_job_id="dup-1")
     job_id = _save_job_and_approve(database_path, platform_job_id="dup-1")
     adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job], applied_job_ids={"dup-1"})
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-001",
         adapters={"boss": adapter},
     )
@@ -4053,7 +4057,7 @@ def test_revalidate_marks_duplicate_when_already_applied(tmp_path: Path) -> None
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "already_applied"
-    assert result["stale_reasons"][job_id] == "already_applied"
+    assert any(r["job_id"] == job_id and r["reason"] == "already_applied" for r in result["stale_reasons"])
 
     # 验证存储中状态已更新为 duplicate
     from interview_agent.storage import get_confirmation_batch
@@ -4072,12 +4076,14 @@ def test_revalidate_skips_when_button_unavailable(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     job = _make_standard_job(platform_job_id="btn-1")
     job_id = _save_job_and_approve(database_path, platform_job_id="btn-1")
     adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job], unavailable_button_job_ids={"btn-1"})
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-001",
         adapters={"boss": adapter},
     )
@@ -4086,7 +4092,7 @@ def test_revalidate_skips_when_button_unavailable(tmp_path: Path) -> None:
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "button_unavailable"
-    assert result["stale_reasons"][job_id] == "button_unavailable"
+    assert any(r["job_id"] == job_id and r["reason"] == "button_unavailable" for r in result["stale_reasons"])
 
 
 def test_revalidate_skips_when_jd_changed(tmp_path: Path) -> None:
@@ -4098,6 +4104,7 @@ def test_revalidate_skips_when_jd_changed(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     job_id = _save_job_and_approve(database_path, platform_job_id="jd-1", salary_range="30k-50k")
     # 平台返回的薪资发生了变化
@@ -4105,6 +4112,7 @@ def test_revalidate_skips_when_jd_changed(tmp_path: Path) -> None:
     adapter = FakeJobPlatformAdapter(platform="boss", jobs=[changed_job])
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-001",
         adapters={"boss": adapter},
     )
@@ -4113,7 +4121,7 @@ def test_revalidate_skips_when_jd_changed(tmp_path: Path) -> None:
     assert result["submittable_count"] == 0
     assert result["skipped_count"] == 1
     assert result["skipped_jobs"][0]["reason"] == "jd_changed"
-    assert result["stale_reasons"][job_id] == "jd_changed"
+    assert any(r["job_id"] == job_id and r["reason"] == "jd_changed" for r in result["stale_reasons"])
 
 
 def test_revalidate_keeps_approved_when_all_checks_pass(tmp_path: Path) -> None:
@@ -4125,12 +4133,14 @@ def test_revalidate_keeps_approved_when_all_checks_pass(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     job = _make_standard_job(platform_job_id="ok-1")
     job_id = _save_job_and_approve(database_path, platform_job_id="ok-1")
     adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job])
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-001",
         adapters={"boss": adapter},
     )
@@ -4158,6 +4168,7 @@ def test_revalidate_mixed_scenario(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     # 岗位 1：正常通过
     good_job = _make_standard_job(platform_job_id="mix-ok")
@@ -4178,6 +4189,7 @@ def test_revalidate_mixed_scenario(tmp_path: Path) -> None:
     )
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-001",
         adapters={"boss": adapter},
     )
@@ -4203,6 +4215,7 @@ def test_revalidate_empty_batch(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     # 保存一个岗位但不标记为 approved（保持 pending_review）
     job = save_job_application(
@@ -4244,6 +4257,7 @@ def test_revalidate_empty_batch(tmp_path: Path) -> None:
     adapter = FakeJobPlatformAdapter(platform="boss", jobs=[])
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-empty",
         adapters={"boss": adapter},
     )
@@ -4263,10 +4277,12 @@ def test_revalidate_nonexistent_batch_returns_not_found(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     adapter = FakeJobPlatformAdapter(platform="boss", jobs=[])
 
     result = runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="nonexistent-batch",
         adapters={"boss": adapter},
     )
@@ -4285,6 +4301,7 @@ def test_revalidate_storage_status_correctly_updated(tmp_path: Path) -> None:
     initialize_database(database_path)
     set_knowledge_base_status(database_path, "ready")
     runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
 
     # 岗位 1：正常通过
     good_job = _make_standard_job(platform_job_id="st-ok")
@@ -4304,6 +4321,7 @@ def test_revalidate_storage_status_correctly_updated(tmp_path: Path) -> None:
     )
 
     runtime.revalidate_confirmation_batch(
+        session_id="session-001",
         confirmation_batch_id="batch-001",
         adapters={"boss": adapter},
     )
@@ -4353,6 +4371,48 @@ def test_revalidate_jd_changed_detects_location_education_and_experience(tmp_pat
     # 没有变化
     unchanged = _make_standard_job()
     assert _jd_critical_fields_changed(stored_job, unchanged) is False
+
+
+def test_revalidate_saves_results_to_session_store(tmp_path: Path) -> None:
+    """重校验结果保存到 session store，可通过 get_revalidation_results 读取。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import FakeJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    job = _make_standard_job(platform_job_id="sv-1")
+    _save_job_and_approve(database_path, platform_job_id="sv-1")
+    adapter = FakeJobPlatformAdapter(platform="boss", jobs=[job])
+
+    runtime.revalidate_confirmation_batch(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    stored = runtime.get_revalidation_results(session_id="session-001")
+    assert stored is not None
+    assert stored["status"] == "ready"
+    assert stored["submittable_count"] == 1
+    assert stored["session_id"] == "session-001"
+
+
+def test_get_revalidation_results_returns_none_when_no_results(tmp_path: Path) -> None:
+    """未执行重校验时 get_revalidation_results 返回 None。"""
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    result = runtime.get_revalidation_results(session_id="session-001")
+    assert result is None
 
 
 def build_registry() -> NodeRegistry:
