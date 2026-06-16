@@ -8,7 +8,7 @@ from pathlib import Path
 from interview_agent.config import AppConfig, DEFAULT_CONFIG_PATH, load_config
 from interview_agent.executor import NodeExecutionResult, NodeExecutor
 from interview_agent.job_collection import JobCollectionOrchestrator, job_collection_view_model
-from interview_agent.job_platform_adapters import JobPlatformAdapter
+from interview_agent.job_platform_adapters import JobPlatformAdapter, StandardJob
 from interview_agent.kb.retrieval import SQLiteHybridRetriever
 from interview_agent.llm import OpenAICompatibleClient
 from interview_agent.mock_interview import DEFAULT_MOCK_FOLLOWUP_ROUNDS, DEFAULT_MOCK_INTERVIEW_QUESTION_COUNT
@@ -28,6 +28,7 @@ MOCK_INTERVIEW_VIEW_KEY = "mock_interview_view"
 JOB_SEARCH_PROFILE_KEY = "job_search_profile"
 JOB_SEARCH_FILTERS_KEY = "job_search_filters"
 JOB_COLLECTION_PROGRESS_KEY = "job_collection_progress"
+JOB_FILTER_RESULTS_KEY = "job_filter_results"
 ALGORITHM_PRACTICE_BANK_KEY = "algorithm_practice_bank"
 DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT = 3
 DEFAULT_ALGORITHM_PRACTICE_BANK_PATH = Path(__file__).with_name("algorithm_practice_bank.json")
@@ -246,6 +247,58 @@ class GuiRuntime:
         view_model = job_collection_view_model(result)
         self.session_store.set_state(session_id, JOB_COLLECTION_PROGRESS_KEY, view_model)
         return view_model
+
+    def filter_and_rank_jobs(
+        self,
+        *,
+        session_id: str,
+        jobs: list[StandardJob],
+        hard_filters: dict[str, object],
+        ranking_preferences: dict[str, object],
+        already_applied_job_ids: list[str] | None = None,
+    ) -> dict[str, object]:
+        applied_ids = set(already_applied_job_ids or [])
+        candidate_jobs: list[dict[str, object]] = []
+        excluded_jobs: list[dict[str, object]] = []
+        for job in jobs:
+            exclusion_reason = _hard_filter_exclusion_reason(job, hard_filters, applied_ids)
+            if exclusion_reason is not None:
+                excluded_jobs.append({"platform_job_id": job.platform_job_id, "platform": job.platform, "reason": exclusion_reason})
+                continue
+            low_confidence_fields = _low_confidence_fields(job)
+            rank_score = _ranking_score(job, ranking_preferences)
+            candidate_jobs.append({
+                "job": job,
+                "low_confidence_fields": low_confidence_fields,
+                "rank_score": rank_score,
+            })
+        candidate_jobs.sort(key=lambda item: item["rank_score"], reverse=True)
+        from dataclasses import asdict
+        ranked_jobs = [
+            {
+                **asdict(item["job"]),
+                "low_confidence_fields": item["low_confidence_fields"],
+                "rank_score": item["rank_score"],
+            }
+            for item in candidate_jobs
+        ]
+        view_model = {
+            "session_id": session_id,
+            "status": "ready",
+            "total_job_count": len(jobs),
+            "candidate_count": len(ranked_jobs),
+            "excluded_count": len(excluded_jobs),
+            "candidates": ranked_jobs,
+            "excluded": excluded_jobs,
+            "hard_filters_applied": {key: value for key, value in hard_filters.items() if value},
+            "ranking_preferences_applied": {key: value for key, value in ranking_preferences.items() if value},
+        }
+        self.session_store.set_state(session_id, JOB_FILTER_RESULTS_KEY, view_model)
+        return view_model
+
+    def get_job_filter_results(self, *, session_id: str) -> dict[str, object] | None:
+        view_model = self.session_store.get_state(session_id, JOB_FILTER_RESULTS_KEY)
+        return view_model if isinstance(view_model, dict) else None
 
     def start_mock_interview(
         self,
@@ -547,6 +600,28 @@ def retry_failed_job_collection_platform(
         platform=platform,
         adapter=adapter,
     )
+
+
+def filter_and_rank_jobs(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    jobs: list[StandardJob],
+    hard_filters: dict[str, object],
+    ranking_preferences: dict[str, object],
+    already_applied_job_ids: list[str] | None = None,
+) -> dict[str, object]:
+    return runtime.filter_and_rank_jobs(
+        session_id=session_id,
+        jobs=jobs,
+        hard_filters=hard_filters,
+        ranking_preferences=ranking_preferences,
+        already_applied_job_ids=already_applied_job_ids,
+    )
+
+
+def get_job_filter_results(runtime: GuiRuntime, *, session_id: str) -> dict[str, object] | None:
+    return runtime.get_job_filter_results(session_id=session_id)
 
 
 def start_mock_interview(
@@ -1287,3 +1362,165 @@ def _flatten_summary_item(value: object) -> list[str]:
     for key in ("responsibilities", "achievements", "technologies"):
         flattened_values.extend(_list_value(value.get(key)))
     return flattened_values
+
+
+# ---------------------------------------------------------------------------
+# JOB-011 岗位筛选与排序辅助函数
+# ---------------------------------------------------------------------------
+
+_EDUCATION_LEVELS = {"不限": 0, "大专": 1, "本科": 2, "硕士": 3, "博士": 4}
+
+
+def _hard_filter_exclusion_reason(
+    job: StandardJob,
+    hard_filters: dict[str, object],
+    applied_ids: set[str],
+) -> str | None:
+    """返回排除原因字符串；返回 None 表示通过硬过滤。"""
+    # 已投递过滤
+    if job.platform_job_id in applied_ids:
+        return "already_applied"
+
+    # 城市过滤
+    cities = _list_value(hard_filters.get("cities"))
+    if cities and not any(city in (job.location or "") for city in cities):
+        return "city_mismatch"
+
+    # 远程偏好过滤
+    remote_policy = hard_filters.get("remote_policy")
+    if isinstance(remote_policy, str) and remote_policy.strip():
+        job_remote = (job.remote_policy or "").lower()
+        required_remote = remote_policy.strip().lower()
+        if required_remote == "remote" and job_remote not in ("remote", "fully_remote", "全远程"):
+            return "remote_policy_mismatch"
+        elif required_remote == "onsite" and job_remote in ("remote", "fully_remote", "全远程"):
+            return "remote_policy_mismatch"
+        elif required_remote not in ("any", "") and required_remote != job_remote:
+            return "remote_policy_mismatch"
+
+    # 薪资下限过滤
+    salary_min = hard_filters.get("salary_min")
+    if isinstance(salary_min, int | float) and salary_min > 0:
+        job_salary_low = _parse_salary_low(job.salary_range)
+        if job_salary_low is not None and job_salary_low < salary_min:
+            return "salary_below_minimum"
+
+    # 学历过滤
+    education = hard_filters.get("education")
+    if isinstance(education, str) and education.strip():
+        required_level = _EDUCATION_LEVELS.get(education.strip(), -1)
+        job_level = _EDUCATION_LEVELS.get((job.education_requirement or "").strip(), -1)
+        if required_level >= 0 and job_level >= 0 and job_level < required_level:
+            return "education_below_required"
+
+    # 经验上下限过滤
+    exp_min = hard_filters.get("experience_years_min")
+    exp_max = hard_filters.get("experience_years_max")
+    job_exp = _parse_experience_years(job.experience_requirement)
+    if isinstance(exp_min, int | float) and exp_min > 0 and job_exp is not None and job_exp < exp_min:
+        return "experience_below_minimum"
+    if isinstance(exp_max, int | float) and exp_max > 0 and job_exp is not None and job_exp > exp_max:
+        return "experience_above_maximum"
+
+    # 黑名单公司过滤
+    blacklist = _list_value(hard_filters.get("company_blacklist"))
+    if blacklist and any(blacklisted.lower() in (job.company_name or "").lower() for blacklisted in blacklist):
+        return "company_blacklisted"
+
+    return None
+
+
+def _low_confidence_fields(job: StandardJob) -> list[str]:
+    """返回字段值为 None 或空字符串的字段名列表。"""
+    check_fields = (
+        "remote_policy", "salary_range", "level", "experience_requirement",
+        "education_requirement", "industry", "company_size", "funding_stage",
+        "published_at",
+    )
+    low_confidence: list[str] = []
+    for field_name in check_fields:
+        value = getattr(job, field_name, None)
+        if value is None or (isinstance(value, str) and not value.strip()):
+            low_confidence.append(field_name)
+    if not job.tech_stack:
+        low_confidence.append("tech_stack")
+    # 合并 field_confidence 中已有的低置信度标记
+    for field_name, confidence in (job.field_confidence or {}).items():
+        if confidence in ("low", "missing", "uncertain") and field_name not in low_confidence:
+            low_confidence.append(field_name)
+    return low_confidence
+
+
+def _ranking_score(job: StandardJob, ranking_preferences: dict[str, object]) -> float:
+    """根据排序偏好计算岗位得分，用于排序。"""
+    score = 0.0
+
+    # 技术栈匹配
+    preferred_skills = _list_value(ranking_preferences.get("technical_skills"))
+    if preferred_skills and job.tech_stack:
+        job_skills_lower = {skill.lower() for skill in job.tech_stack}
+        matched_skills = sum(1 for skill in preferred_skills if skill.lower() in job_skills_lower)
+        score += matched_skills * 2.0
+
+    # 行业匹配
+    preferred_industries = _list_value(ranking_preferences.get("industries"))
+    if preferred_industries and job.industry:
+        if any(industry.lower() in (job.industry or "").lower() for industry in preferred_industries):
+            score += 3.0
+
+    # 公司规模匹配
+    preferred_sizes = _list_value(ranking_preferences.get("company_sizes"))
+    if preferred_sizes and job.company_size:
+        if any(size.lower() in (job.company_size or "").lower() for size in preferred_sizes):
+            score += 1.0
+
+    # 融资阶段匹配
+    preferred_stages = _list_value(ranking_preferences.get("funding_stages"))
+    if preferred_stages and job.funding_stage:
+        if any(stage.lower() in (job.funding_stage or "").lower() for stage in preferred_stages):
+            score += 1.0
+
+    # 福利匹配
+    preferred_benefits = _list_value(ranking_preferences.get("benefits"))
+    if preferred_benefits and job.benefits:
+        job_benefits_lower = {benefit.lower() for benefit in job.benefits}
+        matched_benefits = sum(1 for benefit in preferred_benefits if benefit.lower() in job_benefits_lower)
+        score += matched_benefits * 0.5
+
+    # 发布时间新鲜度
+    published_within_days = ranking_preferences.get("published_within_days")
+    if isinstance(published_within_days, int | float) and published_within_days > 0 and job.published_at:
+        try:
+            from datetime import UTC, datetime
+            published_dt = datetime.fromisoformat(job.published_at)
+            days_ago = (datetime.now(UTC) - published_dt).total_seconds() / 86400
+            if days_ago <= published_within_days:
+                score += 2.0
+            elif days_ago <= published_within_days * 2:
+                score += 1.0
+        except (ValueError, TypeError):
+            pass
+
+    return score
+
+
+def _parse_salary_low(salary_range: str | None) -> float | None:
+    """从薪资范围字符串中提取下限数值（单位：k）。"""
+    if not salary_range or not isinstance(salary_range, str):
+        return None
+    import re
+    match = re.search(r"(\d+(?:\.\d+)?)", salary_range)
+    if match:
+        return float(match.group(1))
+    return None
+
+
+def _parse_experience_years(experience_requirement: str | None) -> float | None:
+    """从经验要求字符串中提取年限数值。"""
+    if not experience_requirement or not isinstance(experience_requirement, str):
+        return None
+    import re
+    match = re.search(r"(\d+(?:\.\d+)?)", experience_requirement)
+    if match:
+        return float(match.group(1))
+    return None
