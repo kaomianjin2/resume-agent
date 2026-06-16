@@ -2835,6 +2835,434 @@ def test_runtime_records_rate_limit_backoff_without_sensitive_session_payload(tm
     assert _contains_sensitive_adapter_payload(view_model) is False
 
 
+    assert _contains_sensitive_adapter_payload(view_model) is False
+
+
+# ---------------------------------------------------------------------------
+# JOB-011: 岗位筛选与排序
+# ---------------------------------------------------------------------------
+
+
+_JOB_FILTER_UNSET = object()
+
+
+def _make_job_for_filter(
+    *,
+    platform: str = "boss",
+    platform_job_id: str = "j1",
+    title: str = "后端工程师",
+    company_name: str = "示例科技",
+    location: str = "上海",
+    remote_policy: str | None = "hybrid",
+    salary_range: str | None = "35k-50k",
+    level: str | None = "高级",
+    experience_requirement: str | None = "5年",
+    education_requirement: str | None = "本科",
+    industry: str | None = "AI 工具",
+    company_size: str | None = "100-500人",
+    funding_stage: str | None = "B轮",
+    tech_stack: list[str] | None = _JOB_FILTER_UNSET,  # type: ignore[assignment]
+    benefits: list[str] | None = _JOB_FILTER_UNSET,  # type: ignore[assignment]
+    published_at: str | None = "2026-06-10T09:00:00+08:00",
+) -> object:
+    from interview_agent.job_platform_adapters import StandardJob
+
+    resolved_tech_stack = tech_stack if tech_stack is not _JOB_FILTER_UNSET else ["Python"]
+    resolved_benefits = benefits if benefits is not _JOB_FILTER_UNSET else []
+
+    return StandardJob(
+        platform=platform,
+        platform_job_id=platform_job_id,
+        title=title,
+        company_name=company_name,
+        location=location,
+        remote_policy=remote_policy,
+        salary_range=salary_range,
+        level=level,
+        experience_requirement=experience_requirement,
+        education_requirement=education_requirement,
+        industry=industry,
+        company_size=company_size,
+        funding_stage=funding_stage,
+        tech_stack=resolved_tech_stack,
+        benefits=resolved_benefits,
+        published_at=published_at,
+        detail_url=f"https://example.com/{platform}/jobs/{platform_job_id}",
+        jd_text="负责后端服务。",
+        collected_at="2026-06-10T09:05:00+08:00",
+        field_confidence={},
+    )
+
+
+def _setup_filter_runtime(tmp_path: Path):
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("filter-session")
+    return runtime
+
+
+def test_filter_jobs_by_city_excludes_non_matching(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j-shanghai", location="上海"),
+        _make_job_for_filter(platform_job_id="j-beijing", location="北京"),
+        _make_job_for_filter(platform_job_id="j-shanghai2", location="上海"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={},
+    )
+
+    assert result["total_job_count"] == 3
+    assert result["candidate_count"] == 2
+    assert result["excluded_count"] == 1
+    candidate_ids = [j["platform_job_id"] for j in result["candidates"]]
+    assert "j-shanghai" in candidate_ids
+    assert "j-shanghai2" in candidate_ids
+    assert "j-beijing" not in candidate_ids
+    assert result["excluded"][0]["reason"] == "city_mismatch"
+
+
+def test_filter_jobs_by_remote_policy_excludes_non_matching(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j-remote", remote_policy="remote"),
+        _make_job_for_filter(platform_job_id="j-onsite", remote_policy="onsite"),
+        _make_job_for_filter(platform_job_id="j-hybrid", remote_policy="hybrid"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={"remote_policy": "remote"},
+        ranking_preferences={},
+    )
+
+    assert result["candidate_count"] == 1
+    assert result["candidates"][0]["platform_job_id"] == "j-remote"
+    assert result["excluded_count"] == 2
+
+
+def test_filter_jobs_by_salary_min_excludes_below_threshold(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j-high", salary_range="40k-60k"),
+        _make_job_for_filter(platform_job_id="j-low", salary_range="10k-15k"),
+        _make_job_for_filter(platform_job_id="j-mid", salary_range="25k-35k"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={"salary_min": 20},
+        ranking_preferences={},
+    )
+
+    assert result["candidate_count"] == 2
+    candidate_ids = [j["platform_job_id"] for j in result["candidates"]]
+    assert "j-low" not in candidate_ids
+    assert result["excluded"][0]["platform_job_id"] == "j-low"
+    assert result["excluded"][0]["reason"] == "salary_below_minimum"
+
+
+def test_filter_jobs_by_education_excludes_below_required(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j-bachelor", education_requirement="本科"),
+        _make_job_for_filter(platform_job_id="j-master", education_requirement="硕士"),
+        _make_job_for_filter(platform_job_id="j-college", education_requirement="大专"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={"education": "本科"},
+        ranking_preferences={},
+    )
+
+    candidate_ids = [j["platform_job_id"] for j in result["candidates"]]
+    assert "j-bachelor" in candidate_ids
+    assert "j-master" in candidate_ids
+    assert "j-college" not in candidate_ids
+    assert result["excluded"][0]["reason"] == "education_below_required"
+
+
+def test_filter_jobs_by_experience_range_excludes_out_of_range(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j-3yr", experience_requirement="3年"),
+        _make_job_for_filter(platform_job_id="j-8yr", experience_requirement="8年"),
+        _make_job_for_filter(platform_job_id="j-1yr", experience_requirement="1年"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={"experience_years_min": 2, "experience_years_max": 6},
+        ranking_preferences={},
+    )
+
+    candidate_ids = [j["platform_job_id"] for j in result["candidates"]]
+    assert "j-3yr" in candidate_ids
+    assert "j-8yr" not in candidate_ids
+    assert "j-1yr" not in candidate_ids
+
+
+def test_filter_jobs_by_company_blacklist_excludes_matching(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j-good", company_name="好公司"),
+        _make_job_for_filter(platform_job_id="j-bad", company_name="坏公司"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={"company_blacklist": ["坏公司"]},
+        ranking_preferences={},
+    )
+
+    assert result["candidate_count"] == 1
+    assert result["candidates"][0]["platform_job_id"] == "j-good"
+    assert result["excluded"][0]["reason"] == "company_blacklisted"
+
+
+def test_filter_jobs_excludes_already_applied(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j-new"),
+        _make_job_for_filter(platform_job_id="j-applied"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={},
+        ranking_preferences={},
+        already_applied_job_ids=["j-applied"],
+    )
+
+    assert result["candidate_count"] == 1
+    assert result["candidates"][0]["platform_job_id"] == "j-new"
+    assert result["excluded"][0]["reason"] == "already_applied"
+
+
+def test_filter_jobs_marks_low_confidence_for_missing_fields(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(
+            platform_job_id="j-missing",
+            remote_policy=None,
+            salary_range=None,
+            level=None,
+            industry=None,
+            funding_stage=None,
+            tech_stack=[],
+        ),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={},
+        ranking_preferences={},
+    )
+
+    assert result["candidate_count"] == 1
+    candidate = result["candidates"][0]
+    assert "remote_policy" in candidate["low_confidence_fields"]
+    assert "salary_range" in candidate["low_confidence_fields"]
+    assert "level" in candidate["low_confidence_fields"]
+    assert "industry" in candidate["low_confidence_fields"]
+    assert "funding_stage" in candidate["low_confidence_fields"]
+    assert "tech_stack" in candidate["low_confidence_fields"]
+
+
+def test_filter_jobs_missing_fields_not_excluded(tmp_path: Path) -> None:
+    """缺失字段的岗位应保留在候选列表中，不被丢弃。"""
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(
+            platform_job_id="j-complete",
+            remote_policy="remote",
+            salary_range="30k-50k",
+            education_requirement="本科",
+        ),
+        _make_job_for_filter(
+            platform_job_id="j-incomplete",
+            remote_policy=None,
+            salary_range=None,
+            education_requirement=None,
+        ),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={"cities": ["上海"]},
+        ranking_preferences={},
+    )
+
+    assert result["candidate_count"] == 2
+    candidate_ids = [j["platform_job_id"] for j in result["candidates"]]
+    assert "j-complete" in candidate_ids
+    assert "j-incomplete" in candidate_ids
+
+
+def test_filter_jobs_ranking_preferences_change_order(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(
+            platform_job_id="j-no-match",
+            tech_stack=["Java"],
+            industry="传统行业",
+        ),
+        _make_job_for_filter(
+            platform_job_id="j-partial-match",
+            tech_stack=["Python", "Go"],
+            industry="AI 工具",
+        ),
+        _make_job_for_filter(
+            platform_job_id="j-full-match",
+            tech_stack=["Python", "Go", "Kubernetes"],
+            industry="AI 工具",
+            funding_stage="B轮",
+            company_size="100-500人",
+        ),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={},
+        ranking_preferences={
+            "technical_skills": ["Python", "Go", "Kubernetes"],
+            "industries": ["AI 工具"],
+            "funding_stages": ["B轮"],
+            "company_sizes": ["100-500人"],
+        },
+    )
+
+    candidate_ids = [j["platform_job_id"] for j in result["candidates"]]
+    # full-match 应排第一，partial-match 排第二，no-match 排最后
+    assert candidate_ids[0] == "j-full-match"
+    assert candidate_ids[-1] == "j-no-match"
+    # full-match 得分应最高
+    assert result["candidates"][0]["rank_score"] > result["candidates"][1]["rank_score"]
+
+
+def test_filter_jobs_no_filters_returns_all_jobs(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(platform_job_id="j1"),
+        _make_job_for_filter(platform_job_id="j2"),
+        _make_job_for_filter(platform_job_id="j3"),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={},
+        ranking_preferences={},
+    )
+
+    assert result["total_job_count"] == 3
+    assert result["candidate_count"] == 3
+    assert result["excluded_count"] == 0
+
+
+def test_filter_jobs_multiple_hard_filters_combined(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [
+        _make_job_for_filter(
+            platform_job_id="j-perfect",
+            location="上海",
+            salary_range="35k-50k",
+            education_requirement="本科",
+            experience_requirement="5年",
+            company_name="好公司",
+        ),
+        _make_job_for_filter(
+            platform_job_id="j-wrong-city",
+            location="北京",
+            salary_range="35k-50k",
+            education_requirement="本科",
+            experience_requirement="5年",
+            company_name="好公司",
+        ),
+        _make_job_for_filter(
+            platform_job_id="j-low-salary",
+            location="上海",
+            salary_range="10k-15k",
+            education_requirement="本科",
+            experience_requirement="5年",
+            company_name="好公司",
+        ),
+        _make_job_for_filter(
+            platform_job_id="j-blacklisted",
+            location="上海",
+            salary_range="35k-50k",
+            education_requirement="本科",
+            experience_requirement="5年",
+            company_name="坏公司",
+        ),
+    ]
+
+    result = runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={
+            "cities": ["上海"],
+            "salary_min": 20,
+            "company_blacklist": ["坏公司"],
+        },
+        ranking_preferences={},
+    )
+
+    assert result["candidate_count"] == 1
+    assert result["candidates"][0]["platform_job_id"] == "j-perfect"
+    assert result["excluded_count"] == 3
+    excluded_reasons = {e["platform_job_id"]: e["reason"] for e in result["excluded"]}
+    assert excluded_reasons["j-wrong-city"] == "city_mismatch"
+    assert excluded_reasons["j-low-salary"] == "salary_below_minimum"
+    assert excluded_reasons["j-blacklisted"] == "company_blacklisted"
+
+
+def test_filter_jobs_stores_result_in_session_state(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+    jobs = [_make_job_for_filter(platform_job_id="j1")]
+
+    runtime.filter_and_rank_jobs(
+        session_id="filter-session",
+        jobs=jobs,
+        hard_filters={},
+        ranking_preferences={},
+    )
+
+    stored = runtime.get_job_filter_results(session_id="filter-session")
+    assert stored is not None
+    assert stored["status"] == "ready"
+    assert stored["candidate_count"] == 1
+
+
+def test_filter_jobs_returns_none_when_no_results(tmp_path: Path) -> None:
+    runtime = _setup_filter_runtime(tmp_path)
+
+    result = runtime.get_job_filter_results(session_id="filter-session")
+    assert result is None
+
+
 def _contains_sensitive_adapter_payload(value: object) -> bool:
     sensitive_markers = ("cookie", "token", "session", "password", "credential", "account_id")
     return any(marker in _flatten_text(value).lower() for marker in sensitive_markers)

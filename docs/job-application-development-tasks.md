@@ -422,7 +422,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py
 
 ### JOB-011 岗位筛选与排序
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：实现全条件筛选，区分硬过滤、排序偏好和低置信度字段。
 - 影响范围：筛选服务、评分前候选清单。
 - 输入：标准岗位对象、筛选条件对象、历史投递记录。
@@ -445,6 +445,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 - 观测证据：记录过滤前后岗位数量和测试输出摘要。
 - 副作用：新增筛选结果状态。
 - 影响调用方：岗位评估服务、GUI 岗位清单。
+
+#### JOB-011 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-16
+- 完成时间：2026-06-16
+- 修改文件：`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "filter_jobs"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`；`rtk uv run pytest -p no:cacheprovider`
+- 验证结果：JOB-011 定向 14 passed；`tests/test_gui_runtime.py tests/test_storage.py` 104 passed；全量 314 passed
+- 观测证据：新增 `filter_and_rank_jobs` 方法和 `get_job_filter_results` 方法；新增 `_hard_filter_exclusion_reason`、`_low_confidence_fields`、`_ranking_score`、`_parse_salary_low`、`_parse_experience_years` 辅助函数；测试覆盖城市、远程、薪资、学历、经验、黑名单、已投递硬过滤、缺失字段低置信度标记、排序偏好改变岗位顺序、多过滤条件组合、session state 存储和空结果查询
+- 副作用：新增 `GuiRuntime.filter_and_rank_jobs()` 和 `get_job_filter_results()`；新增 `JOB_FILTER_RESULTS_KEY` session state；不执行真实浏览器访问、投递动作或数据库 schema 变更
+- 影响调用方：岗位评估服务、GUI 岗位清单可消费候选岗位、排除原因、低置信度标记和排序得分；现有采集、投递、面试、算法调用方不变
+- 后续风险：真实投递队列仍需在 JOB-012 评估层接入后使用筛选结果；GUI 岗位清单展示仍由 JOB-013 处理
 
 ### JOB-012 岗位评估与建议
 
