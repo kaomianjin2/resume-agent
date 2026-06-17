@@ -2,6 +2,15 @@
 
 ## 2026-06-17
 
+### JOB-017 猎聘确认后投递适配器
+
+- 功能名称：猎聘确认后投递适配器
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`
+- 测试结果：`166 passed`；全量 `376 passed`
+- reviewer 结论：`可继续`，无阻断问题。
+- 影响范围：`src/interview_agent/job_platform_adapters.py`、`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 变更摘要：新增 `LiepinSubmitJobPlatformAdapter` 确认后投递适配器，复用猎聘只读适配器并添加 `submit_html_by_job_id` 投递夹具；新增 `GuiRuntime.submit_liepin_applications()` 和 `get_liepin_submit_results()`；新增 `JOB_LIEPIN_SUBMIT_RESULTS_KEY` session state；测试覆盖未确认批次拦截、成功投递、失败投递、重复投递、验证码、风控、强制弹窗、按钮失效、混合场景、session state 存储和空结果查询。不执行真实浏览器访问或数据库 schema 变更。
+
 ### JOB-016 拉勾确认后投递适配器
 
 - 功能名称：拉勾确认后投递适配器
