@@ -4888,6 +4888,468 @@ def test_get_boss_submit_results_returns_none_when_no_results(tmp_path: Path) ->
     assert result is None
 
 
+def test_lagou_submit_adapter_submits_confirmed_job_successfully() -> None:
+    """确认请求 + 无 submit 夹具错误 → 投递成功，状态 submitted。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-submit-ok")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-submit-ok": _OK_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="您好",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "submitted"
+    assert result.platform == "lagou"
+    assert result.platform_job_id == "lagou-submit-ok"
+    assert result.submitted_at is not None
+    assert result.error is None
+
+
+def test_lagou_submit_adapter_rejects_unconfirmed_request() -> None:
+    """未确认请求 → 状态 skipped，错误 button_unavailable。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-unconfirmed")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-unconfirmed": _OK_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="",
+            confirmed=False,
+        )
+    )
+
+    assert result.status == "skipped"
+    assert result.error is not None
+    assert result.error.error_type == PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+
+
+def test_lagou_submit_adapter_detects_duplicate_from_state_html() -> None:
+    """state_html 触发 already_applied → 状态 duplicate。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-dup")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-dup": _OK_HTML},
+        state_html_by_job_id={"lagou-dup": _ALREADY_APPLIED_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "duplicate"
+    assert result.duplicate_detected is True
+    assert result.error is not None
+    assert result.error.error_type == PlatformAdapterErrorType.DUPLICATE_APPLICATION
+
+
+def test_lagou_submit_adapter_returns_failed_on_captcha() -> None:
+    """submit 夹具触发 captcha_required → 状态 failed，错误 captcha_required。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-captcha")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-captcha": _OK_HTML},
+        submit_html_by_job_id={"lagou-captcha": _CAPTCHA_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.error_type == PlatformAdapterErrorType.CAPTCHA_REQUIRED
+
+
+def test_lagou_submit_adapter_returns_failed_on_risk_control() -> None:
+    """submit 夹具触发 account_risk_control → 状态 failed。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-risk")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-risk": _OK_HTML},
+        submit_html_by_job_id={"lagou-risk": _RISK_CONTROL_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.error_type == PlatformAdapterErrorType.ACCOUNT_RISK_CONTROL
+
+
+def test_lagou_submit_adapter_returns_failed_on_forced_popup() -> None:
+    """submit 夹具触发 forced_popup → 状态 failed。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-popup")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-popup": _OK_HTML},
+        submit_html_by_job_id={"lagou-popup": _FORCED_POPUP_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.error_type == PlatformAdapterErrorType.FORCED_POPUP
+
+
+def test_lagou_submit_adapter_returns_failed_on_button_unavailable() -> None:
+    """submit 夹具触发 button_unavailable → 状态 failed。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+        PlatformAdapterErrorType,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-btn")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-btn": _OK_HTML},
+        submit_html_by_job_id={"lagou-btn": _BUTTON_UNAVAILABLE_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "failed"
+    assert result.error is not None
+    assert result.error.error_type == PlatformAdapterErrorType.BUTTON_UNAVAILABLE
+
+
+def test_lagou_submit_adapter_returns_duplicate_from_submit_fixture() -> None:
+    """submit 夹具触发 already_applied → 状态 duplicate。"""
+    from interview_agent.job_platform_adapters import (
+        LagouSubmitJobPlatformAdapter,
+        ConfirmationApplicationRequest,
+    )
+
+    job = _make_standard_job(platform="lagou", platform_job_id="lagou-dup-fix")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-dup-fix": _OK_HTML},
+        submit_html_by_job_id={"lagou-dup-fix": _ALREADY_APPLIED_HTML},
+    )
+
+    result = adapter.submit_application(
+        ConfirmationApplicationRequest(
+            confirmation_batch_id="batch-001",
+            job=job,
+            application_message="",
+            confirmed=True,
+        )
+    )
+
+    assert result.status == "duplicate"
+    assert result.duplicate_detected is True
+
+
+def test_submit_lagou_applications_nonexistent_batch_returns_not_found(tmp_path: Path) -> None:
+    """不存在的批次返回 not_found。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import LagouSubmitJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    adapter = LagouSubmitJobPlatformAdapter(list_html=_OK_HTML, detail_html_by_job_id={})
+
+    result = runtime.submit_lagou_applications(
+        session_id="session-001",
+        confirmation_batch_id="nonexistent-batch",
+        adapter=adapter,
+    )
+
+    assert result["status"] == "not_found"
+    assert result["total_count"] == 0
+
+
+def test_submit_lagou_applications_rejects_unconfirmed_batch(tmp_path: Path) -> None:
+    """未确认批次（无 approved 记录）不能投递。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import LagouSubmitJobPlatformAdapter
+    from interview_agent.storage import save_job_application, update_job_application_status
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    # 保存岗位并写入投递记录但不标记为 approved（保持 pending_review）
+    job = save_job_application(
+        database_path,
+        platform="lagou",
+        platform_job_id="pj-lagou-unconfirmed",
+        job_url="https://example.com/jobs/pj-lagou-unconfirmed",
+        company_name="测试公司",
+        title="后端工程师",
+        location="上海",
+        employment_type="full_time",
+        salary_range="30k-50k",
+        posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy=None,
+        level="mid",
+        experience_requirement="3年",
+        education_requirement="本科",
+        industry="tech",
+        company_size="100-499",
+        funding_stage="series_a",
+        tech_stack="python",
+        benefits="meal",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url="https://example.com/jobs/pj-lagou-unconfirmed",
+        jd_text="负责后端开发",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"title":"high"}',
+        normalized_payload='{"platform":"lagou"}',
+    )
+    update_job_application_status(
+        database_path,
+        job_id=job["job_id"],
+        status="pending_review",
+        confirmation_batch_id="batch-lagou-unconfirmed",
+        confirmation_status="pending_review",
+    )
+
+    adapter = LagouSubmitJobPlatformAdapter(list_html=_OK_HTML, detail_html_by_job_id={})
+
+    result = runtime.submit_lagou_applications(
+        session_id="session-001",
+        confirmation_batch_id="batch-lagou-unconfirmed",
+        adapter=adapter,
+    )
+
+    assert result["status"] == "not_confirmed"
+    assert result["total_count"] == 0
+    assert result["submitted_count"] == 0
+
+
+def test_submit_lagou_applications_submits_approved_jobs(tmp_path: Path) -> None:
+    """approved 岗位成功投递，状态 submitted。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import LagouSubmitJobPlatformAdapter
+    from interview_agent.storage import get_confirmation_batch
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    job_id_1 = _save_job_and_approve(database_path, platform="lagou", platform_job_id="lagou-sub-ok-1")
+    job_id_2 = _save_job_and_approve(database_path, platform="lagou", platform_job_id="lagou-sub-ok-2")
+
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-sub-ok-1": _OK_HTML, "lagou-sub-ok-2": _OK_HTML},
+    )
+
+    result = runtime.submit_lagou_applications(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapter=adapter,
+    )
+
+    assert result["status"] == "completed"
+    assert result["total_count"] == 2
+    assert result["submitted_count"] == 2
+    assert result["failed_count"] == 0
+    assert result["skipped_count"] == 0
+    assert result["manual_takeover_count"] == 0
+
+    # 验证存储中状态已更新为 submitted
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    records_by_id = {r["job_id"]: r for r in batch["records"]}
+    assert records_by_id[job_id_1]["status"] == "submitted"
+    assert records_by_id[job_id_2]["status"] == "submitted"
+
+
+def test_submit_lagou_applications_handles_mixed_results(tmp_path: Path) -> None:
+    """混合场景：成功、失败、重复、风控并存。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import LagouSubmitJobPlatformAdapter
+    from interview_agent.storage import get_confirmation_batch
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    # 岗位 1：成功投递
+    ok_id = _save_job_and_approve(database_path, platform="lagou", platform_job_id="lagou-mix-ok")
+    # 岗位 2：投递失败（captcha）
+    captcha_id = _save_job_and_approve(database_path, platform="lagou", platform_job_id="lagou-mix-captcha")
+    # 岗位 3：重复投递（state_html already_applied）
+    dup_id = _save_job_and_approve(database_path, platform="lagou", platform_job_id="lagou-mix-dup")
+    # 岗位 4：风控触发
+    risk_id = _save_job_and_approve(database_path, platform="lagou", platform_job_id="lagou-mix-risk")
+
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={
+            "lagou-mix-ok": _OK_HTML,
+            "lagou-mix-captcha": _OK_HTML,
+            "lagou-mix-dup": _OK_HTML,
+            "lagou-mix-risk": _OK_HTML,
+        },
+        state_html_by_job_id={"lagou-mix-dup": _ALREADY_APPLIED_HTML},
+        submit_html_by_job_id={
+            "lagou-mix-captcha": _CAPTCHA_HTML,
+            "lagou-mix-risk": _RISK_CONTROL_HTML,
+        },
+    )
+
+    result = runtime.submit_lagou_applications(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapter=adapter,
+    )
+
+    assert result["status"] == "completed"
+    assert result["total_count"] == 4
+    assert result["submitted_count"] == 1
+    assert result["failed_count"] == 0  # captcha and risk_control are manual takeover
+    assert result["skipped_count"] == 1  # duplicate
+    assert result["manual_takeover_count"] == 2  # captcha + risk control
+
+    # 验证存储状态
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    records_by_id = {r["job_id"]: r for r in batch["records"]}
+    assert records_by_id[ok_id]["status"] == "submitted"
+    assert records_by_id[captcha_id]["status"] == "failed"
+    assert records_by_id[dup_id]["status"] == "duplicate"
+    assert records_by_id[dup_id]["duplicate_detected"] is True
+    assert records_by_id[risk_id]["status"] == "failed"
+
+    # 验证风控岗位出现在 manual_takeover_jobs 中
+    assert any(j["platform_job_id"] == "lagou-mix-risk" for j in result["manual_takeover_jobs"])
+    # 验证成功岗位出现在 submitted_jobs 中
+    assert any(j["platform_job_id"] == "lagou-mix-ok" for j in result["submitted_jobs"])
+
+
+def test_submit_lagou_applications_saves_results_to_session_store(tmp_path: Path) -> None:
+    """投递结果保存到 session store，可通过 get_lagou_submit_results 读取。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import LagouSubmitJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="lagou", platform_job_id="lagou-sv-1")
+    adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"lagou-sv-1": _OK_HTML},
+    )
+
+    runtime.submit_lagou_applications(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapter=adapter,
+    )
+
+    stored = runtime.get_lagou_submit_results(session_id="session-001")
+    assert stored is not None
+    assert stored["status"] == "completed"
+    assert stored["submitted_count"] == 1
+    assert stored["session_id"] == "session-001"
+
+
+def test_get_lagou_submit_results_returns_none_when_no_results(tmp_path: Path) -> None:
+    """未执行投递时 get_lagou_submit_results 返回 None。"""
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    result = runtime.get_lagou_submit_results(session_id="session-001")
+    assert result is None
+
+
 def build_registry() -> NodeRegistry:
     return NodeRegistry(
         [
