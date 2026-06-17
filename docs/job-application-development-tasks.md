@@ -559,7 +559,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 
 ### JOB-015 BOSS 直聘确认后投递适配器
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：实现 BOSS 直聘确认批次内的投递动作。
 - 影响范围：BOSS 投递适配器、投递执行器。
 - 输入：已重校验确认批次、岗位详情、投递话术。
@@ -583,6 +583,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 - 观测证据：记录 BOSS 投递夹具、投递状态样例和测试输出摘要。
 - 副作用：产生 BOSS 平台投递动作。
 - 影响调用方：批量投递执行器。
+
+#### JOB-015 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-17
+- 完成时间：2026-06-17
+- 修改文件：`src/interview_agent/job_platform_adapters.py`、`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "boss_submit or submit_boss or get_boss_submit"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`；`rtk uv run pytest -p no:cacheprovider`
+- 验证结果：JOB-015 定向 14 passed；`tests/test_gui_runtime.py tests/test_storage.py` 138 passed；全量 348 passed
+- 观测证据：新增 `BossSubmitJobPlatformAdapter`，复用只读适配器并添加 `submit_html_by_job_id` 投递夹具；新增 `GuiRuntime.submit_boss_applications()` 和 `get_boss_submit_results()`；新增 `JOB_BOSS_SUBMIT_RESULTS_KEY` session state；新增 `classify_job_platform_fixture_error` 对 `account_risk_control` 和 `forced_popup` 夹具状态的支持；测试覆盖未确认批次拦截、成功投递、失败投递、重复投递、验证码、风控、强制弹窗、按钮失效、混合场景、session state 存储和空结果查询
+- 副作用：新增 BOSS 投递适配器和批量投递运行时服务；不执行真实浏览器访问或数据库 schema 变更
+- 影响调用方：批量投递执行器可消费 BOSS 投递结果；现有采集、筛选、评估、面试、算法调用方不变
+- 后续风险：JOB-016 和 JOB-017 需要复用本适配器模式为拉勾和猎聘实现投递适配器；JOB-018 批量投递执行器需整合重校验与多平台投递
 
 ### JOB-016 拉勾确认后投递适配器
 
