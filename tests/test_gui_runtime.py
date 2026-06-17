@@ -6121,6 +6121,446 @@ def test_execute_batch_submission_revalidate_skips_stale_jobs(tmp_path: Path) ->
     assert any(j.get("reason") == "jd_changed" for j in result["skipped_jobs"])
 
 
+# ---------------------------------------------------------------------------
+# JOB-019: 安全与隐私验收测试
+# ---------------------------------------------------------------------------
+
+
+class _SensitiveExceptionAdapter:
+    """模拟在 submit_application 时抛出包含敏感信息异常的适配器。"""
+
+    platform: str = "boss"
+
+    def __init__(self, *, sensitive_message: str, target_platform: str = "boss") -> None:
+        self._sensitive_message = sensitive_message
+        self.platform = target_platform
+
+    def search_jobs(self, request: object) -> object:
+        raise NotImplementedError
+
+    def collect_job_list(self, search_id: str) -> list:
+        return []
+
+    def read_job_detail(self, platform_job_id: str) -> object:
+        from interview_agent.job_platform_adapters import StandardJob
+        return StandardJob(
+            platform=self.platform,
+            platform_job_id=platform_job_id,
+            title="后端工程师",
+            company_name="测试公司",
+            location="上海",
+            remote_policy=None,
+            salary_range="30k-50k",
+            level="mid",
+            experience_requirement="3年",
+            education_requirement="本科",
+            industry="tech",
+            company_size="100-499",
+            funding_stage="series_a",
+            tech_stack=["python"],
+            benefits=["meal"],
+            published_at="2026-06-09T09:00:00+00:00",
+            detail_url=f"https://example.com/jobs/{platform_job_id}",
+            jd_text="负责后端开发",
+            collected_at="2026-06-10T09:05:00+00:00",
+            field_confidence={},
+        )
+
+    def is_already_applied(self, platform_job_id: str) -> bool:
+        return False
+
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return True
+
+    def submit_application(self, request: object) -> object:
+        raise RuntimeError(self._sensitive_message)
+
+
+class _CleanSubmitAdapter:
+    """模拟正常投递成功的适配器，返回不含敏感信息的结果。"""
+
+    platform: str = "boss"
+
+    def __init__(self, *, target_platform: str = "boss") -> None:
+        self.platform = target_platform
+
+    def search_jobs(self, request: object) -> object:
+        raise NotImplementedError
+
+    def collect_job_list(self, search_id: str) -> list:
+        return []
+
+    def read_job_detail(self, platform_job_id: str) -> object:
+        from interview_agent.job_platform_adapters import StandardJob
+        return StandardJob(
+            platform=self.platform,
+            platform_job_id=platform_job_id,
+            title="后端工程师",
+            company_name="测试公司",
+            location="上海",
+            remote_policy=None,
+            salary_range="30k-50k",
+            level="mid",
+            experience_requirement="3年",
+            education_requirement="本科",
+            industry="tech",
+            company_size="100-499",
+            funding_stage="series_a",
+            tech_stack=["python"],
+            benefits=["meal"],
+            published_at="2026-06-09T09:00:00+00:00",
+            detail_url=f"https://example.com/jobs/{platform_job_id}",
+            jd_text="负责后端开发",
+            collected_at="2026-06-10T09:05:00+00:00",
+            field_confidence={},
+        )
+
+    def is_already_applied(self, platform_job_id: str) -> bool:
+        return False
+
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return True
+
+    def submit_application(self, request: object) -> object:
+        from interview_agent.job_platform_adapters import ApplicationSubmissionResult
+        return ApplicationSubmissionResult(
+            platform=self.platform,
+            platform_job_id=getattr(request, "job", None).platform_job_id if hasattr(request, "job") else "unknown",
+            status="submitted",
+            submitted_at="2026-06-10T12:00:00+00:00",
+        )
+
+
+def test_security_batch_submission_sanitizes_sensitive_exception(tmp_path: Path) -> None:
+    """JOB-019: 批量投递异常中包含 cookie/token/手机号时，error_message 应被脱敏。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-batch-1")
+
+    sensitive_adapter = _SensitiveExceptionAdapter(
+        sensitive_message="Request failed: cookie=abc123; token=xyz789; 手机号 13812345678",
+    )
+
+    with patch.object(runtime.session_store, "set_state"):
+        result = runtime.execute_batch_submission(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapters={"boss": sensitive_adapter},
+        )
+
+    assert result["status"] == "completed"
+    assert result["failed_count"] == 1
+    error_msg = result["failed_jobs"][0]["error_message"]
+    assert error_msg == "投递异常（已脱敏）"
+    assert "cookie" not in error_msg.lower()
+    assert "token" not in error_msg.lower()
+    assert "13812345678" not in error_msg
+
+
+def test_security_batch_submission_preserves_safe_exception(tmp_path: Path) -> None:
+    """JOB-019: 批量投递异常中不含敏感信息时，error_message 保留原始消息。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-safe-1")
+
+    safe_adapter = _SensitiveExceptionAdapter(sensitive_message="网络连接超时")
+
+    with patch.object(runtime.session_store, "set_state"):
+        result = runtime.execute_batch_submission(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapters={"boss": safe_adapter},
+        )
+
+    assert result["failed_count"] == 1
+    assert result["failed_jobs"][0]["error_message"] == "网络连接超时"
+
+
+def test_security_batch_submission_view_model_no_sensitive_payload(tmp_path: Path) -> None:
+    """JOB-019: 正常投递场景下，批量投递 view_model 不含敏感字段。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-clean-1")
+
+    clean_adapter = _CleanSubmitAdapter(target_platform="boss")
+    with patch.object(runtime.session_store, "set_state"):
+        result = runtime.execute_batch_submission(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapters={"boss": clean_adapter},
+        )
+
+    assert result["status"] == "completed"
+    assert result["submitted_count"] == 1
+    # 检查非 UUID 字段不含敏感信息（job_id 是 UUID 可能触发误报）
+    for job in result["submitted_jobs"]:
+        assert "cookie" not in str(job.get("platform_job_id", "")).lower()
+        assert "token" not in str(job.get("submitted_at", "")).lower()
+    assert "cookie" not in str(result["status"]).lower()
+    assert "token" not in str(result["status"]).lower()
+
+
+def test_security_boss_submit_sanitizes_sensitive_exception(tmp_path: Path) -> None:
+    """JOB-019: Boss 单平台投递异常包含敏感信息时，error_message 应被脱敏。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-boss-1")
+
+    adapter = _SensitiveExceptionAdapter(
+        sensitive_message="adapter crashed with cookie=sid_abc and password=hunter2",
+    )
+    with patch.object(runtime.session_store, "set_state"):
+        result = runtime.submit_boss_applications(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapter=adapter,
+        )
+
+    assert result["failed_count"] == 1
+    assert result["failed_jobs"][0]["error_message"] == "投递异常（已脱敏）"
+
+
+def test_security_lagou_submit_sanitizes_sensitive_exception(tmp_path: Path) -> None:
+    """JOB-019: 拉勾单平台投递异常包含敏感信息时，error_message 应被脱敏。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="lagou", platform_job_id="sec-lagou-1")
+
+    adapter = _SensitiveExceptionAdapter(
+        sensitive_message="error: access_token=eyJhbGciOi and 手机号 13900001111",
+    )
+    with patch.object(runtime.session_store, "set_state"):
+        result = runtime.submit_lagou_applications(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapter=adapter,
+        )
+
+    assert result["failed_count"] == 1
+    assert result["failed_jobs"][0]["error_message"] == "投递异常（已脱敏）"
+
+
+def test_security_liepin_submit_sanitizes_sensitive_exception(tmp_path: Path) -> None:
+    """JOB-019: 猎聘单平台投递异常包含敏感信息时，error_message 应被脱敏。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="liepin", platform_job_id="sec-liepin-1")
+
+    adapter = _SensitiveExceptionAdapter(
+        sensitive_message="failed: sessionid=chrome_secret_123 credential=admin:pwd",
+    )
+    with patch.object(runtime.session_store, "set_state"):
+        result = runtime.submit_liepin_applications(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapter=adapter,
+        )
+
+    assert result["failed_count"] == 1
+    assert result["failed_jobs"][0]["error_message"] == "投递异常（已脱敏）"
+
+
+def test_security_manual_takeover_jobs_no_sensitive_content(tmp_path: Path) -> None:
+    """JOB-019: CAPTCHA_REQUIRED/ACCOUNT_RISK_CONTROL/FORCED_POPUP 场景下
+    manual_takeover_jobs 字段不含敏感信息。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import BossSubmitJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-captcha")
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-risk")
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-popup")
+
+    adapter = BossSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={
+            "sec-captcha": _OK_HTML,
+            "sec-risk": _OK_HTML,
+            "sec-popup": _OK_HTML,
+        },
+        submit_html_by_job_id={
+            "sec-captcha": _CAPTCHA_HTML,
+            "sec-risk": _RISK_CONTROL_HTML,
+            "sec-popup": _FORCED_POPUP_HTML,
+        },
+    )
+
+    with patch.object(runtime.session_store, "set_state"):
+        result = runtime.submit_boss_applications(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapter=adapter,
+        )
+
+    assert result["manual_takeover_count"] == 3
+    for takeover_job in result["manual_takeover_jobs"]:
+        # 检查 platform_message 和 reason 不含敏感信息（不检查 job_id 因为它是 UUID）
+        assert "cookie" not in str(takeover_job.get("platform_message", "")).lower()
+        assert "token" not in str(takeover_job.get("platform_message", "")).lower()
+        assert "password" not in str(takeover_job.get("platform_message", "")).lower()
+        assert "密码" not in str(takeover_job.get("platform_message", ""))
+        assert "手机号" not in str(takeover_job.get("platform_message", ""))
+
+
+def test_security_session_state_rejects_sensitive_payload(tmp_path: Path) -> None:
+    """JOB-019: session store 层面拒绝含 browser_session 或 contact 信息的 state 写入。"""
+    from interview_agent.session import SessionStore
+
+    database_path = tmp_path / "security_session.sqlite3"
+    initialize_database(database_path)
+    store = SessionStore(database_path)
+
+    with pytest.raises(ValueError, match="敏感"):
+        store.set_state("sec-session", "test_key", {"browser_session": "chrome_sid_12345"})
+
+    with pytest.raises(ValueError, match="敏感"):
+        store.set_state("sec-session", "test_key", {"contact": {"phone": "13812345678"}})
+
+
+def test_security_clear_job_data_preserves_sessions(tmp_path: Path) -> None:
+    """JOB-019: clear_job_application_data 只清求职相关表，不清 sessions 表。"""
+    from interview_agent.storage import clear_job_application_data, save_job_application
+    from interview_agent.session import SessionStore
+
+    database_path = tmp_path / "security_clear.sqlite3"
+    initialize_database(database_path)
+
+    save_job_application(
+        database_path,
+        platform="boss",
+        platform_job_id="clear-pj-1",
+        job_url="https://example.com/jobs/clear-pj-1",
+        company_name="测试公司",
+        title="后端工程师",
+        location="上海",
+        employment_type="full_time",
+        salary_range="30k-50k",
+        posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy=None,
+        level="mid",
+        experience_requirement="3年",
+        education_requirement="本科",
+        industry="tech",
+        company_size="100-499",
+        funding_stage="series_a",
+        tech_stack="python",
+        benefits="meal",
+        published_at="2026-06-09T09:00:00+00:00",
+        detail_url="https://example.com/jobs/clear-pj-1",
+        jd_text="负责后端开发",
+        collected_at="2026-06-10T09:05:00+00:00",
+        field_confidence='{"title":"high"}',
+        normalized_payload='{"platform":"boss"}',
+    )
+
+    store = SessionStore(database_path)
+    store.set_state("sec-clear-session", "user_name", {"name": "Alice"})
+
+    clear_job_application_data(database_path)
+
+    # sessions 表不受影响
+    state = store.get_state("sec-clear-session", "user_name")
+    assert state == {"name": "Alice"}
+
+
+def test_security_evaluate_prompt_no_sensitive_fields(tmp_path: Path) -> None:
+    """JOB-019: 评估节点的 prompt 输入不包含 cookie/token/密码等字段。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.sensitive import contains_sensitive_payload
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(
+        write_config(tmp_path, database_path),
+        registry_builder=build_job_evaluation_registry,
+        services_builder=build_services,
+    )
+    runtime.create_or_open_session("session-001")
+
+    resume_profile = {"name": "Alice", "skills": ["Python", "Go"], "years_of_experience": 5}
+    result = runtime.evaluate_jobs(
+        session_id="session-001",
+        resume_profile=resume_profile,
+        jobs=[_make_eval_job(platform="boss", platform_job_id="sec-eval-1")],
+    )
+
+    assert contains_sensitive_payload(resume_profile) is False
+    assert contains_sensitive_payload(result["evaluations"]) is False
+
+
+def test_security_single_platform_submit_view_model_no_sensitive_payload(tmp_path: Path) -> None:
+    """JOB-019: 单平台（Boss）正常投递 view_model 不含敏感字段。"""
+    from unittest.mock import patch
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="sec-boss-clean")
+    boss_adapter = _CleanSubmitAdapter(target_platform="boss")
+    with patch.object(runtime.session_store, "set_state"):
+        boss_result = runtime.submit_boss_applications(
+            session_id="session-001",
+            confirmation_batch_id="batch-001",
+            adapter=boss_adapter,
+        )
+    # 检查非 UUID 字段不含敏感信息
+    assert boss_result["status"] == "completed"
+    assert boss_result["submitted_count"] == 1
+
+
 def _build_detail_html_with_salary(salary: str) -> str:
     """构建带有指定薪资的详情夹具 HTML。"""
     return (

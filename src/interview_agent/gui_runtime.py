@@ -15,6 +15,7 @@ from interview_agent.mock_interview import DEFAULT_MOCK_FOLLOWUP_ROUNDS, DEFAULT
 from interview_agent.nodes.registry import NodeRegistry, build_default_registry
 from interview_agent.planner import ExecutionPlan, build_execution_plan
 from interview_agent.router import RouteResult, route_conversation
+from interview_agent.sensitive import contains_sensitive_payload
 from interview_agent.session import SessionStore
 from interview_agent.storage import get_confirmation_batch, get_job_application_by_id, get_knowledge_base_status, update_job_application_status
 
@@ -613,7 +614,8 @@ class GuiRuntime:
                     confirmation_status="confirmed",
                     failure_reason="adapter_error",
                 )
-                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "adapter_error", "error_message": str(exc)})
+                _safe_error = "投递异常（已脱敏）" if contains_sensitive_payload(str(exc)) else str(exc)
+                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "adapter_error", "error_message": _safe_error})
                 continue
 
             if submit_result.status == "submitted":
@@ -801,7 +803,8 @@ class GuiRuntime:
                     confirmation_status="confirmed",
                     failure_reason="adapter_error",
                 )
-                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "adapter_error", "error_message": str(exc)})
+                _safe_error = "投递异常（已脱敏）" if contains_sensitive_payload(str(exc)) else str(exc)
+                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "adapter_error", "error_message": _safe_error})
                 continue
 
             if submit_result.status == "submitted":
@@ -989,7 +992,8 @@ class GuiRuntime:
                     confirmation_status="confirmed",
                     failure_reason="adapter_error",
                 )
-                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "adapter_error", "error_message": str(exc)})
+                _safe_error = "投递异常（已脱敏）" if contains_sensitive_payload(str(exc)) else str(exc)
+                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "adapter_error", "error_message": _safe_error})
                 continue
 
             if submit_result.status == "submitted":
@@ -1202,7 +1206,8 @@ class GuiRuntime:
                     confirmation_status="confirmed",
                     failure_reason="adapter_error",
                 )
-                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "platform": platform, "reason": "adapter_error", "error_message": str(exc)})
+                _safe_error = "投递异常（已脱敏）" if contains_sensitive_payload(str(exc)) else str(exc)
+                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "platform": platform, "reason": "adapter_error", "error_message": _safe_error})
                 continue
 
             if submit_result.status == "submitted":
