@@ -693,6 +693,120 @@ class BossSubmitJobPlatformAdapter:
         return result
 
 
+class LiepinSubmitJobPlatformAdapter:
+    """猎聘确认后投递适配器。
+
+    在只读适配器基础上增加投递能力，通过 submit_html_by_job_id 夹具
+    控制投递结果：成功、失败、重复、验证码、风控、强制弹窗。
+    未提供 submit 夹具的岗位默认投递成功。
+    """
+    platform = "liepin"
+
+    def __init__(
+        self,
+        *,
+        list_html: str,
+        detail_html_by_job_id: dict[str, str],
+        state_html_by_job_id: dict[str, str] | None = None,
+        submit_html_by_job_id: dict[str, str] | None = None,
+    ) -> None:
+        self._readonly = LiepinReadonlyJobPlatformAdapter(
+            list_html=list_html,
+            detail_html_by_job_id=detail_html_by_job_id,
+            state_html_by_job_id=state_html_by_job_id,
+        )
+        self._submit_html_by_job_id = dict(submit_html_by_job_id or {})
+
+    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
+        return self._readonly.search_jobs(request)
+
+    def collect_job_list(self, search_id: str) -> list[StandardJob]:
+        return self._readonly.collect_job_list(search_id)
+
+    def read_job_detail(self, platform_job_id: str) -> StandardJob:
+        return self._readonly.read_job_detail(platform_job_id)
+
+    def is_already_applied(self, platform_job_id: str) -> bool:
+        return self._readonly.is_already_applied(platform_job_id)
+
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return self._readonly.is_button_available(platform_job_id)
+
+    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
+        _assert_no_sensitive_payload(request)
+        if not request.confirmed:
+            return ApplicationSubmissionResult(
+                platform=self.platform,
+                platform_job_id=request.job.platform_job_id,
+                status="skipped",
+                error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
+                    platform=self.platform,
+                    stage="submit",
+                    message="投递前缺少用户确认",
+                ),
+            )
+
+        platform_job_id = request.job.platform_job_id
+
+        # Check submit-specific fixture for error states
+        submit_html = self._submit_html_by_job_id.get(platform_job_id)
+        if submit_html is not None:
+            error = classify_job_platform_fixture_error(
+                platform=self.platform, stage="submit", html=submit_html,
+            )
+            if error is not None:
+                safe_error = _sanitize_adapter_error(error)
+                if safe_error.error_type == PlatformAdapterErrorType.DUPLICATE_APPLICATION:
+                    status: ApplicationSubmissionStatus = "duplicate"
+                elif safe_error.error_type in (
+                    PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+                    PlatformAdapterErrorType.ACCOUNT_RISK_CONTROL,
+                    PlatformAdapterErrorType.FORCED_POPUP,
+                ):
+                    status = "failed"
+                else:
+                    status = "failed"
+                result = ApplicationSubmissionResult(
+                    platform=self.platform,
+                    platform_job_id=platform_job_id,
+                    status=status,
+                    error=safe_error,
+                    platform_message=safe_error.message,
+                    duplicate_detected=(safe_error.error_type == PlatformAdapterErrorType.DUPLICATE_APPLICATION),
+                )
+                _assert_no_sensitive_payload(result)
+                return result
+
+        # Check state HTML for already-applied
+        if self._readonly.is_already_applied(platform_job_id):
+            result = ApplicationSubmissionResult(
+                platform=self.platform,
+                platform_job_id=platform_job_id,
+                status="duplicate",
+                error=PlatformAdapterError(
+                    error_type=PlatformAdapterErrorType.DUPLICATE_APPLICATION,
+                    platform=self.platform,
+                    stage="submit",
+                    message="重复投递",
+                ),
+                duplicate_detected=True,
+            )
+            _assert_no_sensitive_payload(result)
+            return result
+
+        # Successful submission
+        from datetime import UTC, datetime
+        result = ApplicationSubmissionResult(
+            platform=self.platform,
+            platform_job_id=platform_job_id,
+            status="submitted",
+            submitted_at=datetime.now(UTC).isoformat(),
+        )
+        _assert_no_sensitive_payload(result)
+        return result
+
+
 def _assert_no_sensitive_payload(value: object) -> None:
     assert_no_sensitive_payload(value, error_message="适配器结果包含敏感凭据")
 

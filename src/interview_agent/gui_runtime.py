@@ -33,6 +33,7 @@ JOB_EVALUATION_RESULTS_KEY = "job_evaluation_results"
 JOB_REVALIDATION_RESULTS_KEY = "job_revalidation_results"
 JOB_BOSS_SUBMIT_RESULTS_KEY = "job_boss_submit_results"
 JOB_LAGOU_SUBMIT_RESULTS_KEY = "job_lagou_submit_results"
+JOB_LIEPIN_SUBMIT_RESULTS_KEY = "job_liepin_submit_results"
 ALGORITHM_PRACTICE_BANK_KEY = "algorithm_practice_bank"
 DEFAULT_ALGORITHM_PRACTICE_QUESTION_COUNT = 3
 DEFAULT_ALGORITHM_PRACTICE_BANK_PATH = Path(__file__).with_name("algorithm_practice_bank.json")
@@ -877,6 +878,194 @@ class GuiRuntime:
         view_model = self.session_store.get_state(session_id, JOB_LAGOU_SUBMIT_RESULTS_KEY)
         return view_model if isinstance(view_model, dict) else None
 
+    def submit_liepin_applications(
+        self,
+        *,
+        session_id: str,
+        confirmation_batch_id: str,
+        adapter: JobPlatformAdapter,
+    ) -> dict[str, object]:
+        database_path = Path(self.config.storage.database_path)
+        batch = get_confirmation_batch(database_path, confirmation_batch_id=confirmation_batch_id)
+        if batch is None:
+            view_model: dict[str, object] = {
+                "session_id": session_id,
+                "confirmation_batch_id": confirmation_batch_id,
+                "status": "not_found",
+                "submitted_jobs": [],
+                "failed_jobs": [],
+                "skipped_jobs": [],
+                "manual_takeover_jobs": [],
+                "total_count": 0,
+                "submitted_count": 0,
+                "failed_count": 0,
+                "skipped_count": 0,
+                "manual_takeover_count": 0,
+            }
+            self.session_store.set_state(session_id, JOB_LIEPIN_SUBMIT_RESULTS_KEY, view_model)
+            return view_model
+
+        # Only confirmed or confirmed-with-approved-records batches can submit
+        batch_status = str(batch.get("status", ""))
+        approved_records = [r for r in batch.get("records", []) if r.get("status") == "approved"]
+        if batch_status not in ("confirmed",) and not approved_records:
+            view_model = {
+                "session_id": session_id,
+                "confirmation_batch_id": confirmation_batch_id,
+                "status": "not_confirmed",
+                "submitted_jobs": [],
+                "failed_jobs": [],
+                "skipped_jobs": [],
+                "manual_takeover_jobs": [],
+                "total_count": 0,
+                "submitted_count": 0,
+                "failed_count": 0,
+                "skipped_count": 0,
+                "manual_takeover_count": 0,
+            }
+            self.session_store.set_state(session_id, JOB_LIEPIN_SUBMIT_RESULTS_KEY, view_model)
+            return view_model
+
+        submitted_jobs: list[dict[str, object]] = []
+        failed_jobs: list[dict[str, object]] = []
+        skipped_jobs: list[dict[str, object]] = []
+        manual_takeover_jobs: list[dict[str, object]] = []
+
+        from interview_agent.job_platform_adapters import PlatformAdapterErrorType
+        _MANUAL_TAKEOVER_ERROR_TYPES = {
+            PlatformAdapterErrorType.CAPTCHA_REQUIRED,
+            PlatformAdapterErrorType.ACCOUNT_RISK_CONTROL,
+            PlatformAdapterErrorType.FORCED_POPUP,
+        }
+
+        for record in approved_records:
+            job_id = str(record["job_id"])
+            job_data = get_job_application_by_id(database_path, job_id=job_id)
+            if job_data is None:
+                _mark_job_skipped(database_path, job_id, confirmation_batch_id, "job_not_found")
+                skipped_jobs.append({"job_id": job_id, "reason": "job_not_found"})
+                continue
+
+            platform_job_id = str(job_data["platform_job_id"])
+            job_detail = StandardJob(
+                platform=str(job_data["platform"]),
+                platform_job_id=str(job_data["platform_job_id"]),
+                title=str(job_data["title"]),
+                company_name=str(job_data["company_name"]),
+                location=str(job_data["location"]),
+                remote_policy=job_data.get("remote_policy"),
+                salary_range=job_data.get("salary_range"),
+                level=job_data.get("level"),
+                experience_requirement=job_data.get("experience_requirement"),
+                education_requirement=job_data.get("education_requirement"),
+                industry=job_data.get("industry"),
+                company_size=job_data.get("company_size"),
+                funding_stage=job_data.get("funding_stage"),
+                tech_stack=[],
+                benefits=[],
+                published_at=job_data.get("published_at"),
+                detail_url=str(job_data["detail_url"]),
+                jd_text=str(job_data["jd_text"]),
+                collected_at=str(job_data["collected_at"]),
+                field_confidence={},
+            )
+
+            request = ConfirmationApplicationRequest(
+                confirmation_batch_id=confirmation_batch_id,
+                job=job_detail,
+                application_message="",
+                confirmed=True,
+            )
+
+            try:
+                submit_result = adapter.submit_application(request)
+            except Exception as exc:
+                update_job_application_status(
+                    database_path,
+                    job_id=job_id,
+                    status="failed",
+                    confirmation_batch_id=confirmation_batch_id,
+                    confirmation_status="confirmed",
+                    failure_reason="adapter_error",
+                )
+                failed_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "adapter_error", "error_message": str(exc)})
+                continue
+
+            if submit_result.status == "submitted":
+                update_job_application_status(
+                    database_path,
+                    job_id=job_id,
+                    status="submitted",
+                    confirmation_batch_id=confirmation_batch_id,
+                    confirmation_status="confirmed",
+                    submitted_at=submit_result.submitted_at,
+                )
+                submitted_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "submitted_at": submit_result.submitted_at})
+            elif submit_result.status == "duplicate":
+                update_job_application_status(
+                    database_path,
+                    job_id=job_id,
+                    status="duplicate",
+                    confirmation_batch_id=confirmation_batch_id,
+                    confirmation_status="confirmed",
+                    duplicate_detected=True,
+                )
+                skipped_jobs.append({"job_id": job_id, "platform_job_id": platform_job_id, "reason": "duplicate"})
+            elif submit_result.error and submit_result.error.error_type in _MANUAL_TAKEOVER_ERROR_TYPES:
+                update_job_application_status(
+                    database_path,
+                    job_id=job_id,
+                    status="failed",
+                    confirmation_batch_id=confirmation_batch_id,
+                    confirmation_status="confirmed",
+                    failure_reason=str(submit_result.error.error_type.value),
+                    platform_message=submit_result.platform_message,
+                )
+                manual_takeover_jobs.append({
+                    "job_id": job_id,
+                    "platform_job_id": platform_job_id,
+                    "reason": str(submit_result.error.error_type.value),
+                    "platform_message": submit_result.platform_message,
+                })
+            else:
+                failure_reason = submit_result.error.error_type.value if submit_result.error else "unknown"
+                update_job_application_status(
+                    database_path,
+                    job_id=job_id,
+                    status="failed",
+                    confirmation_batch_id=confirmation_batch_id,
+                    confirmation_status="confirmed",
+                    failure_reason=failure_reason,
+                    platform_message=submit_result.platform_message,
+                )
+                failed_jobs.append({
+                    "job_id": job_id,
+                    "platform_job_id": platform_job_id,
+                    "reason": failure_reason,
+                    "platform_message": submit_result.platform_message,
+                })
+
+        view_model = {
+            "session_id": session_id,
+            "confirmation_batch_id": confirmation_batch_id,
+            "status": "completed",
+            "submitted_jobs": submitted_jobs,
+            "failed_jobs": failed_jobs,
+            "skipped_jobs": skipped_jobs,
+            "manual_takeover_jobs": manual_takeover_jobs,
+            "total_count": len(approved_records),
+            "submitted_count": len(submitted_jobs),
+            "failed_count": len(failed_jobs),
+            "skipped_count": len(skipped_jobs),
+            "manual_takeover_count": len(manual_takeover_jobs),
+        }
+        self.session_store.set_state(session_id, JOB_LIEPIN_SUBMIT_RESULTS_KEY, view_model)
+        return view_model
+
+    def get_liepin_submit_results(self, *, session_id: str) -> dict[str, object] | None:
+        view_model = self.session_store.get_state(session_id, JOB_LIEPIN_SUBMIT_RESULTS_KEY)
+        return view_model if isinstance(view_model, dict) else None
+
     def start_mock_interview(
         self,
         *,
@@ -1271,6 +1460,24 @@ def submit_lagou_applications(
 
 def get_lagou_submit_results(runtime: GuiRuntime, *, session_id: str) -> dict[str, object] | None:
     return runtime.get_lagou_submit_results(session_id=session_id)
+
+
+def submit_liepin_applications(
+    runtime: GuiRuntime,
+    *,
+    session_id: str,
+    confirmation_batch_id: str,
+    adapter: JobPlatformAdapter,
+) -> dict[str, object]:
+    return runtime.submit_liepin_applications(
+        session_id=session_id,
+        confirmation_batch_id=confirmation_batch_id,
+        adapter=adapter,
+    )
+
+
+def get_liepin_submit_results(runtime: GuiRuntime, *, session_id: str) -> dict[str, object] | None:
+    return runtime.get_liepin_submit_results(session_id=session_id)
 
 
 def start_mock_interview(
