@@ -682,7 +682,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 
 ### JOB-018 批量投递执行
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：按用户确认批次逐个执行投递并记录状态。
 - 影响范围：运行时 facade、投递执行器、平台适配器调用、投递记录。
 - 输入：确认批次、选中岗位、投递话术、平台投递适配器。
@@ -709,6 +709,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 - 观测证据：记录批次结果样例和测试输出摘要。
 - 副作用：产生平台投递动作。
 - 影响调用方：平台投递适配器、投递记录、GUI 结果页。
+
+#### JOB-018 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-17
+- 完成时间：2026-06-17
+- 修改文件：`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "batch_submit or execute_batch"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`；`rtk uv run pytest -p no:cacheprovider`
+- 验证结果：JOB-018 定向 8 passed；`tests/test_gui_runtime.py tests/test_storage.py` 174 passed；全量 384 passed
+- 观测证据：新增 `GuiRuntime.execute_batch_submission()` 和 `get_batch_submit_results()`；新增 `JOB_BATCH_SUBMIT_RESULTS_KEY` session state；批量投递执行器整合 JOB-014 重校验与多平台投递适配器；测试覆盖不存在的批次拦截、未确认批次拦截、跨平台（BOSS/拉勾）成功投递、混合结果（成功/失败/重复/风控并存）、部分失败不回滚成功项、重校验跳过陈旧岗位（jd_changed）、session state 存储和空结果查询
+- 副作用：新增批量投递执行器和 session state；不执行真实浏览器访问或数据库 schema 变更
+- 影响调用方：GUI 批量投递结果页可消费跨平台批次投递结果；现有采集、筛选、评估、面试、算法调用方不变
+- 后续风险：JOB-019 安全与隐私验收需对批量投递流程做敏感信息扫描
 
 ### JOB-019 安全与隐私验收
 

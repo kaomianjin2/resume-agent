@@ -5817,6 +5817,357 @@ def test_get_liepin_submit_results_returns_none_when_no_results(tmp_path: Path) 
     assert result is None
 
 
+# ---------------------------------------------------------------------------
+# JOB-018 批量投递执行测试
+# ---------------------------------------------------------------------------
+
+
+def test_execute_batch_submission_nonexistent_batch_returns_not_found(tmp_path: Path) -> None:
+    """不存在的批次返回 not_found。"""
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    result = runtime.execute_batch_submission(
+        session_id="session-001",
+        confirmation_batch_id="nonexistent-batch",
+        adapters={},
+    )
+
+    assert result["status"] == "not_found"
+    assert result["total_count"] == 0
+    assert result["submitted_count"] == 0
+
+
+def test_execute_batch_submission_rejects_unconfirmed_batch(tmp_path: Path) -> None:
+    """未确认批次（无 approved 记录）不能投递。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.storage import save_job_application, update_job_application_status
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    # 保存岗位并创建确认批次，但状态为 pending_review（非 approved）
+    saved = save_job_application(
+        database_path,
+        platform="boss", platform_job_id="unconf-1", job_url="https://example.com/jobs/unconf-1",
+        company_name="测试公司", title="后端工程师", location="上海",
+        employment_type="full_time", salary_range="30k-50k", posted_at="2026-06-10T09:00:00+00:00",
+        remote_policy=None, level="mid", experience_requirement="3年", education_requirement="本科",
+        industry=None, company_size=None, funding_stage=None, tech_stack=None, benefits=None,
+        published_at=None, detail_url="https://example.com/jobs/unconf-1", jd_text="负责后端开发",
+        collected_at="2026-06-10T10:00:00+00:00", field_confidence="{}", normalized_payload="{}",
+    )
+    update_job_application_status(
+        database_path,
+        job_id=saved["job_id"],
+        status="pending_review",
+        confirmation_batch_id="batch-unconfirmed",
+        confirmation_status="pending_review",
+    )
+
+    result = runtime.execute_batch_submission(
+        session_id="session-001",
+        confirmation_batch_id="batch-unconfirmed",
+        adapters={},
+    )
+
+    assert result["status"] == "not_confirmed"
+    assert result["total_count"] == 0
+    assert result["submitted_count"] == 0
+
+
+def test_execute_batch_submission_submits_approved_jobs_across_platforms(tmp_path: Path) -> None:
+    """多平台 approved 岗位均成功投递，状态 submitted。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import BossSubmitJobPlatformAdapter, LagouSubmitJobPlatformAdapter
+    from interview_agent.storage import get_confirmation_batch
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    boss_job_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="batch-boss-ok")
+    lagou_job_id = _save_job_and_approve(database_path, platform="lagou", platform_job_id="batch-lagou-ok")
+
+    boss_detail = _build_detail_html(platform="boss", platform_job_id="batch-boss-ok")
+    lagou_detail = _build_detail_html(platform="lagou", platform_job_id="batch-lagou-ok")
+
+    boss_adapter = BossSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"batch-boss-ok": boss_detail},
+    )
+    lagou_adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"batch-lagou-ok": lagou_detail},
+    )
+    adapters = {"boss": boss_adapter, "lagou": lagou_adapter}
+
+    result = runtime.execute_batch_submission(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapters=adapters,
+    )
+
+    assert result["status"] == "completed"
+    assert result["total_count"] == 2
+    assert result["submitted_count"] == 2
+    assert result["failed_count"] == 0
+    assert result["skipped_count"] == 0
+    assert result["manual_takeover_count"] == 0
+
+    # 验证多平台均有 submitted 记录
+    assert any(j["platform"] == "boss" for j in result["submitted_jobs"])
+    assert any(j["platform"] == "lagou" for j in result["submitted_jobs"])
+
+    # 验证存储中状态已更新
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    records_by_id = {r["job_id"]: r for r in batch["records"]}
+    assert records_by_id[boss_job_id]["status"] == "submitted"
+    assert records_by_id[lagou_job_id]["status"] == "submitted"
+
+
+def test_execute_batch_submission_handles_mixed_results(tmp_path: Path) -> None:
+    """混合场景：成功、失败、重复、风控、重校验跳过并存。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import BossSubmitJobPlatformAdapter, LagouSubmitJobPlatformAdapter
+    from interview_agent.storage import get_confirmation_batch
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    ok_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="batch-mix-ok")
+    captcha_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="batch-mix-captcha")
+    dup_id = _save_job_and_approve(database_path, platform="lagou", platform_job_id="batch-mix-dup")
+    risk_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="batch-mix-risk")
+
+    boss_detail_ok = _build_detail_html(platform="boss", platform_job_id="batch-mix-ok")
+    boss_detail_captcha = _build_detail_html(platform="boss", platform_job_id="batch-mix-captcha")
+    boss_detail_risk = _build_detail_html(platform="boss", platform_job_id="batch-mix-risk")
+    lagou_detail_dup = _build_detail_html(platform="lagou", platform_job_id="batch-mix-dup")
+
+    boss_adapter = BossSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={
+            "batch-mix-ok": boss_detail_ok,
+            "batch-mix-captcha": boss_detail_captcha,
+            "batch-mix-risk": boss_detail_risk,
+        },
+        submit_html_by_job_id={
+            "batch-mix-captcha": _CAPTCHA_HTML,
+            "batch-mix-risk": _RISK_CONTROL_HTML,
+        },
+    )
+    lagou_adapter = LagouSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"batch-mix-dup": lagou_detail_dup},
+        state_html_by_job_id={"batch-mix-dup": _ALREADY_APPLIED_HTML},
+    )
+    adapters = {"boss": boss_adapter, "lagou": lagou_adapter}
+
+    result = runtime.execute_batch_submission(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapters=adapters,
+    )
+
+    assert result["status"] == "completed"
+    assert result["total_count"] == 4
+    assert result["submitted_count"] == 1
+    # dup 在重校验阶段被跳过（already_applied），进入 skipped_jobs
+    assert result["skipped_count"] >= 1
+    assert result["manual_takeover_count"] == 2  # captcha + risk
+
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    records_by_id = {r["job_id"]: r for r in batch["records"]}
+    assert records_by_id[ok_id]["status"] == "submitted"
+    assert records_by_id[captcha_id]["status"] == "failed"
+    # dup 可能在重校验阶段就被标记为 duplicate
+    assert records_by_id[dup_id]["status"] in ("duplicate", "skipped")
+    assert records_by_id[risk_id]["status"] == "failed"
+
+
+def test_execute_batch_submission_partial_failure_preserves_success(tmp_path: Path) -> None:
+    """部分失败时成功项保留，不回滚。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import BossSubmitJobPlatformAdapter
+    from interview_agent.storage import get_confirmation_batch
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    ok_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="partial-ok")
+    fail_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="partial-fail")
+
+    ok_detail = _build_detail_html(platform="boss", platform_job_id="partial-ok")
+    fail_detail = _build_detail_html(platform="boss", platform_job_id="partial-fail")
+
+    adapter = BossSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"partial-ok": ok_detail, "partial-fail": fail_detail},
+        submit_html_by_job_id={"partial-fail": _BUTTON_UNAVAILABLE_HTML},
+    )
+
+    result = runtime.execute_batch_submission(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "completed"
+    assert result["submitted_count"] == 1
+    assert result["failed_count"] == 1
+
+    batch = get_confirmation_batch(database_path, confirmation_batch_id="batch-001")
+    records_by_id = {r["job_id"]: r for r in batch["records"]}
+    assert records_by_id[ok_id]["status"] == "submitted"
+    assert records_by_id[fail_id]["status"] == "failed"
+
+
+def test_execute_batch_submission_saves_results_to_session_store(tmp_path: Path) -> None:
+    """投递结果保存到 session store，可通过 get_batch_submit_results 读取。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import BossSubmitJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    _save_job_and_approve(database_path, platform="boss", platform_job_id="batch-sv-1")
+    detail = _build_detail_html(platform="boss", platform_job_id="batch-sv-1")
+    adapter = BossSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"batch-sv-1": detail},
+    )
+
+    runtime.execute_batch_submission(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    stored = runtime.get_batch_submit_results(session_id="session-001")
+    assert stored is not None
+    assert stored["status"] == "completed"
+    assert stored["submitted_count"] == 1
+    assert stored["session_id"] == "session-001"
+
+
+def test_get_batch_submit_results_returns_none_when_no_results(tmp_path: Path) -> None:
+    """未执行投递时 get_batch_submit_results 返回 None。"""
+    from interview_agent.gui_runtime import load_runtime
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    result = runtime.get_batch_submit_results(session_id="session-001")
+    assert result is None
+
+
+def test_execute_batch_submission_revalidate_skips_stale_jobs(tmp_path: Path) -> None:
+    """重校验阶段跳过的岗位（如 JD 变化）不进入投递，但仍记录为 skipped。"""
+    from interview_agent.gui_runtime import load_runtime
+    from interview_agent.job_platform_adapters import BossSubmitJobPlatformAdapter
+
+    database_path = tmp_path / "runtime.sqlite3"
+    initialize_database(database_path)
+    set_knowledge_base_status(database_path, "ready")
+    runtime = load_runtime(write_config(tmp_path, database_path), registry_builder=build_registry, services_builder=build_services)
+    runtime.create_or_open_session("session-001")
+
+    # 岗位 1：正常投递
+    ok_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="stale-ok")
+    # 岗位 2：detail_html 返回不同薪资 → 重校验跳过
+    stale_id = _save_job_and_approve(database_path, platform="boss", platform_job_id="stale-changed", salary_range="30k-50k")
+
+    ok_detail = _build_detail_html(platform="boss", platform_job_id="stale-ok")
+    # detail_html 中薪资与存储不同，触发 jd_changed
+    changed_detail = _build_detail_html(platform="boss", platform_job_id="stale-changed", salary_range="10k-15k")
+
+    adapter = BossSubmitJobPlatformAdapter(
+        list_html=_OK_HTML,
+        detail_html_by_job_id={"stale-ok": ok_detail, "stale-changed": changed_detail},
+    )
+
+    result = runtime.execute_batch_submission(
+        session_id="session-001",
+        confirmation_batch_id="batch-001",
+        adapters={"boss": adapter},
+    )
+
+    assert result["status"] == "completed"
+    assert result["submitted_count"] == 1
+    # stale-changed 在重校验阶段被跳过
+    assert any(j.get("reason") == "jd_changed" for j in result["skipped_jobs"])
+
+
+def _build_detail_html_with_salary(salary: str) -> str:
+    """构建带有指定薪资的详情夹具 HTML。"""
+    return (
+        '<div data-job-detail="">'
+        '<article>'
+        '<span data-field="platform">boss</span>'
+        '<span data-field="platform_job_id">x</span>'
+        '<span data-field="title">后端工程师</span>'
+        '<span data-field="company_name">测试公司</span>'
+        '<span data-field="location">上海</span>'
+        f'<span data-field="salary_range">{salary}</span>'
+        '<a data-field="detail_url" href="https://example.com/jobs/x">link</a>'
+        '<span data-field="jd_text">负责后端开发</span>'
+        '<span data-field="collected_at">2026-06-10T10:00:00+00:00</span>'
+        '</article>'
+        '</div>'
+    )
+
+
+def _build_detail_html(
+    *,
+    platform: str = "boss",
+    platform_job_id: str = "pj-1",
+    title: str = "后端工程师",
+    company_name: str = "测试公司",
+    location: str = "上海",
+    salary_range: str = "30k-50k",
+    jd_text: str = "负责后端开发",
+) -> str:
+    """构建与 _save_job_and_approve 默认字段一致的详情夹具 HTML。"""
+    return (
+        '<div data-job-detail="">'
+        '<article>'
+        f'<span data-field="platform">{platform}</span>'
+        f'<span data-field="platform_job_id">{platform_job_id}</span>'
+        f'<span data-field="title">{title}</span>'
+        f'<span data-field="company_name">{company_name}</span>'
+        f'<span data-field="location">{location}</span>'
+        f'<span data-field="salary_range">{salary_range}</span>'
+        f'<a data-field="detail_url" href="https://example.com/jobs/{platform_job_id}">link</a>'
+        f'<span data-field="jd_text">{jd_text}</span>'
+        '<span data-field="collected_at">2026-06-10T10:00:00+00:00</span>'
+        '</article>'
+        '</div>'
+    )
+
+
 def build_registry() -> NodeRegistry:
     return NodeRegistry(
         [

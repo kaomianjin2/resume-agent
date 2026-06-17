@@ -2,6 +2,15 @@
 
 ## 2026-06-17
 
+### JOB-018 批量投递执行
+
+- 功能名称：批量投递执行器
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`
+- 测试结果：`174 passed`；全量 `384 passed`
+- reviewer 结论：`可继续`，无阻断问题。
+- 影响范围：`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 变更摘要：新增 `GuiRuntime.execute_batch_submission()` 和 `get_batch_submit_results()`；新增 `JOB_BATCH_SUBMIT_RESULTS_KEY` session state；批量投递执行器整合 JOB-014 重校验与多平台投递适配器，支持跨平台（BOSS/拉勾/猎聘）按确认批次逐个执行投递；测试覆盖不存在的批次拦截、未确认批次拦截、跨平台成功投递、混合结果（成功/失败/重复/风控并存）、部分失败不回滚成功项、重校验跳过陈旧岗位、session state 存储和空结果查询。不执行真实浏览器访问或数据库 schema 变更。
+
 ### JOB-017 猎聘确认后投递适配器
 
 - 功能名称：猎聘确认后投递适配器
