@@ -726,7 +726,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_stora
 
 ### JOB-019 安全与隐私验收
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：对求职投递全流程做安全与隐私验收，确认账号凭据、cookie、token 不入库、不进日志、不进 LLM。
 - 影响范围：日志、session state、prompt 构造、错误展示、平台适配器输出。
 - 输入：岗位采集、评估、投递全流程数据。
@@ -750,6 +750,20 @@ rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_inter
 - 观测证据：记录扫描命令、扫描结果摘要和测试输出摘要。
 - 副作用：无业务副作用。
 - 影响调用方：全部求职投递流程。
+
+#### JOB-019 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-17
+- 完成时间：2026-06-17
+- 修改文件：`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 验证命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py -k "security or sensitive or sanitize or privacy"`；`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_interview_nodes.py tests/test_storage.py`；`rtk uv run pytest -p no:cacheprovider`
+- 验证结果：JOB-019 定向 17 passed；联合测试 203 passed；全量 395 passed
+- 观测证据：`gui_runtime.py` 四个投递方法异常捕获处添加 `contains_sensitive_payload()` 防御性检查；新增 11 个安全验收测试覆盖异常脱敏（批量 + 三平台）、安全异常保留原文、view_model 清洁性、人工接管无敏感内容、session store 拒绝敏感写入、清求职数据不影响 sessions、评估 prompt 无敏感字段、单平台投递清洁
+- 副作用：无业务副作用，仅影响异常消息的脱敏路径
+- 影响调用方：全部投递流程的异常展示增加敏感信息脱敏层
+- 后续风险：`evaluate_jobs` 异常路径可后续统一脱敏；`platform_message` 字段可考虑应用层预过滤以实现优雅降级
 
 ## 主 agent 合并后检查项
 

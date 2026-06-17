@@ -2,6 +2,15 @@
 
 ## 2026-06-17
 
+### JOB-019 安全与隐私验收
+
+- 功能名称：投递流程敏感信息防御性扫描与审计测试
+- 测试命令：`rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_interview_nodes.py tests/test_storage.py`
+- 测试结果：`203 passed`；全量 `395 passed`
+- reviewer 结论：`可继续`，无阻断问题。
+- 影响范围：`src/interview_agent/gui_runtime.py`、`tests/test_gui_runtime.py`
+- 变更摘要：在 `gui_runtime.py` 四个投递方法（`submit_boss_applications`、`submit_lagou_applications`、`submit_liepin_applications`、`execute_batch_submission`）的异常捕获处添加 `contains_sensitive_payload()` 防御性检查，敏感异常消息替换为脱敏文案；新增 11 个安全验收测试覆盖批量投递异常脱敏、安全异常保留、view_model 清洁性、三平台单投递异常脱敏、人工接管状态无敏感内容、session store 拒绝敏感写入、清求职数据不影响 sessions、评估 prompt 无敏感字段、单平台投递清洁。不修改敏感扫描引擎或存储层，不影响现有投递逻辑。
+
 ### JOB-018 批量投递执行
 
 - 功能名称：批量投递执行器

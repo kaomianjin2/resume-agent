@@ -269,7 +269,7 @@
 
 ## Feature Track: 求职投递功能
 
-**Status:** `[ ]`  
+**Status:** `[x]`  
 **Owner:** main agent / implementer / reviewer  
 **Dependencies:** 已有简历解析、JD 解析、匹配评估、GUI runtime
 
@@ -296,6 +296,7 @@
    - [x] JOB-016 拉勾确认后投递适配器 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`：152 passed；全量 362 passed
    - [x] JOB-017 猎聘确认后投递适配器 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`：166 passed；全量 376 passed
    - [x] JOB-018 批量投递执行 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_storage.py`：174 passed；全量 384 passed
+   - [x] JOB-019 安全与隐私验收 → verify: `rtk uv run pytest -p no:cacheprovider tests/test_gui_runtime.py tests/test_interview_nodes.py tests/test_storage.py`：203 passed；全量 395 passed；reviewer `可继续`
 2. [操作] 每个任务合并后由主 agent 更新本 TODO 状态与专项任务文档状态 → verify: `rtk git diff -- docs/TODO.md docs/job-application-development-tasks.md`
 3. [操作] 功能完成后由主 agent 更新 `HISTORY.md` → verify: HISTORY 记录包含任务编号、功能名称、测试命令、reviewer 结论和影响范围
 4. [操作] 涉及架构变更后由主 agent 更新 `docs/architecture.md` 与 `docs/architecture.svg` → verify: `rtk xmllint --noout docs/architecture.svg`
