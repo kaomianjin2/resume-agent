@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from enum import Enum
 from html.parser import HTMLParser
 from typing import Literal, Protocol
@@ -219,260 +220,114 @@ class FakeJobPlatformAdapter:
         )
 
 
-class BossReadonlyJobPlatformAdapter:
+class _BaseReadonlyAdapter:
+    """只读平台适配器公共基类，封装列表/详情解析、已投递识别和敏感检查。"""
+    platform: str = ""
+    _readonly_message: str = "只读适配器不执行投递"
+
+    def __init__(
+        self,
+        *,
+        list_html: str,
+        detail_html_by_job_id: dict[str, str],
+        state_html_by_job_id: dict[str, str] | None = None,
+    ) -> None:
+        self._list_html = list_html
+        self._detail_html_by_job_id = dict(detail_html_by_job_id)
+        self._state_html_by_job_id = dict(state_html_by_job_id or {})
+        self._last_search_id: str | None = None
+        self._list_jobs: list[StandardJob] = []
+
+    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
+        _assert_no_sensitive_payload(request)
+        self._last_search_id = f"{self.platform}-search-{uuid4()}"
+        error = classify_job_platform_fixture_error(platform=self.platform, stage="search", html=self._list_html)
+        if error is not None:
+            return PlatformExecutionResult(
+                platform=self.platform,
+                status="failed",
+                search_id=self._last_search_id,
+                errors=[_sanitize_adapter_error(error)],
+            )
+        self._list_jobs = [_mark_missing_fields_low_confidence(job) for job in parse_job_list_fixture(self._list_html)]
+        _assert_no_sensitive_payload(self._list_jobs)
+        return PlatformExecutionResult(
+            platform=self.platform,
+            status="success",
+            search_id=self._last_search_id,
+            jobs=list(self._list_jobs),
+        )
+
+    def collect_job_list(self, search_id: str) -> list[StandardJob]:
+        if not self._last_search_id or search_id != self._last_search_id:
+            raise ValueError("搜索任务不存在")
+        _assert_no_sensitive_payload(self._list_jobs)
+        return list(self._list_jobs)
+
+    def read_job_detail(self, platform_job_id: str) -> StandardJob:
+        html = self._detail_html_by_job_id.get(platform_job_id)
+        if html is None:
+            raise ValueError("岗位详情不存在")
+        error = classify_job_platform_fixture_error(platform=self.platform, stage="detail", html=html)
+        if error is not None:
+            raise _sanitize_adapter_error(error)
+        job = _mark_missing_fields_low_confidence(parse_job_detail_fixture(html))
+        _assert_no_sensitive_payload(job)
+        return job
+
+    def is_already_applied(self, platform_job_id: str) -> bool:
+        html = self._state_html_by_job_id.get(platform_job_id)
+        if html is None:
+            return False
+        error = classify_job_platform_fixture_error(platform=self.platform, stage="state", html=html)
+        if error is not None and error.error_type is not PlatformAdapterErrorType.DUPLICATE_APPLICATION:
+            raise _sanitize_adapter_error(error)
+        return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
+
+    def is_button_available(self, platform_job_id: str) -> bool:
+        return True
+
+    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
+        _assert_no_sensitive_payload(request)
+        result = ApplicationSubmissionResult(
+            platform=self.platform,
+            platform_job_id=request.job.platform_job_id,
+            status="skipped",
+            error=PlatformAdapterError(
+                error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
+                platform=self.platform,
+                stage="submit",
+                message=self._readonly_message,
+            ),
+        )
+        _assert_no_sensitive_payload(result)
+        return result
+
+
+class BossReadonlyJobPlatformAdapter(_BaseReadonlyAdapter):
     platform = "boss"
-
-    def __init__(
-        self,
-        *,
-        list_html: str,
-        detail_html_by_job_id: dict[str, str],
-        state_html_by_job_id: dict[str, str] | None = None,
-    ) -> None:
-        self._list_html = list_html
-        self._detail_html_by_job_id = dict(detail_html_by_job_id)
-        self._state_html_by_job_id = dict(state_html_by_job_id or {})
-        self._last_search_id: str | None = None
-        self._list_jobs: list[StandardJob] = []
-
-    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
-        _assert_no_sensitive_payload(request)
-        self._last_search_id = f"{self.platform}-search-{uuid4()}"
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="search", html=self._list_html)
-        if error is not None:
-            return PlatformExecutionResult(
-                platform=self.platform,
-                status="failed",
-                search_id=self._last_search_id,
-                errors=[_sanitize_adapter_error(error)],
-            )
-        self._list_jobs = [_mark_missing_fields_low_confidence(job) for job in parse_job_list_fixture(self._list_html)]
-        _assert_no_sensitive_payload(self._list_jobs)
-        return PlatformExecutionResult(
-            platform=self.platform,
-            status="success",
-            search_id=self._last_search_id,
-            jobs=list(self._list_jobs),
-        )
-
-    def collect_job_list(self, search_id: str) -> list[StandardJob]:
-        if not self._last_search_id or search_id != self._last_search_id:
-            raise ValueError("搜索任务不存在")
-        _assert_no_sensitive_payload(self._list_jobs)
-        return list(self._list_jobs)
-
-    def read_job_detail(self, platform_job_id: str) -> StandardJob:
-        html = self._detail_html_by_job_id.get(platform_job_id)
-        if html is None:
-            raise ValueError("岗位详情不存在")
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="detail", html=html)
-        if error is not None:
-            raise _sanitize_adapter_error(error)
-        job = _mark_missing_fields_low_confidence(parse_job_detail_fixture(html))
-        _assert_no_sensitive_payload(job)
-        return job
-
-    def is_already_applied(self, platform_job_id: str) -> bool:
-        html = self._state_html_by_job_id.get(platform_job_id)
-        if html is None:
-            return False
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="state", html=html)
-        if error is not None and error.error_type is not PlatformAdapterErrorType.DUPLICATE_APPLICATION:
-            raise _sanitize_adapter_error(error)
-        return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
-
-    def is_button_available(self, platform_job_id: str) -> bool:
-        return True
-
-    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
-        _assert_no_sensitive_payload(request)
-        result = ApplicationSubmissionResult(
-            platform=self.platform,
-            platform_job_id=request.job.platform_job_id,
-            status="skipped",
-            error=PlatformAdapterError(
-                error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
-                platform=self.platform,
-                stage="submit",
-                message="BOSS 只读适配器不执行投递",
-            ),
-        )
-        _assert_no_sensitive_payload(result)
-        return result
+    _readonly_message = "BOSS 只读适配器不执行投递"
 
 
-class LiepinReadonlyJobPlatformAdapter:
+class LiepinReadonlyJobPlatformAdapter(_BaseReadonlyAdapter):
     platform = "liepin"
-
-    def __init__(
-        self,
-        *,
-        list_html: str,
-        detail_html_by_job_id: dict[str, str],
-        state_html_by_job_id: dict[str, str] | None = None,
-    ) -> None:
-        self._list_html = list_html
-        self._detail_html_by_job_id = dict(detail_html_by_job_id)
-        self._state_html_by_job_id = dict(state_html_by_job_id or {})
-        self._last_search_id: str | None = None
-        self._list_jobs: list[StandardJob] = []
-
-    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
-        _assert_no_sensitive_payload(request)
-        self._last_search_id = f"{self.platform}-search-{uuid4()}"
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="search", html=self._list_html)
-        if error is not None:
-            return PlatformExecutionResult(
-                platform=self.platform,
-                status="failed",
-                search_id=self._last_search_id,
-                errors=[_sanitize_adapter_error(error)],
-            )
-        self._list_jobs = [_mark_missing_fields_low_confidence(job) for job in parse_job_list_fixture(self._list_html)]
-        _assert_no_sensitive_payload(self._list_jobs)
-        return PlatformExecutionResult(
-            platform=self.platform,
-            status="success",
-            search_id=self._last_search_id,
-            jobs=list(self._list_jobs),
-        )
-
-    def collect_job_list(self, search_id: str) -> list[StandardJob]:
-        if not self._last_search_id or search_id != self._last_search_id:
-            raise ValueError("搜索任务不存在")
-        _assert_no_sensitive_payload(self._list_jobs)
-        return list(self._list_jobs)
-
-    def read_job_detail(self, platform_job_id: str) -> StandardJob:
-        html = self._detail_html_by_job_id.get(platform_job_id)
-        if html is None:
-            raise ValueError("岗位详情不存在")
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="detail", html=html)
-        if error is not None:
-            raise _sanitize_adapter_error(error)
-        job = _mark_missing_fields_low_confidence(parse_job_detail_fixture(html))
-        _assert_no_sensitive_payload(job)
-        return job
-
-    def is_already_applied(self, platform_job_id: str) -> bool:
-        html = self._state_html_by_job_id.get(platform_job_id)
-        if html is None:
-            return False
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="state", html=html)
-        if error is not None and error.error_type is not PlatformAdapterErrorType.DUPLICATE_APPLICATION:
-            raise _sanitize_adapter_error(error)
-        return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
-
-    def is_button_available(self, platform_job_id: str) -> bool:
-        return True
-
-    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
-        _assert_no_sensitive_payload(request)
-        result = ApplicationSubmissionResult(
-            platform=self.platform,
-            platform_job_id=request.job.platform_job_id,
-            status="skipped",
-            error=PlatformAdapterError(
-                error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
-                platform=self.platform,
-                stage="submit",
-                message="猎聘只读适配器不执行投递",
-            ),
-        )
-        _assert_no_sensitive_payload(result)
-        return result
+    _readonly_message = "猎聘只读适配器不执行投递"
 
 
-class LagouReadonlyJobPlatformAdapter:
+class LagouReadonlyJobPlatformAdapter(_BaseReadonlyAdapter):
     platform = "lagou"
-
-    def __init__(
-        self,
-        *,
-        list_html: str,
-        detail_html_by_job_id: dict[str, str],
-        state_html_by_job_id: dict[str, str] | None = None,
-    ) -> None:
-        self._list_html = list_html
-        self._detail_html_by_job_id = dict(detail_html_by_job_id)
-        self._state_html_by_job_id = dict(state_html_by_job_id or {})
-        self._last_search_id: str | None = None
-        self._list_jobs: list[StandardJob] = []
-
-    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
-        _assert_no_sensitive_payload(request)
-        self._last_search_id = f"{self.platform}-search-{uuid4()}"
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="search", html=self._list_html)
-        if error is not None:
-            return PlatformExecutionResult(
-                platform=self.platform,
-                status="failed",
-                search_id=self._last_search_id,
-                errors=[_sanitize_adapter_error(error)],
-            )
-        self._list_jobs = [_mark_missing_fields_low_confidence(job) for job in parse_job_list_fixture(self._list_html)]
-        _assert_no_sensitive_payload(self._list_jobs)
-        return PlatformExecutionResult(
-            platform=self.platform,
-            status="success",
-            search_id=self._last_search_id,
-            jobs=list(self._list_jobs),
-        )
-
-    def collect_job_list(self, search_id: str) -> list[StandardJob]:
-        if not self._last_search_id or search_id != self._last_search_id:
-            raise ValueError("搜索任务不存在")
-        _assert_no_sensitive_payload(self._list_jobs)
-        return list(self._list_jobs)
-
-    def read_job_detail(self, platform_job_id: str) -> StandardJob:
-        html = self._detail_html_by_job_id.get(platform_job_id)
-        if html is None:
-            raise ValueError("岗位详情不存在")
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="detail", html=html)
-        if error is not None:
-            raise _sanitize_adapter_error(error)
-        job = _mark_missing_fields_low_confidence(parse_job_detail_fixture(html))
-        _assert_no_sensitive_payload(job)
-        return job
-
-    def is_already_applied(self, platform_job_id: str) -> bool:
-        html = self._state_html_by_job_id.get(platform_job_id)
-        if html is None:
-            return False
-        error = classify_job_platform_fixture_error(platform=self.platform, stage="state", html=html)
-        if error is not None and error.error_type is not PlatformAdapterErrorType.DUPLICATE_APPLICATION:
-            raise _sanitize_adapter_error(error)
-        return error is not None and error.error_type is PlatformAdapterErrorType.DUPLICATE_APPLICATION
-
-    def is_button_available(self, platform_job_id: str) -> bool:
-        return True
-
-    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
-        _assert_no_sensitive_payload(request)
-        result = ApplicationSubmissionResult(
-            platform=self.platform,
-            platform_job_id=request.job.platform_job_id,
-            status="skipped",
-            error=PlatformAdapterError(
-                error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
-                platform=self.platform,
-                stage="submit",
-                message="拉勾只读适配器不执行投递",
-            ),
-        )
-        _assert_no_sensitive_payload(result)
-        return result
+    _readonly_message = "拉勾只读适配器不执行投递"
 
 
-class LagouSubmitJobPlatformAdapter:
-    """拉勾确认后投递适配器。
+class _BaseSubmitAdapter:
+    """确认后投递适配器公共基类。
 
     在只读适配器基础上增加投递能力，通过 submit_html_by_job_id 夹具
     控制投递结果：成功、失败、重复、验证码、风控、强制弹窗。
     未提供 submit 夹具的岗位默认投递成功。
     """
-    platform = "lagou"
+    platform: str = ""
+    _readonly_cls: type[_BaseReadonlyAdapter] = _BaseReadonlyAdapter
 
     def __init__(
         self,
@@ -482,7 +337,7 @@ class LagouSubmitJobPlatformAdapter:
         state_html_by_job_id: dict[str, str] | None = None,
         submit_html_by_job_id: dict[str, str] | None = None,
     ) -> None:
-        self._readonly = LagouReadonlyJobPlatformAdapter(
+        self._readonly = self._readonly_cls(
             list_html=list_html,
             detail_html_by_job_id=detail_html_by_job_id,
             state_html_by_job_id=state_html_by_job_id,
@@ -568,7 +423,6 @@ class LagouSubmitJobPlatformAdapter:
             return result
 
         # Successful submission
-        from datetime import UTC, datetime
         result = ApplicationSubmissionResult(
             platform=self.platform,
             platform_job_id=platform_job_id,
@@ -579,232 +433,22 @@ class LagouSubmitJobPlatformAdapter:
         return result
 
 
-class BossSubmitJobPlatformAdapter:
-    """BOSS 直聘确认后投递适配器。
+class LagouSubmitJobPlatformAdapter(_BaseSubmitAdapter):
+    """拉勾确认后投递适配器。"""
+    platform = "lagou"
+    _readonly_cls = LagouReadonlyJobPlatformAdapter
 
-    在只读适配器基础上增加投递能力，通过 submit_html_by_job_id 夹具
-    控制投递结果：成功、失败、重复、验证码、风控、强制弹窗。
-    未提供 submit 夹具的岗位默认投递成功。
-    """
+
+class BossSubmitJobPlatformAdapter(_BaseSubmitAdapter):
+    """BOSS 直聘确认后投递适配器。"""
     platform = "boss"
-
-    def __init__(
-        self,
-        *,
-        list_html: str,
-        detail_html_by_job_id: dict[str, str],
-        state_html_by_job_id: dict[str, str] | None = None,
-        submit_html_by_job_id: dict[str, str] | None = None,
-    ) -> None:
-        self._readonly = BossReadonlyJobPlatformAdapter(
-            list_html=list_html,
-            detail_html_by_job_id=detail_html_by_job_id,
-            state_html_by_job_id=state_html_by_job_id,
-        )
-        self._submit_html_by_job_id = dict(submit_html_by_job_id or {})
-
-    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
-        return self._readonly.search_jobs(request)
-
-    def collect_job_list(self, search_id: str) -> list[StandardJob]:
-        return self._readonly.collect_job_list(search_id)
-
-    def read_job_detail(self, platform_job_id: str) -> StandardJob:
-        return self._readonly.read_job_detail(platform_job_id)
-
-    def is_already_applied(self, platform_job_id: str) -> bool:
-        return self._readonly.is_already_applied(platform_job_id)
-
-    def is_button_available(self, platform_job_id: str) -> bool:
-        return self._readonly.is_button_available(platform_job_id)
-
-    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
-        _assert_no_sensitive_payload(request)
-        if not request.confirmed:
-            return ApplicationSubmissionResult(
-                platform=self.platform,
-                platform_job_id=request.job.platform_job_id,
-                status="skipped",
-                error=PlatformAdapterError(
-                    error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
-                    platform=self.platform,
-                    stage="submit",
-                    message="投递前缺少用户确认",
-                ),
-            )
-
-        platform_job_id = request.job.platform_job_id
-
-        # Check submit-specific fixture for error states
-        submit_html = self._submit_html_by_job_id.get(platform_job_id)
-        if submit_html is not None:
-            error = classify_job_platform_fixture_error(
-                platform=self.platform, stage="submit", html=submit_html,
-            )
-            if error is not None:
-                safe_error = _sanitize_adapter_error(error)
-                if safe_error.error_type == PlatformAdapterErrorType.DUPLICATE_APPLICATION:
-                    status: ApplicationSubmissionStatus = "duplicate"
-                elif safe_error.error_type in (
-                    PlatformAdapterErrorType.CAPTCHA_REQUIRED,
-                    PlatformAdapterErrorType.ACCOUNT_RISK_CONTROL,
-                    PlatformAdapterErrorType.FORCED_POPUP,
-                ):
-                    status = "failed"
-                else:
-                    status = "failed"
-                result = ApplicationSubmissionResult(
-                    platform=self.platform,
-                    platform_job_id=platform_job_id,
-                    status=status,
-                    error=safe_error,
-                    platform_message=safe_error.message,
-                    duplicate_detected=(safe_error.error_type == PlatformAdapterErrorType.DUPLICATE_APPLICATION),
-                )
-                _assert_no_sensitive_payload(result)
-                return result
-
-        # Check state HTML for already-applied
-        if self._readonly.is_already_applied(platform_job_id):
-            result = ApplicationSubmissionResult(
-                platform=self.platform,
-                platform_job_id=platform_job_id,
-                status="duplicate",
-                error=PlatformAdapterError(
-                    error_type=PlatformAdapterErrorType.DUPLICATE_APPLICATION,
-                    platform=self.platform,
-                    stage="submit",
-                    message="重复投递",
-                ),
-                duplicate_detected=True,
-            )
-            _assert_no_sensitive_payload(result)
-            return result
-
-        # Successful submission
-        from datetime import UTC, datetime
-        result = ApplicationSubmissionResult(
-            platform=self.platform,
-            platform_job_id=platform_job_id,
-            status="submitted",
-            submitted_at=datetime.now(UTC).isoformat(),
-        )
-        _assert_no_sensitive_payload(result)
-        return result
+    _readonly_cls = BossReadonlyJobPlatformAdapter
 
 
-class LiepinSubmitJobPlatformAdapter:
-    """猎聘确认后投递适配器。
-
-    在只读适配器基础上增加投递能力，通过 submit_html_by_job_id 夹具
-    控制投递结果：成功、失败、重复、验证码、风控、强制弹窗。
-    未提供 submit 夹具的岗位默认投递成功。
-    """
+class LiepinSubmitJobPlatformAdapter(_BaseSubmitAdapter):
+    """猎聘确认后投递适配器。"""
     platform = "liepin"
-
-    def __init__(
-        self,
-        *,
-        list_html: str,
-        detail_html_by_job_id: dict[str, str],
-        state_html_by_job_id: dict[str, str] | None = None,
-        submit_html_by_job_id: dict[str, str] | None = None,
-    ) -> None:
-        self._readonly = LiepinReadonlyJobPlatformAdapter(
-            list_html=list_html,
-            detail_html_by_job_id=detail_html_by_job_id,
-            state_html_by_job_id=state_html_by_job_id,
-        )
-        self._submit_html_by_job_id = dict(submit_html_by_job_id or {})
-
-    def search_jobs(self, request: JobSearchRequest) -> PlatformExecutionResult:
-        return self._readonly.search_jobs(request)
-
-    def collect_job_list(self, search_id: str) -> list[StandardJob]:
-        return self._readonly.collect_job_list(search_id)
-
-    def read_job_detail(self, platform_job_id: str) -> StandardJob:
-        return self._readonly.read_job_detail(platform_job_id)
-
-    def is_already_applied(self, platform_job_id: str) -> bool:
-        return self._readonly.is_already_applied(platform_job_id)
-
-    def is_button_available(self, platform_job_id: str) -> bool:
-        return self._readonly.is_button_available(platform_job_id)
-
-    def submit_application(self, request: ConfirmationApplicationRequest) -> ApplicationSubmissionResult:
-        _assert_no_sensitive_payload(request)
-        if not request.confirmed:
-            return ApplicationSubmissionResult(
-                platform=self.platform,
-                platform_job_id=request.job.platform_job_id,
-                status="skipped",
-                error=PlatformAdapterError(
-                    error_type=PlatformAdapterErrorType.BUTTON_UNAVAILABLE,
-                    platform=self.platform,
-                    stage="submit",
-                    message="投递前缺少用户确认",
-                ),
-            )
-
-        platform_job_id = request.job.platform_job_id
-
-        # Check submit-specific fixture for error states
-        submit_html = self._submit_html_by_job_id.get(platform_job_id)
-        if submit_html is not None:
-            error = classify_job_platform_fixture_error(
-                platform=self.platform, stage="submit", html=submit_html,
-            )
-            if error is not None:
-                safe_error = _sanitize_adapter_error(error)
-                if safe_error.error_type == PlatformAdapterErrorType.DUPLICATE_APPLICATION:
-                    status: ApplicationSubmissionStatus = "duplicate"
-                elif safe_error.error_type in (
-                    PlatformAdapterErrorType.CAPTCHA_REQUIRED,
-                    PlatformAdapterErrorType.ACCOUNT_RISK_CONTROL,
-                    PlatformAdapterErrorType.FORCED_POPUP,
-                ):
-                    status = "failed"
-                else:
-                    status = "failed"
-                result = ApplicationSubmissionResult(
-                    platform=self.platform,
-                    platform_job_id=platform_job_id,
-                    status=status,
-                    error=safe_error,
-                    platform_message=safe_error.message,
-                    duplicate_detected=(safe_error.error_type == PlatformAdapterErrorType.DUPLICATE_APPLICATION),
-                )
-                _assert_no_sensitive_payload(result)
-                return result
-
-        # Check state HTML for already-applied
-        if self._readonly.is_already_applied(platform_job_id):
-            result = ApplicationSubmissionResult(
-                platform=self.platform,
-                platform_job_id=platform_job_id,
-                status="duplicate",
-                error=PlatformAdapterError(
-                    error_type=PlatformAdapterErrorType.DUPLICATE_APPLICATION,
-                    platform=self.platform,
-                    stage="submit",
-                    message="重复投递",
-                ),
-                duplicate_detected=True,
-            )
-            _assert_no_sensitive_payload(result)
-            return result
-
-        # Successful submission
-        from datetime import UTC, datetime
-        result = ApplicationSubmissionResult(
-            platform=self.platform,
-            platform_job_id=platform_job_id,
-            status="submitted",
-            submitted_at=datetime.now(UTC).isoformat(),
-        )
-        _assert_no_sensitive_payload(result)
-        return result
+    _readonly_cls = LiepinReadonlyJobPlatformAdapter
 
 
 def _assert_no_sensitive_payload(value: object) -> None:

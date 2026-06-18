@@ -16,6 +16,7 @@ SENSITIVE_ASSIGNMENT_PATTERN = re.compile(
 BROWSER_SESSION_ASSIGNMENT_PATTERN = re.compile(r"(?i)\bsession_id\s*[=:]\s*(chrome|browser|sid|sess|secret)\S*")
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 PHONE_PATTERN = re.compile(r"(?<!\d)(?:1\d{10}|\d{3,4}-?\d{7,8})(?!\d)")
+_UUID_PATTERN = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
 def assert_no_sensitive_payload(value: object, *, error_message: str) -> None:
@@ -29,7 +30,7 @@ def assert_no_sensitive_payload(value: object, *, error_message: str) -> None:
         raise ValueError(error_message)
     if BROWSER_SESSION_ASSIGNMENT_PATTERN.search(flattened_payload):
         raise ValueError(error_message)
-    if EMAIL_PATTERN.search(flattened_payload) or PHONE_PATTERN.search(flattened_payload):
+    if EMAIL_PATTERN.search(flattened_payload) or _phone_match_in_non_uuid(flattened_payload):
         raise ValueError(error_message)
 
 
@@ -84,3 +85,13 @@ def summarize_url(value: str | None) -> str | None:
     if parsed_url.scheme and parsed_url.netloc:
         return urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path.rstrip("/") or "/", "", ""))
     return normalized_value.split("?", 1)[0].split("#", 1)[0].rstrip("/") or normalized_value
+
+
+def _phone_match_in_non_uuid(payload: str) -> bool:
+    """Check PHONE_PATTERN but skip matches that fall inside UUID strings."""
+    uuid_ranges = [(m.start(), m.end()) for m in _UUID_PATTERN.finditer(payload)]
+    for match in PHONE_PATTERN.finditer(payload):
+        inside_uuid = any(start <= match.start() and match.end() <= end for start, end in uuid_ranges)
+        if not inside_uuid:
+            return True
+    return False
