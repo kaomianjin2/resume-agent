@@ -14,24 +14,20 @@
 
 ```mermaid
 flowchart TD
-    User[用户] --> CLI[Interactive CLI<br/>src/interview_agent/cli.py]
-    User --> DesktopShell[Tauri Desktop Shell<br/>gui/src-tauri/src/main.rs]
+    User[用户] --> DesktopShell[Tauri Desktop Shell<br/>gui/src-tauri/src/main.rs]
     DesktopShell --> ReactShell[React Web Shell<br/>gui/src/app/App.tsx]
     ReactShell --> GUIRuntime[GUI Runtime Facade<br/>src/interview_agent/gui_runtime.py]
     DesktopShell --> PythonProcess[Python Runtime Process<br/>uv run interview-agent --config config/interview-agent.toml]
-    PythonProcess --> CLI
 
-    CLI --> Config[配置加载<br/>config/interview-agent.toml<br/>src/interview_agent/config.py]
-    GUIRuntime --> Config
+    GUIRuntime --> Config[配置加载<br/>config/interview-agent.toml<br/>src/interview_agent/config.py]
     DesktopShell --> Config
-    CLI --> KBReady[知识库 ready 检查<br/>get_knowledge_base_status]
+    GUIRuntime --> KBReady[知识库 ready 检查<br/>get_knowledge_base_status]
     GUIRuntime --> KBReady
     DesktopShell --> KBReady
     KBReady -->|not_ready| OfflineHint[输出离线构建命令并退出]
     KBReady -->|ready| Session[创建/读取会话<br/>SessionStore]
     GUIRuntime --> Session
 
-    CLI --> Orchestrator[普通请求编排<br/>src/interview_agent/orchestrator.py<br/>run_user_request]
     GUIRuntime --> Router
     GUIRuntime --> Planner
     GUIRuntime --> Executor
@@ -56,9 +52,7 @@ flowchart TD
     GUIRuntime --> MockVM[GUI 模拟面试闭环<br/>start_mock_interview / submit_mock_answer / end_mock_interview<br/>question_generate -> mock_followup -> answer_score]
     MockVM --> Executor
     MockVM --> State
-    CLI --> MockFlow[模拟面试流程<br/>src/interview_agent/mock_interview.py]
-    CLI --> Rendering[结果展示层<br/>src/interview_agent/rendering.py]
-    Orchestrator --> Router[Conversation Router<br/>src/interview_agent/router.py]
+    Router[Conversation Router<br/>src/interview_agent/router.py]
     Router --> RuleRoute[规则路由]
     Router --> LLMRoute[LLM 分类兜底]
     Router --> DefaultRoute[默认 knowledge_search]
@@ -94,9 +88,6 @@ flowchart TD
 
     Executor --> Runs[(node_runs<br/>成功/失败/缺输入记录)]
     Executor --> State[(session_state<br/>节点输出共享状态)]
-    Orchestrator --> Rendering
-    MockFlow --> Rendering
-    Rendering --> User
 ```
 
 ## 运行时调用链
@@ -104,10 +95,8 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     participant U as 用户
-    participant CLI as CLI
-    participant G as Rendering
-    participant M as Mock Interview
-    participant O as Orchestrator
+    participant DS as Tauri Desktop Shell
+    participant GR as GUI Runtime Facade
     participant C as Config
     participant S as SQLite Session
     participant R as Router
@@ -118,29 +107,28 @@ sequenceDiagram
     participant K as Retriever
     participant L as LLM
 
-    U->>CLI: 输入自然语言或 /node
-    CLI->>C: load_config(config/interview-agent.toml)
-    CLI->>S: get_knowledge_base_status()
+    U->>DS: 点击 GUI 操作
+    DS->>GR: 调用 gui_runtime 方法
+    GR->>C: load_config(config/interview-agent.toml)
+    GR->>S: get_knowledge_base_status()
     alt knowledge_base.status != ready
-        CLI-->>U: 输出离线构建命令并退出
+        GR-->>DS: 返回错误，提示离线构建
     else ready
-        CLI->>S: create_session()
-        alt 模拟面试请求
-            CLI->>M: run_mock_interview()
-            M->>E: execute_node(question_generate / mock_followup)
+        GR->>S: create_or_open_session()
+        alt 面试准备
+            GR->>E: prepare_interview_materials()
+            E->>S: 写入 resume_parse / jd_parse / jd_match
+            GR-->>DS: 返回 PrepViewModel
+        else 模拟面试
+            GR->>E: start_mock_interview() / submit_mock_answer() / end_mock_interview()
             E->>S: 写入 node_runs / session_state
-            CLI-->>U: 逐题提问、追问、输出参考答案
+            GR-->>DS: 返回 MockViewModel
         else 普通请求
-            CLI->>O: run_user_request()
-            O->>R: route_conversation()
-            R-->>O: selected_node / candidate_nodes / needs_user_choice
-            opt needs_user_choice == true
-                O-->>U: 询问处理方向
-                U-->>O: 选择方向
-            end
-            O->>P: build_execution_plan()
+            GR->>R: route_conversation()
+            R-->>GR: selected_node / candidate_nodes / needs_user_choice
+            GR->>P: build_execution_plan()
             P->>S: 读取 state contract 判断缺失输入
-            O->>E: execute_node(session_id, node_name)
+            GR->>E: execute_node(session_id, node_name)
             E->>S: 合并 session_state 与本次输入
             E->>N: 调用节点 handler
             N->>A: run_structured_node()
@@ -153,8 +141,7 @@ sequenceDiagram
             N-->>E: 节点输出
             E->>S: 写入 node_runs
             E->>S: 校验后写入 session_state
-            O->>G: write_result() / write_line()
-            G-->>U: 输出执行结果
+            GR-->>DS: 返回结构化结果
         end
     end
 ```
@@ -315,9 +302,7 @@ erDiagram
 
 ## 架构约束
 
-- 入口是交互式 CLI，不是固定流水线。
-- CLI 的普通请求路径委派给 `run_user_request()`；模拟面试专属流程委派给 `mock_interview.py`，并复用 CLI 提供的补输入、结果展示和取消异常回调。
-- 用户可见结果展示集中在 `rendering.py`；`cli.py` 仅保留 `_write_result()`、`_write_line()` 等兼容包装和回调装配。
+- 入口是 Tauri 桌面 GUI，通过 GUI Runtime Facade 调用 Python 后端。
 - GUI Runtime Facade 的面试准备入口通过 `prepare_interview_materials()` 串联 `resume_parse`、`jd_parse`、`jd_match`，返回简历摘要、岗位重点、匹配度、优势、风险和追问重点。
 - GUI Runtime Facade 的求职画像入口通过 `prepare_job_search_profile()` 从已有 `resume_profile` 生成求职画像、默认搜索词、硬过滤条件、排序偏好和待确认字段，并写入 SQLite `session_state` 的 `job_search_profile`、`job_search_filters`。
 - 求职采集编排器位于 `job_collection.py`，由 GUI Runtime Facade 的 `collect_job_applications()` 和 `retry_failed_job_collection_platform()` 调用；它按平台记录 `started`、`page_collected`、`detail_collected`、`completed`、`failed`、`retrying`、`manual_takeover`、`backoff` 状态，单个平台失败、风控暂停、退避、详情阶段平台错误或抛异常不清空其他平台结果，并把进度写入 SQLite `collection_platform_progress` 与 GUI `job_collection_progress` view model。
@@ -341,10 +326,8 @@ erDiagram
 - `session_state` 写入先做轻量结构校验，再走统一敏感信息扫描；`search_results = []` 是合法空检索结果。
 - 节点执行输入、输出和错误摘要统一记录到 `node_runs` 前先走敏感信息扫描；节点 handler 抛出敏感异常时只持久化固定脱敏失败文案。
 - 路由明确时直接执行内部步骤。
-- Router 通过 `needs_user_choice` 显式告诉 CLI 是否询问用户。
-- CLI 只展示能力方向，不展示 `candidate_nodes` 内部节点名。
 - Planner 只生成内部执行步骤，`requires_confirmation` 保留为兼容字段且固定为 `False`。
 - 知识库检索使用 SQLite FTS5 和本地 bge-m3 embedding 混合排序。
-- CLI 将 `config.knowledge_base.top_k` 装配为检索默认 limit；节点显式 `top_k` 输入优先。
+- `config.knowledge_base.top_k` 装配为检索默认 limit；节点显式 `top_k` 输入优先。
 - `knowledge_search` 的 `search_results` 以 retriever chunk 为来源基底，`chunk_id`、`source_path`、`score`、`content` 不由 LLM 覆盖。
-- 空检索结果仍只写入契约字段 `search_results = []`；用户可读提示留在 CLI 展示层，不进入 `session_state`。
+- 空检索结果仍只写入契约字段 `search_results = []`；用户可读提示留在 GUI 展示层，不进入 `session_state`。

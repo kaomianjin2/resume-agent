@@ -18,13 +18,13 @@
 
 ## 核心约束
 
-- CLI 是交互式入口，不是固定流水线。
-- 用户通过自然语言触发能力节点。
+- 桌面 GUI 是用户交互入口，通过 Tauri Desktop Shell 调用 Python 后端。
+- 用户通过 GUI 触发能力节点。
 - 处理方向不确定时询问用户选择；路由明确时直接执行。
 - 配置落在 `config/interview-agent.toml`。
 - 不使用环境变量读取配置。
 - 知识库在开发期提前构建。
-- `uv run interview-agent` 启动时不接入知识库。
+- `uv run interview-agent` 启动时作为桌面 GUI 运行时进程，不接入知识库。
 - 启动时只检查知识库 ready 状态。
 - 不修改 `/Users/cynicism/Desktop/面试` 原始资料。
 - 开发流程、worktree 约束和 subagent 边界见 `.codex/rules/` 与 `.codex/agents/`。
@@ -32,13 +32,11 @@
 ## 架构
 
 ```text
-Interactive CLI
+Tauri Desktop Shell (Rust)
   ↓
-Conversation Router
+GUI Runtime Facade (gui_runtime.py)
   ↓
-Node Planner
-  ↓
-Node Executor
+Router → Planner → Executor → Node Handlers
   ↓
 SQLite Session State + Knowledge Retriever + LLM Client
 ```
@@ -139,7 +137,7 @@ session_summary
 
 - 每个节点独立执行。
 - 节点之间只通过 SQLite session state 共享数据。
-- 缺少节点输入时，CLI 提示用户补齐。
+- 缺少节点输入时，GUI 引导用户补齐。
 - 单节点可直接执行。
 - 路由明确时直接执行内部步骤。
 - 处理方向不确定时询问用户选择，不展示内部节点名。

@@ -159,7 +159,7 @@ export type JobRuntimeClient = {
   getJobDetail: (jobId: string) => Promise<JobDetail>;
   getConfirmationBatch: (sessionId: string, selectedJobIds: string[]) => Promise<ConfirmationBatch>;
   getApplicationResults: (sessionId: string) => Promise<{ batchId: string; submittedAt: string; results: ApplicationResult[] }>;
-  submitBatch: (sessionId: string, confirmed: boolean) => Promise<void>;
+  submitBatch: (sessionId: string, confirmationBatchId: string) => Promise<void>;
   clearJobData: (sessionId: string) => Promise<void>;
 };
 
@@ -204,6 +204,18 @@ export const defaultCollectionProgress: CollectionProgress = {
   summary: { platformCount: 0, completedPlatformCount: 0, failedPlatformCount: 0, collectedJobCount: 0 },
   platforms: [],
   events: [],
+};
+
+export const defaultConfirmationBatch: ConfirmationBatch = {
+  batchId: "",
+  jobCount: 0,
+  platformCount: 0,
+  highRiskCount: 0,
+  duplicateCount: 0,
+  platforms: [],
+  risks: [],
+  resumeSummary: "",
+  validations: [],
 };
 
 export const fixtureJobSearchProfile: JobSearchProfile = {
@@ -466,6 +478,261 @@ export const fixtureApplicationResults: ApplicationResult[] = [
   { jobRef: "安全阻断样例", platform: "全平台", companyName: "prompt scan", status: "security_blocked", submittedAt: null, failureReason: "疑似 token 字段，未写入 node_runs", platformMessage: null, duplicateDetected: false },
 ];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function numberValue(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function stringListValue(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function tryParseJsonString(value: unknown): unknown {
+  if (typeof value !== "string" || !value.trim()) return value;
+  if (value[0] !== "[" && value[0] !== "{") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function nullOrString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function numberOrStringOrNull(value: unknown): string | number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value.trim() || null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return null;
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+const platformStatusMap: Record<string, CollectionPlatformStatus> = {
+  manual_takeover: "manual_handoff",
+  backoff: "rate_limited",
+};
+
+function normalizePlatformStatus(value: unknown): CollectionPlatformStatus {
+  const raw = typeof value === "string" ? value : "idle";
+  return platformStatusMap[raw] ?? (raw as CollectionPlatformStatus);
+}
+
+export function normalizeJobSearchProfile(raw: unknown): JobSearchProfile {
+  const record = recordValue(raw);
+  const jobProfile = recordValue(record.job_profile ?? record.jobProfile);
+  const searchPrefs = recordValue(jobProfile.search_preferences ?? jobProfile.searchPreferences);
+  const hardFiltersRaw = recordValue(record.hard_filters ?? record.hardFilters ?? searchPrefs);
+  const rankingRaw = recordValue(record.ranking_preferences ?? record.rankingPreferences ?? searchPrefs);
+
+  return {
+    sessionId: stringValue(record.session_id ?? record.sessionId, ""),
+    status: (stringValue(record.status, "missing_inputs") as JobSearchProfileStatus),
+    jobProfile: {
+      candidateName: stringValue(jobProfile.candidate_name ?? jobProfile.candidateName, "未命名候选人"),
+      targetRoles: stringListValue(jobProfile.target_roles ?? jobProfile.targetRoles),
+      headline: stringValue(jobProfile.headline, ""),
+      yearsOfExperience: numberOrStringOrNull(jobProfile.years_of_experience ?? jobProfile.yearsOfExperience),
+      educationLevel: nullOrString(jobProfile.education_level ?? jobProfile.educationLevel),
+      technicalSkills: stringListValue(jobProfile.technical_skills ?? jobProfile.technicalSkills),
+      projectKeywords: stringListValue(jobProfile.project_keywords ?? jobProfile.projectKeywords),
+    },
+    defaultSearchKeywords: stringListValue(record.default_search_keywords ?? record.defaultSearchKeywords),
+    hardFilters: {
+      cities: stringListValue(hardFiltersRaw.cities),
+      remotePolicy: nullOrString(hardFiltersRaw.remote_policy ?? hardFiltersRaw.remotePolicy),
+      salaryMin: numberOrStringOrNull(hardFiltersRaw.salary_min ?? hardFiltersRaw.salaryMin),
+      salaryMax: numberOrStringOrNull(hardFiltersRaw.salary_max ?? hardFiltersRaw.salaryMax),
+      levels: stringListValue(hardFiltersRaw.levels),
+      experienceYearsMin: numberOrStringOrNull(hardFiltersRaw.experience_years_min ?? hardFiltersRaw.experienceYearsMin),
+      experienceYearsMax: numberOrStringOrNull(hardFiltersRaw.experience_years_max ?? hardFiltersRaw.experienceYearsMax),
+      education: nullOrString(hardFiltersRaw.education),
+      companyBlacklist: stringListValue(hardFiltersRaw.company_blacklist ?? hardFiltersRaw.companyBlacklist),
+      companyWhitelist: stringListValue(hardFiltersRaw.company_whitelist ?? hardFiltersRaw.companyWhitelist),
+    },
+    rankingPreferences: {
+      industries: stringListValue(rankingRaw.industries),
+      companySizes: stringListValue(rankingRaw.company_sizes ?? rankingRaw.companySizes),
+      fundingStages: stringListValue(rankingRaw.funding_stages ?? rankingRaw.fundingStages),
+      technicalSkills: stringListValue(rankingRaw.technical_skills ?? rankingRaw.technicalSkills),
+      benefits: stringListValue(rankingRaw.benefits),
+      publishedWithinDays: numberOrNull(rankingRaw.published_within_days ?? rankingRaw.publishedWithinDays),
+    },
+    pendingConfirmationFields: stringListValue(record.pending_confirmation_fields ?? record.pendingConfirmationFields),
+  };
+}
+
+export function normalizeCollectionProgress(raw: unknown): CollectionProgress {
+  const record = recordValue(raw);
+  const summary = recordValue(record.summary);
+  const platformsRaw = record.platforms;
+  let platforms: CollectionPlatform[] = [];
+  if (isRecord(platformsRaw)) {
+    platforms = Object.entries(platformsRaw).map(([name, progress]) => {
+      const p = recordValue(progress);
+      return {
+        platform: name,
+        status: normalizePlatformStatus(p.status),
+        phase: stringValue(p.phase, ""),
+        collectedCount: numberValue(p.collected_count ?? p.collectedCount),
+        totalCount: numberValue(p.total_count ?? p.totalCount),
+        retryCount: numberValue(p.retry_count ?? p.retryCount),
+        failureReason: nullOrString(p.failure_reason ?? p.failureReason),
+      };
+    });
+  } else if (Array.isArray(platformsRaw)) {
+    platforms = platformsRaw.map((item) => {
+      const p = recordValue(item);
+      return {
+        platform: stringValue(p.platform, ""),
+        status: normalizePlatformStatus(p.status),
+        phase: stringValue(p.phase, ""),
+        collectedCount: numberValue(p.collected_count ?? p.collectedCount),
+        totalCount: numberValue(p.total_count ?? p.totalCount),
+        retryCount: numberValue(p.retry_count ?? p.retryCount),
+        failureReason: nullOrString(p.failure_reason ?? p.failureReason),
+      };
+    });
+  }
+  return {
+    status: stringValue(record.status, "idle") as CollectionProgress["status"],
+    summary: {
+      platformCount: numberValue(summary.platform_count ?? summary.platformCount),
+      completedPlatformCount: numberValue(summary.completed_platform_count ?? summary.completedPlatformCount),
+      failedPlatformCount: numberValue(summary.failed_platform_count ?? summary.failedPlatformCount),
+      collectedJobCount: numberValue(summary.collected_job_count ?? summary.collectedJobCount),
+    },
+    platforms,
+    events: Array.isArray(record.events) ? record.events.map((e) => {
+      const ev = recordValue(e);
+      return {
+        time: stringValue(ev.time, ""),
+        platform: stringValue(ev.platform, ""),
+        message: stringValue(ev.message, ""),
+        status: stringValue(ev.status, "running") as CollectionEvent["status"],
+      };
+    }) : [],
+  };
+}
+
+export function normalizeJobDetail(raw: unknown): JobDetail {
+  const r = recordValue(raw);
+  return {
+    jdSummary: stringValue(r.jd_summary ?? r.jdSummary, ""),
+    strengths: normalizeAdviceList(r.strengths),
+    risks: normalizeAdviceList(r.risks),
+    missingInformation: stringListValue(r.missing_information ?? r.missingInformation),
+    resumeAdvice: normalizeAdviceList(r.resume_advice ?? r.resumeAdvice),
+    applicationMessage: stringValue(r.application_message ?? r.applicationMessage, ""),
+  };
+}
+
+function normalizeAdviceList(value: unknown): { title: string; detail: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((item) => ({
+    title: stringValue(item.title, ""),
+    detail: stringValue(item.detail, ""),
+  }));
+}
+
+export function normalizeConfirmationBatch(raw: unknown): ConfirmationBatch {
+  const r = recordValue(raw);
+  return {
+    batchId: stringValue(r.batch_id ?? r.batchId ?? r.confirmation_batch_id ?? r.confirmationBatchId, ""),
+    jobCount: numberValue(r.job_count ?? r.jobCount ?? r.total_count ?? r.totalCount),
+    platformCount: numberValue(r.platform_count ?? r.platformCount),
+    highRiskCount: numberValue(r.high_risk_count ?? r.highRiskCount),
+    duplicateCount: numberValue(r.duplicate_count ?? r.duplicateCount),
+    platforms: Array.isArray(r.platforms) ? r.platforms.filter(isRecord).map((p) => ({
+      name: stringValue(p.name ?? p.platform, ""),
+      count: numberValue(p.count),
+    })) : [],
+    risks: normalizeAdviceList(r.risks),
+    resumeSummary: stringValue(r.resume_summary ?? r.resumeSummary, ""),
+    validations: Array.isArray(r.validations) ? r.validations.filter(isRecord).map((v) => ({
+      jobRef: stringValue(v.job_ref ?? v.jobRef, ""),
+      status: stringValue(v.status, "ready") as ConfirmationValidation["status"],
+      reason: stringValue(v.reason, ""),
+      willSubmit: Boolean(v.will_submit ?? v.willSubmit),
+    })) : [],
+  };
+}
+
+export function normalizeApplicationResults(raw: unknown): { batchId: string; submittedAt: string; results: ApplicationResult[] } {
+  const r = recordValue(raw);
+  const results = Array.isArray(r.results ?? r.application_results) ? (r.results ?? r.application_results) as unknown[] : [];
+  return {
+    batchId: stringValue(r.batch_id ?? r.batchId, ""),
+    submittedAt: stringValue(r.submitted_at ?? r.submittedAt, ""),
+    results: results.filter(isRecord).map((item) => ({
+      jobRef: stringValue(item.job_ref ?? item.jobRef, ""),
+      platform: stringValue(item.platform, ""),
+      companyName: stringValue(item.company_name ?? item.companyName, ""),
+      status: stringValue(item.status, "failed") as ApplicationResultStatus,
+      submittedAt: nullOrString(item.submitted_at ?? item.submittedAt),
+      failureReason: nullOrString(item.failure_reason ?? item.failureReason),
+      platformMessage: nullOrString(item.platform_message ?? item.platformMessage),
+      duplicateDetected: Boolean(item.duplicate_detected ?? item.duplicateDetected),
+    })),
+  };
+}
+
+export function normalizeJobList(raw: unknown): JobListItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isRecord).map((item) => {
+    const techStack = tryParseJsonString(item.tech_stack ?? item.techStack);
+    const benefits = tryParseJsonString(item.benefits);
+    const fieldConfidence = tryParseJsonString(item.field_confidence ?? item.fieldConfidence);
+    const status = stringValue(item.status ?? item.application_status ?? item.applicationStatus, "pending_review");
+    return {
+      id: stringValue(item.id ?? item.job_id ?? item.jobId, ""),
+      platform: stringValue(item.platform, ""),
+      platformJobId: stringValue(item.platform_job_id ?? item.platformJobId, ""),
+      title: stringValue(item.title, ""),
+      companyName: stringValue(item.company_name ?? item.companyName, ""),
+      location: stringValue(item.location, ""),
+      remotePolicy: nullOrString(item.remote_policy ?? item.remotePolicy),
+      salaryRange: stringValue(item.salary_range ?? item.salaryRange, ""),
+      level: nullOrString(item.level),
+      experienceRequirement: nullOrString(item.experience_requirement ?? item.experienceRequirement),
+      educationRequirement: nullOrString(item.education_requirement ?? item.educationRequirement),
+      industry: nullOrString(item.industry),
+      companySize: nullOrString(item.company_size ?? item.companySize),
+      fundingStage: nullOrString(item.funding_stage ?? item.fundingStage),
+      techStack: stringListValue(techStack),
+      benefits: stringListValue(benefits),
+      publishedAt: nullOrString(item.published_at ?? item.publishedAt),
+      detailUrl: nullOrString(item.detail_url ?? item.detailUrl),
+      jdText: stringValue(item.jd_text ?? item.jdText, ""),
+      collectedAt: stringValue(item.collected_at ?? item.collectedAt, ""),
+      fieldConfidence: (isRecord(fieldConfidence) ? fieldConfidence : {}) as Record<string, "high" | "low" | "missing">,
+      score: numberValue(item.score ?? item.rank_score ?? item.rankScore),
+      hardFilterStatus: stringValue(item.hard_filter_status ?? item.hardFilterStatus, "pass") as JobListItem["hardFilterStatus"],
+      evaluationStatus: stringValue(item.evaluation_status ?? item.evaluationStatus, "pending") as JobListItem["evaluationStatus"],
+      applicationStatus: status as JobListItem["applicationStatus"],
+      riskLevel: stringValue(item.risk_level ?? item.riskLevel, "medium") as JobListItem["riskLevel"],
+      excludeReason: nullOrString(item.exclude_reason ?? item.excludeReason),
+    };
+  });
+}
+
 export function createFallbackJobClient(): JobRuntimeClient {
   let selectedJobIds: string[] = [];
   return {
@@ -491,7 +758,7 @@ export function createFallbackJobClient(): JobRuntimeClient {
     async getApplicationResults() {
       return { batchId: "JA-240610-01", submittedAt: "2026-06-10 14:40", results: fixtureApplicationResults };
     },
-    async submitBatch(_sessionId, _confirmed) {
+    async submitBatch(_sessionId, _confirmationBatchId) {
       void selectedJobIds;
     },
     async clearJobData(_sessionId) {},

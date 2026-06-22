@@ -502,7 +502,7 @@ rtk uv run pytest -p no:cacheprovider tests/test_interview_nodes.py tests/test_g
 
 ### JOB-013 GUI 求职模块
 
-- 状态：`pending`
+- 状态：`done`
 - 目标：新增求职画像确认、采集进度、岗位清单、评估详情、批量确认弹窗、投递结果页。
 - 影响范围：React 新模块、导航、API view model。
 - 输入：求职画像、采集进度、岗位清单、评估报告、投递记录。
@@ -523,12 +523,26 @@ rtk uv run pytest -p no:cacheprovider tests/test_interview_nodes.py tests/test_g
 - 验证命令：
 
 ```bash
-rtk npm --prefix gui test
+rtk npm --prefix gui run test:desktop
 ```
 
 - 观测证据：记录前端测试输出和关键页面截图路径。
 - 副作用：新增 GUI 模块入口。
 - 影响调用方：桌面应用导航和运行时 facade。
+
+#### JOB-013 完成记录
+
+- 状态：done
+- 负责人：implementer / main agent
+- 开始时间：2026-06-16
+- 完成时间：2026-06-17
+- 修改文件：`gui/src/modules/job/JobModule.tsx`、`gui/src/modules/job/ConfirmModal.tsx`、`gui/src/modules/job/CleanupModal.tsx`、`gui/src/shared/api/job.ts`、`gui/src/app/App.tsx`、`gui/tests/desktopSnapshot.test.mjs`
+- 验证命令：`rtk npm --prefix gui run test:desktop`
+- 验证结果：45 tests，全部通过（其中 29 个 JOB-013 定向用例）
+- 观测证据：新增 `JobModule` 组件，覆盖画像确认（含 `missing_inputs` 阻断态）、采集进度（含失败平台重试、manual_handoff、rate_limited、login_expired、page_changed 全状态）、岗位清单（筛选、勾选、空态、加载态、错误态）、岗位详情（JD 摘要、匹配优势、风险缺口、简历建议、投递话术五个 Tab）、投递结果页五个屏幕；新增 `ConfirmModal` 批量确认弹窗（含陈旧、重复、按钮不可用、高风险拦截）；新增 `CleanupModal` 清空数据弹窗（含运行中批次防护）；新增 `job.ts` 类型定义、fixture 数据和 fallback client；已集成到 `App.tsx` 导航和 `ShellLayout`
+- 副作用：新增 `job` 模块入口，不影响其他模块
+- 影响调用方：桌面应用侧导航新增求职投递入口，运行时 facade 新增 `JobRuntimeClient` 接口
+- 后续风险：`job.ts` 中 `fixtureJobList` 等 fixture 数据待接入真实后端 `gui_runtime.py` 返回的 view model；CSS 层需与原型做最终对齐
 
 ### JOB-014 确认批次重校验
 

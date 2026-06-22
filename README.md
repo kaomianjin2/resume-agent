@@ -1,6 +1,6 @@
 # Interview Agent
 
-本项目是一个本地交互式技术面试 Agent。它通过 CLI 接收自然语言需求，围绕简历、招聘 JD、知识库资料和模拟面试流程，完成面试准备相关任务。
+本项目是一个本地技术面试 Agent 桌面应用。它基于 Tauri + React 构建桌面 GUI，围绕简历、招聘 JD、知识库资料和模拟面试流程，完成面试准备与求职投递相关任务。
 
 ## 功能
 
@@ -18,13 +18,13 @@
 ## 架构
 
 ```text
-Interactive CLI
+Tauri Desktop Shell (Rust)
   ↓
-Conversation Router
+React Web Shell (TypeScript)
   ↓
-Node Planner
+GUI Runtime Facade (gui_runtime.py)
   ↓
-Node Executor
+Router → Planner → Executor → Node Handlers
   ↓
 SQLite Session State + Knowledge Retriever + LLM Client
 ```
@@ -34,7 +34,7 @@ SQLite Session State + Knowledge Retriever + LLM Client
 - 配置固定读取 `config/interview-agent.toml`。
 - 不使用环境变量读取项目配置。
 - 知识库通过离线命令预构建。
-- CLI 启动时只检查知识库 ready 状态，不构建知识库。
+- 运行时启动时只检查知识库 ready 状态，不构建知识库。
 - 节点之间只通过 SQLite `session_state` 共享数据。
 - 不修改 `/Users/cynicism/Desktop/面试` 原始资料。
 
@@ -46,6 +46,7 @@ SQLite Session State + Knowledge Retriever + LLM Client
 config/                         配置示例
 data/                           SQLite 数据库目录
 docs/                           计划、架构和历史文档
+gui/                            Tauri + React 桌面 GUI
 models/                         本地 embedding 模型目录
 src/interview_agent/            运行时代码
 tests/                          测试
@@ -59,7 +60,7 @@ tests/                          测试
 uv sync
 ```
 
-验证 CLI 入口：
+验证运行时入口：
 
 ```bash
 uv run interview-agent --help
@@ -118,33 +119,23 @@ uv run python -m interview_agent.kb.build \
 
 构建成功后，SQLite 中的 `knowledge_base_meta.status` 会写入 `ready`。
 
-## 启动 CLI
+## 启动桌面 GUI
+
+开发模式：
 
 ```bash
-uv run interview-agent --config config/interview-agent.toml
+cd gui
+npm run tauri dev
 ```
 
-启动后输入自然语言需求：
+生产构建：
 
-```text
-帮我根据这份 JD 生成 Go 后端面试题
-开始模拟面试
-帮我分析简历和岗位匹配度
-帮我找一些高并发面试准备资料
+```bash
+cd gui
+npm run tauri build
 ```
 
-退出：
-
-```text
-exit
-```
-
-也可以直接执行节点：
-
-```text
-/node knowledge_search
-/node question_generate
-```
+Tauri Desktop Shell 会自动启动 Python 运行时进程，加载配置并检查知识库状态。用户通过 React GUI 进行交互，所有操作通过 GUI Runtime Facade 调用 Python 后端。
 
 ## 运行测试
 
@@ -152,12 +143,6 @@ exit
 
 ```bash
 uv run pytest
-```
-
-CLI 相关测试：
-
-```bash
-uv run pytest tests/test_cli.py tests/test_e2e_cli_flow.py
 ```
 
 知识库相关测试：
@@ -180,6 +165,7 @@ answer_score
 weakness_train
 resume_optimize
 session_summary
+job_evaluation
 ```
 
 ## 文档

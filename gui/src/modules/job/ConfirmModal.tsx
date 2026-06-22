@@ -8,6 +8,13 @@ type ConfirmModalProps = {
   onConfirm: () => void;
 };
 
+const validationStatusLabel: Record<string, string> = {
+  ready: "就绪",
+  "stale-skipped": "陈旧跳过",
+  "duplicate-blocked": "重复拦截",
+  "button-disabled": "按钮不可用",
+};
+
 const validationStatusVariant: Record<string, "good" | "warn" | "bad"> = {
   ready: "good",
   "stale-skipped": "warn",
@@ -101,7 +108,7 @@ export function ConfirmModal({ open, batch, onClose, onConfirm }: ConfirmModalPr
               <div className="job-validation-row" key={validation.jobRef}>
                 <strong>{validation.jobRef}</strong>
                 <span className={`job-state-tag ${validationStatusVariant[validation.status] ?? ""}`}>
-                  {validation.status}
+                  {validationStatusLabel[validation.status] ?? validation.status}
                 </span>
                 <span className="muted-text">{validation.reason}</span>
                 {validation.willSubmit ? (

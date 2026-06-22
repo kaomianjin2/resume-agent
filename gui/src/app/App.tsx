@@ -4,38 +4,78 @@ import {
   DEFAULT_ACTIVE_MODULE_ID,
   getModuleViewModel,
   ModuleId,
-  UserRole,
 } from "./fixtureData";
 import {
   addUser,
+  clearJobData,
   DesktopRuntimeSnapshot,
   endMockInterview,
+  getApplicationResults,
+  getConfirmationBatch as bridgeGetConfirmationBatch,
+  getJobCollectionProgress,
+  getJobDetail as bridgeGetJobDetail,
+  getJobFilterResults,
   listUsers,
   loginUser,
   loadDesktopSnapshot,
-  MaterialKind,
   logoutUser,
+  MaterialKind,
   prepareInterviewMaterials,
+  prepareJobSearchProfile,
+  saveJobSearchProfile,
   selectMaterialFile,
   snapshotWithDesktopError,
   startAlgorithmPractice,
   startMockInterview,
+  submitBatch,
   submitMockAnswer,
   updateUserStatus,
   UserRecord,
 } from "../shared/desktop/desktopBridge";
-import { createFallbackAlgorithmPracticeClient, AlgorithmPracticeRuntimeClient } from "../shared/api/algorithm.js";
-import { createFallbackMockInterviewClient, MockInterviewRuntimeClient } from "../shared/api/mock";
-import { createFallbackJobClient, JobRuntimeClient } from "../shared/api/job";
+import { AlgorithmPracticeRuntimeClient, defaultAlgorithmPracticeViewModel } from "../shared/api/algorithm.js";
+import { MockInterviewRuntimeClient, MockInterviewViewModel } from "../shared/api/mock";
+import { JobRuntimeClient } from "../shared/api/job.js";
 import type { JobScreenId } from "../modules/job/JobModule";
 import { failedPrepViewModel, getPrepViewModel, missingInputsPrepViewModel } from "../shared/api/prep";
 import { LoginPasswordInput } from "./LoginPasswordInput";
 
+const idleMockViewModel: MockInterviewViewModel = {
+  sessionId: "",
+  status: "idle",
+  errorMessage: null,
+  currentPrompt: null,
+  progress: { currentQuestionIndex: 0, totalQuestions: 0, currentFollowupIndex: 0, totalFollowups: 0 },
+  reviewPanel: null,
+  transcript: [],
+};
+
+const mockRuntimeClient: MockInterviewRuntimeClient = {
+  startMockInterview,
+  submitMockAnswer,
+  endMockInterview,
+  getCurrentViewModel: () => idleMockViewModel,
+};
+
+const algorithmRuntimeClient: AlgorithmPracticeRuntimeClient = {
+  startAlgorithmPractice,
+  getCurrentViewModel: () => defaultAlgorithmPracticeViewModel,
+};
+
+const jobRuntimeClient: JobRuntimeClient = {
+  getJobSearchProfile: prepareJobSearchProfile,
+  saveJobSearchProfile,
+  getCollectionProgress: getJobCollectionProgress,
+  getJobList: getJobFilterResults,
+  getJobDetail: (jobId: string) => bridgeGetJobDetail("gui-mock-session", jobId),
+  getConfirmationBatch: bridgeGetConfirmationBatch,
+  getApplicationResults,
+  submitBatch,
+  clearJobData,
+};
+
 export function App() {
   const [activeModuleId, setActiveModuleId] = useState<ModuleId>(DEFAULT_ACTIVE_MODULE_ID);
   const [desktopSnapshot, setDesktopSnapshot] = useState<DesktopRuntimeSnapshot | null>(null);
-  const [webPreviewUser, setWebPreviewUser] = useState<string | null>(null);
-  const [webPreviewRole, setWebPreviewRole] = useState<UserRole | null>(null);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loginError, setLoginError] = useState("");
   const [userErrorMessage, setUserErrorMessage] = useState("");
@@ -47,36 +87,18 @@ export function App() {
   const [newRole, setNewRole] = useState<"admin" | "member">("member");
   const [prepViewModel, setPrepViewModel] = useState(getPrepViewModel);
   const [prepIsLoading, setPrepIsLoading] = useState(false);
-  const [fallbackAlgorithmRuntimeClient] = useState(createFallbackAlgorithmPracticeClient);
-  const [fallbackMockRuntimeClient] = useState(createFallbackMockInterviewClient);
-  const [fallbackJobRuntimeClient] = useState(createFallbackJobClient);
   const [selectedJobIds, setSelectedJobIds] = useState<string[]>([]);
   const [jobActiveScreen, setJobActiveScreen] = useState<JobScreenId>("jobs");
   const activeModule = getModuleViewModel(activeModuleId);
-  const effectiveCurrentUser = desktopSnapshot?.currentUser ?? webPreviewUser;
-  const effectiveCurrentUserRole = desktopSnapshot?.currentUserRole ?? webPreviewRole;
-  const isLoggedIn = Boolean(effectiveCurrentUser);
-  const mockRuntimeClient: MockInterviewRuntimeClient = desktopSnapshot?.isDesktopShell
-    ? {
-        startMockInterview,
-        submitMockAnswer,
-        endMockInterview,
-        getCurrentViewModel: fallbackMockRuntimeClient.getCurrentViewModel,
-      }
-    : fallbackMockRuntimeClient;
-  const algorithmRuntimeClient: AlgorithmPracticeRuntimeClient = desktopSnapshot?.isDesktopShell
-    ? {
-        startAlgorithmPractice,
-        getCurrentViewModel: fallbackAlgorithmRuntimeClient.getCurrentViewModel,
-      }
-    : fallbackAlgorithmRuntimeClient;
-  const jobRuntimeClient: JobRuntimeClient = fallbackJobRuntimeClient;
+  const currentUser = desktopSnapshot?.currentUser ?? null;
+  const currentUserRole = desktopSnapshot?.currentUserRole ?? null;
+  const isLoggedIn = Boolean(currentUser);
 
   useEffect(() => {
-    if (activeModuleId === "users" && effectiveCurrentUserRole !== "admin") {
+    if (activeModuleId === "users" && currentUserRole !== "admin") {
       setActiveModuleId(DEFAULT_ACTIVE_MODULE_ID);
     }
-  }, [activeModuleId, effectiveCurrentUserRole]);
+  }, [activeModuleId, currentUserRole]);
 
   useEffect(() => {
     void handleDesktopAction(loadDesktopSnapshot);
@@ -122,17 +144,6 @@ export function App() {
   }
 
   async function handleLogin() {
-    if (!desktopSnapshot?.isDesktopShell) {
-      const previewUsername = loginUsername.trim() || "preview_user";
-      setWebPreviewUser(previewUsername);
-      setWebPreviewRole("member");
-      setActiveModuleId(DEFAULT_ACTIVE_MODULE_ID);
-      setLoginError("");
-      setLoginPassword("");
-      setLoginPasswordVisible(false);
-      return;
-    }
-
     try {
       const userRecord = await loginUser(loginUsername, loginPassword);
       if (!userRecord) {
@@ -150,12 +161,6 @@ export function App() {
   }
 
   async function handleLogout() {
-    if (!desktopSnapshot?.isDesktopShell) {
-      setWebPreviewUser(null);
-      setWebPreviewRole(null);
-      setActiveModuleId(DEFAULT_ACTIVE_MODULE_ID);
-      return;
-    }
     await logoutUser();
     setActiveModuleId(DEFAULT_ACTIVE_MODULE_ID);
     await handleDesktopAction(loadDesktopSnapshot);
@@ -216,16 +221,16 @@ export function App() {
       activeModule={activeModule}
       activeModuleId={activeModuleId}
       desktopSnapshot={{ ...(desktopSnapshot ?? {
-        isDesktopShell: false,
+        isDesktopShell: true,
         pythonRuntimeRunning: false,
-        knowledgeBaseStatus: "web-shell",
+        knowledgeBaseStatus: "unknown",
         configPath: "config/interview-agent.toml",
         resumePath: null,
         jdPath: null,
         lastError: null,
         currentUser: null,
         currentUserRole: null,
-      }), currentUser: effectiveCurrentUser, currentUserRole: effectiveCurrentUserRole }}
+      }), currentUser, currentUserRole }}
       prepViewModel={prepViewModel}
       prepIsLoading={prepIsLoading}
       users={users}
@@ -233,7 +238,7 @@ export function App() {
       newPassword={newPassword}
       newRole={newRole}
       userErrorMessage={userErrorMessage}
-      currentUserRole={effectiveCurrentUserRole}
+      currentUserRole={currentUserRole}
       mockRuntimeClient={mockRuntimeClient}
       algorithmRuntimeClient={algorithmRuntimeClient}
       jobRuntimeClient={jobRuntimeClient}

@@ -11,8 +11,8 @@
 
 1. `uv run pytest` 全部通过。
 2. 知识库通过离线命令构建完成。
-3. `uv run interview-agent` 不触发知识库接入，只检查知识库 ready 状态。
-4. 用户可用自然语言触发任意节点。
+3. `uv run interview-agent` 作为桌面 GUI 运行时进程启动，只检查知识库 ready 状态。
+4. 用户通过桌面 GUI 触发任意节点。
 5. 路由明确时直接执行；处理方向不确定时询问用户选择。
 6. 所有配置来自 `config/interview-agent.toml`，不读取环境变量。
 7. 不修改 `/Users/cynicism/Desktop/面试` 原始资料。
@@ -31,7 +31,7 @@
 - Create: `tests/`
 - Create: `config/interview-agent.toml.example`
 1. [操作] 初始化 Python 项目结构 → verify: `rtk find . -maxdepth 3 -type f`
-2. [操作] 配置 CLI entrypoint `interview-agent` → verify: `uv run interview-agent --help`
+2. [操作] 配置运行时 entrypoint `interview-agent` → verify: `uv run interview-agent --help`
 3. [操作] 添加基础测试入口 → verify: `uv run pytest`
 4. [操作] 合并审查 → verify: reviewer 同时确认规格符合性和代码质量通过
 

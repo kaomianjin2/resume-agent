@@ -1,4 +1,4 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   EndMockInterviewRequest,
@@ -13,14 +13,23 @@ import {
   StartAlgorithmPracticeRequest,
 } from "../api/algorithm";
 import {
+  ApplicationResult,
   CollectionProgress,
+  ConfirmationBatch,
+  JobDetail,
+  JobListItem,
   JobSearchProfile,
+  normalizeApplicationResults,
+  normalizeCollectionProgress,
+  normalizeConfirmationBatch,
+  normalizeJobDetail,
+  normalizeJobList,
+  normalizeJobSearchProfile,
 } from "../api/job";
 import { normalizePrepViewModel, PrepViewModel } from "../api/prep";
 import {
   DesktopRuntimeSnapshot,
   snapshotWithDesktopError as buildSnapshotWithDesktopError,
-  webSnapshot,
 } from "./desktopSnapshot";
 
 export type MaterialKind = "resume" | "jd";
@@ -33,9 +42,6 @@ export type UserRecord = {
 };
 
 export async function loadDesktopSnapshot(): Promise<DesktopRuntimeSnapshot> {
-  if (!isTauri()) {
-    return webSnapshot;
-  }
   return invoke<DesktopRuntimeSnapshot>("runtime_snapshot");
 }
 
@@ -43,28 +49,18 @@ export function snapshotWithDesktopError(
   error: unknown,
   previousSnapshot: DesktopRuntimeSnapshot | null,
 ): DesktopRuntimeSnapshot {
-  return buildSnapshotWithDesktopError(error, previousSnapshot, isTauri());
+  return buildSnapshotWithDesktopError(error, previousSnapshot, true);
 }
 
 export async function startPythonRuntime(): Promise<DesktopRuntimeSnapshot> {
-  if (!isTauri()) {
-    return webSnapshot;
-  }
   return invoke<DesktopRuntimeSnapshot>("start_python_runtime");
 }
 
 export async function stopPythonRuntime(): Promise<DesktopRuntimeSnapshot> {
-  if (!isTauri()) {
-    return webSnapshot;
-  }
   return invoke<DesktopRuntimeSnapshot>("stop_python_runtime");
 }
 
 export async function selectMaterialFile(kind: MaterialKind): Promise<DesktopRuntimeSnapshot> {
-  if (!isTauri()) {
-    return webSnapshot;
-  }
-
   const selectedPath = await open({
     multiple: false,
     directory: false,
@@ -88,83 +84,53 @@ export async function selectMaterialFile(kind: MaterialKind): Promise<DesktopRun
 }
 
 export async function prepareInterviewMaterials(sessionId: string): Promise<PrepViewModel> {
-  if (!isTauri()) {
-    return normalizePrepViewModel(null);
-  }
   const rawViewModel = await invoke("prepare_interview_materials", { sessionId });
   return normalizePrepViewModel(rawViewModel);
 }
 
 export async function startMockInterview(request: StartMockInterviewRequest): Promise<MockInterviewViewModel> {
-  if (!isTauri()) {
-    throw new Error("仅桌面模式支持使用导入材料启动模拟面试");
-  }
   const rawViewModel = await invoke("start_mock_interview", { payload: request });
   return normalizeMockInterviewViewModel(rawViewModel);
 }
 
 export async function startAlgorithmPractice(request: StartAlgorithmPracticeRequest): Promise<AlgorithmPracticeViewModel> {
-  if (!isTauri()) {
-    return normalizeAlgorithmPracticeViewModel(null);
-  }
   const rawViewModel = await invoke("start_algorithm_practice", { payload: request });
   return normalizeAlgorithmPracticeViewModel(rawViewModel);
 }
 
 export async function submitMockAnswer(request: SubmitMockAnswerRequest): Promise<MockInterviewViewModel> {
-  if (!isTauri()) {
-    throw new Error("仅桌面模式支持提交真实模拟面试回答");
-  }
   const rawViewModel = await invoke("submit_mock_answer", { payload: request });
   return normalizeMockInterviewViewModel(rawViewModel);
 }
 
 export async function endMockInterview(request: EndMockInterviewRequest): Promise<MockInterviewViewModel> {
-  if (!isTauri()) {
-    throw new Error("仅桌面模式支持结束真实模拟面试");
-  }
   const rawViewModel = await invoke("end_mock_interview", { sessionId: request.sessionId });
   return normalizeMockInterviewViewModel(rawViewModel);
 }
 
 export async function listUsers(): Promise<UserRecord[]> {
-  if (!isTauri()) {
-    return [];
-  }
   return invoke<UserRecord[]>("list_users");
 }
 
 export async function addUser(username: string, password: string, role: "admin" | "member"): Promise<UserRecord> {
-  if (!isTauri()) {
-    throw new Error("仅桌面模式支持新增用户");
-  }
   return invoke<UserRecord>("add_user", {
     payload: { username, password, role },
   });
 }
 
 export async function updateUserStatus(username: string, status: "enabled" | "disabled"): Promise<boolean> {
-  if (!isTauri()) {
-    return false;
-  }
   return invoke<boolean>("update_user_status", {
     payload: { username, status },
   });
 }
 
 export async function loginUser(username: string, password: string): Promise<UserRecord | null> {
-  if (!isTauri()) {
-    return null;
-  }
   return invoke<UserRecord | null>("login_user", {
     payload: { username, password },
   });
 }
 
 export async function logoutUser(): Promise<void> {
-  if (!isTauri()) {
-    return;
-  }
   await invoke("logout_user");
 }
 
@@ -172,22 +138,25 @@ export async function prepareJobSearchProfile(
   sessionId: string,
   overrides?: Record<string, unknown>,
 ): Promise<JobSearchProfile> {
-  if (!isTauri()) {
-    throw new Error("仅桌面模式支持生成求职画像");
-  }
   const rawViewModel = await invoke("prepare_job_search_profile", {
-    sessionId,
-    overrides: overrides ?? {},
+    payload: { sessionId, overrides: overrides ?? {} },
   });
-  return rawViewModel as unknown as JobSearchProfile;
+  return normalizeJobSearchProfile(rawViewModel);
+}
+
+export async function saveJobSearchProfile(
+  sessionId: string,
+  overrides: Record<string, unknown>,
+): Promise<JobSearchProfile> {
+  const rawViewModel = await invoke("prepare_job_search_profile", {
+    payload: { sessionId, overrides },
+  });
+  return normalizeJobSearchProfile(rawViewModel);
 }
 
 export async function getJobCollectionProgress(sessionId: string): Promise<CollectionProgress> {
-  if (!isTauri()) {
-    throw new Error("仅桌面模式支持查看采集进度");
-  }
   const rawViewModel = await invoke("get_job_collection_progress", { sessionId });
-  return rawViewModel as unknown as CollectionProgress;
+  return normalizeCollectionProgress(rawViewModel);
 }
 
 export async function retryFailedJobCollection(
@@ -195,13 +164,109 @@ export async function retryFailedJobCollection(
   collectionTaskId: string,
   platform: string,
 ): Promise<CollectionProgress> {
-  if (!isTauri()) {
-    throw new Error("仅桌面模式支持重试采集平台");
-  }
   const rawViewModel = await invoke("retry_failed_job_collection_platform", {
-    sessionId,
-    collectionTaskId,
-    platform,
+    payload: { sessionId, collectionTaskId, platform },
   });
-  return rawViewModel as unknown as CollectionProgress;
+  return normalizeCollectionProgress(rawViewModel);
+}
+
+export async function getJobFilterResults(sessionId: string): Promise<JobListItem[]> {
+  const rawViewModel = await invoke("list_job_applications", { sessionId });
+  if (!Array.isArray(rawViewModel)) return [];
+  return normalizeJobList(rawViewModel);
+}
+
+export async function getJobEvaluationResults(sessionId: string): Promise<unknown> {
+  return invoke("get_job_evaluation_results", { sessionId });
+}
+
+export async function getJobDetail(sessionId: string, jobId: string): Promise<JobDetail> {
+  const [detailRaw, evaluationRaw] = await Promise.all([
+    invoke("get_job_application_detail", { sessionId, jobId }),
+    invoke("get_job_evaluation_results", { sessionId }),
+  ]);
+  if (detailRaw === null || detailRaw === undefined) {
+    return { jdSummary: "", strengths: [], risks: [], missingInformation: [], resumeAdvice: [], applicationMessage: "岗位不存在" };
+  }
+  const r = detailRaw as Record<string, unknown>;
+  const jdText = typeof r.jd_text === "string" ? r.jd_text : "";
+  const title = typeof r.title === "string" ? r.title : "";
+  const company = typeof r.company_name === "string" ? r.company_name : "";
+  const location = typeof r.location === "string" ? r.location : "";
+  const missing: string[] = [];
+  if (!r.salary_range) missing.push("薪资范围");
+  if (!r.remote_policy) missing.push("办公方式");
+  if (!r.level) missing.push("职级");
+  if (!r.experience_requirement) missing.push("经验要求");
+
+  // 尝试从评估结果中合并该岗位的评估数据
+  let evaluationForJob: Record<string, unknown> | null = null;
+  if (evaluationRaw && typeof evaluationRaw === "object") {
+    const evalMap = evaluationRaw as Record<string, unknown>;
+    const reports = evalMap.reports ?? evalMap.evaluations ?? evalMap.results;
+    if (Array.isArray(reports)) {
+      for (const item of reports) {
+        if (item && typeof item === "object") {
+          const rec = item as Record<string, unknown>;
+          const itemJobId = String(rec.job_id ?? rec.jobId ?? rec.platform_job_id ?? "");
+          if (itemJobId === jobId) {
+            evaluationForJob = rec;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  if (evaluationForJob) {
+    const merged = { ...evaluationForJob, jd_summary: evaluationForJob.jd_summary ?? jdText.slice(0, 500) };
+    const normalized = normalizeJobDetail(merged);
+    // 补充缺失字段
+    if (!normalized.jdSummary) normalized.jdSummary = jdText.slice(0, 500) || `${title} @ ${company} - ${location}`;
+    if (normalized.missingInformation.length === 0) normalized.missingInformation = missing;
+    return normalized;
+  }
+
+  return {
+    jdSummary: jdText.slice(0, 500) || `${title} @ ${company} - ${location}`,
+    strengths: [],
+    risks: [],
+    missingInformation: missing,
+    resumeAdvice: [],
+    applicationMessage: "",
+  };
+}
+
+export async function getConfirmationBatch(
+  sessionId: string,
+  _selectedJobIds: string[],
+): Promise<ConfirmationBatch> {
+  const rawViewModel = await invoke("get_revalidation_results", { sessionId });
+  return normalizeConfirmationBatch(rawViewModel);
+}
+
+export async function getApplicationResults(sessionId: string): Promise<{ batchId: string; submittedAt: string; results: ApplicationResult[] }> {
+  const [bossRaw, lagouRaw, liepinRaw] = await Promise.all([
+    invoke("get_boss_submit_results", { sessionId }),
+    invoke("get_lagou_submit_results", { sessionId }),
+    invoke("get_liepin_submit_results", { sessionId }),
+  ]);
+  const allResults: ApplicationResult[] = [];
+  let latestSubmittedAt = "";
+  for (const raw of [bossRaw, lagouRaw, liepinRaw]) {
+    const parsed = normalizeApplicationResults(raw);
+    allResults.push(...parsed.results);
+    if (parsed.submittedAt > latestSubmittedAt) latestSubmittedAt = parsed.submittedAt;
+  }
+  return { batchId: "aggregate", submittedAt: latestSubmittedAt, results: allResults };
+}
+
+export async function submitBatch(sessionId: string, confirmationBatchId: string): Promise<void> {
+  await invoke("execute_batch_submission", {
+    payload: { sessionId, confirmationBatchId },
+  });
+}
+
+export async function clearJobData(sessionId: string): Promise<void> {
+  await invoke("clear_job_application_data", { sessionId });
 }

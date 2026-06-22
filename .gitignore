@@ -20,6 +20,10 @@ build/
 dist/
 *.egg-info/
 
+# Node and Rust build artifacts
+node_modules/
+target/
+
 # Local project configuration and generated state
 config/interview-agent.toml
 data/

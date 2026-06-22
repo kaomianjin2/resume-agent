@@ -9,7 +9,7 @@ import { ConfirmModal } from "../../modules/job/ConfirmModal";
 import { CleanupModal } from "../../modules/job/CleanupModal";
 import { AlgorithmPracticeRuntimeClient } from "../../shared/api/algorithm.js";
 import { MockInterviewRuntimeClient } from "../../shared/api/mock";
-import { JobRuntimeClient, fixtureConfirmationBatch } from "../../shared/api/job";
+import { JobRuntimeClient, ConfirmationBatch, defaultConfirmationBatch } from "../../shared/api/job";
 import { PrepViewModel } from "../../shared/api/prep";
 import { DesktopRuntimeSnapshot, MaterialKind, UserRecord } from "../../shared/desktop/desktopBridge";
 
@@ -73,7 +73,41 @@ export function Workspace({
   const materialsReady = prepViewModel.status === "ready";
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
+  const [confirmBatch, setConfirmBatch] = useState<ConfirmationBatch>(defaultConfirmationBatch);
+  const [submitting, setSubmitting] = useState(false);
   const isJobModule = activeModule.id === "job";
+
+  async function handleOpenConfirmModal() {
+    try {
+      const batch = await jobRuntimeClient.getConfirmationBatch("gui-mock-session", selectedJobIds);
+      setConfirmBatch(batch);
+      setConfirmModalOpen(true);
+    } catch {
+      // 获取确认批次失败，仍然打开弹窗显示默认状态
+      setConfirmModalOpen(true);
+    }
+  }
+
+  async function handleConfirmBatch() {
+    setSubmitting(true);
+    try {
+      await jobRuntimeClient.submitBatch("gui-mock-session", confirmBatch.batchId);
+      setConfirmModalOpen(false);
+    } catch {
+      // 投递失败不关闭弹窗，允许用户重试
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleCleanupData() {
+    try {
+      await jobRuntimeClient.clearJobData("gui-mock-session");
+    } catch {
+      // silent
+    }
+    setCleanupModalOpen(false);
+  }
 
   return (
     <section className="workspace" aria-labelledby="workspace-title">
@@ -95,22 +129,22 @@ export function Workspace({
             runtimeClient={jobRuntimeClient}
             selectedJobIds={selectedJobIds}
             onSelectedJobIdsChange={onSelectedJobIdsChange}
-            onOpenConfirmModal={() => setConfirmModalOpen(true)}
+            onOpenConfirmModal={handleOpenConfirmModal}
             onOpenCleanupModal={() => setCleanupModalOpen(true)}
             activeScreen={jobActiveScreen}
             onActiveScreenChange={onJobActiveScreenChange}
           />
           <ConfirmModal
             open={confirmModalOpen}
-            batch={fixtureConfirmationBatch}
+            batch={confirmBatch}
             onClose={() => setConfirmModalOpen(false)}
-            onConfirm={() => setConfirmModalOpen(false)}
+            onConfirm={handleConfirmBatch}
           />
           <CleanupModal
             open={cleanupModalOpen}
             runningBatchId={null}
             onClose={() => setCleanupModalOpen(false)}
-            onConfirm={() => setCleanupModalOpen(false)}
+            onConfirm={handleCleanupData}
           />
         </>
       ) : (

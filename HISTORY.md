@@ -1,5 +1,13 @@
 # 功能变更历史
 
+## 2026-06-18
+
+### 移除 CLI 接口，仅保留桌面 GUI
+
+- 功能名称：移除 CLI 接口，仅保留桌面 GUI
+- 变更摘要：删除 `cli.py`（~1099 行终端 I/O）、`rendering.py`（终端 ANSI 格式化）、`orchestrator.py`（普通请求编排）及对应测试 `test_cli.py`、`test_e2e_cli_flow.py`；新增 `__main__.py` 作为 Tauri Desktop Shell 的 Python 运行时 keep-alive 进程入口，接受 `--config` 参数、校验配置、检查知识库 ready 状态后阻塞等待 SIGTERM/SIGINT；`pyproject.toml` 入口点从 `interview_agent.cli:main` 改为 `interview_agent.__main__:main`；更新 README.md、docs/architecture.md、docs/PLAN.md、docs/TODO.md、`.codex/rules/runtime-architecture.md` 中 CLI 相关描述为桌面 GUI。知识库离线构建器 `kb/build.py` 和 `mock_interview.py` 保留不变。
+- 影响范围：`src/interview_agent/__main__.py`（新增）、`src/interview_agent/cli.py`（删除）、`src/interview_agent/rendering.py`（删除）、`src/interview_agent/orchestrator.py`（删除）、`tests/test_cli.py`（删除）、`tests/test_e2e_cli_flow.py`（删除）、`pyproject.toml`、`README.md`、`docs/architecture.md`、`docs/PLAN.md`、`docs/TODO.md`、`.codex/rules/runtime-architecture.md`
+
 ## 2026-06-17
 
 ### JOB-019 安全与隐私验收

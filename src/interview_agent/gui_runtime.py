@@ -17,7 +17,7 @@ from interview_agent.planner import ExecutionPlan, build_execution_plan
 from interview_agent.router import RouteResult, route_conversation
 from interview_agent.sensitive import contains_sensitive_payload
 from interview_agent.session import SessionStore
-from interview_agent.storage import get_confirmation_batch, get_job_application_by_id, get_knowledge_base_status, update_job_application_status
+from interview_agent.storage import clear_job_application_data, get_confirmation_batch, get_job_application_by_id, get_knowledge_base_status, list_job_applications, update_job_application_status
 
 
 ServiceMap = Mapping[str, object]
@@ -1287,6 +1287,28 @@ class GuiRuntime:
         view_model = self.session_store.get_state(session_id, JOB_BATCH_SUBMIT_RESULTS_KEY)
         return view_model if isinstance(view_model, dict) else None
 
+    def list_job_applications(self, *, session_id: str) -> list[dict[str, object]]:
+        database_path = Path(self.config.storage.database_path)
+        return list_job_applications(database_path)
+
+    def get_job_application_detail(
+        self, *, session_id: str, job_id: str
+    ) -> dict[str, object] | None:
+        database_path = Path(self.config.storage.database_path)
+        return get_job_application_by_id(database_path, job_id=job_id)
+
+    def clear_job_application_data(self, *, session_id: str) -> dict[str, object]:
+        database_path = Path(self.config.storage.database_path)
+        clear_job_application_data(database_path)
+        self.session_store.set_state(session_id, JOB_COLLECTION_PROGRESS_KEY, None)
+        self.session_store.set_state(session_id, JOB_SEARCH_PROFILE_KEY, None)
+        self.session_store.set_state(session_id, JOB_SEARCH_FILTERS_KEY, None)
+        self.session_store.set_state(session_id, JOB_FILTER_RESULTS_KEY, None)
+        self.session_store.set_state(session_id, JOB_EVALUATION_RESULTS_KEY, None)
+        self.session_store.set_state(session_id, JOB_REVALIDATION_RESULTS_KEY, None)
+        self.session_store.set_state(session_id, JOB_BATCH_SUBMIT_RESULTS_KEY, None)
+        return {"session_id": session_id, "cleared": True}
+
     def start_mock_interview(
         self,
         *,
@@ -1717,6 +1739,20 @@ def execute_batch_submission(
 
 def get_batch_submit_results(runtime: GuiRuntime, *, session_id: str) -> dict[str, object] | None:
     return runtime.get_batch_submit_results(session_id=session_id)
+
+
+def list_job_applications(runtime: GuiRuntime, *, session_id: str) -> list[dict[str, object]]:
+    return runtime.list_job_applications(session_id=session_id)
+
+
+def get_job_application_detail(
+    runtime: GuiRuntime, *, session_id: str, job_id: str
+) -> dict[str, object] | None:
+    return runtime.get_job_application_detail(session_id=session_id, job_id=job_id)
+
+
+def clear_job_application_data(runtime: GuiRuntime, *, session_id: str) -> dict[str, object]:
+    return runtime.clear_job_application_data(session_id=session_id)
 
 
 def start_mock_interview(

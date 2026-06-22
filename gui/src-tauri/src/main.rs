@@ -115,6 +115,28 @@ struct SubmitMockAnswerPayload {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JobSessionPayload {
+    session_id: String,
+    overrides: Option<Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JobRetryPayload {
+    session_id: String,
+    collection_task_id: String,
+    platform: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchSubmitPayload {
+    session_id: String,
+    confirmation_batch_id: String,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum MaterialKind {
     Resume,
@@ -276,6 +298,111 @@ fn login_user(payload: LoginPayload, state: tauri::State<'_, DesktopState>) -> R
     runtime_state.current_user = Some(user_record.username.clone());
     runtime_state.current_user_role = Some(user_record.role.clone());
     Ok(Some(user_record))
+}
+
+#[tauri::command]
+fn prepare_job_search_profile(payload: JobSessionPayload) -> Result<Value, String> {
+    let overrides_json = payload.overrides.unwrap_or(Value::Object(serde_json::Map::new()));
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.prepare_job_search_profile(session_id={:?}, overrides={}))",
+        CONFIG_PATH, payload.session_id, payload.session_id, serde_json::to_string(&overrides_json).unwrap_or_else(|_| "{}".to_string())
+    ))
+}
+
+#[tauri::command]
+fn get_job_collection_progress(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_job_collection_progress(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn retry_failed_job_collection_platform(payload: JobRetryPayload) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.retry_failed_job_collection_platform(session_id={:?}, collection_task_id={:?}, platform={:?}))",
+        CONFIG_PATH, payload.session_id, payload.session_id, payload.collection_task_id, payload.platform
+    ))
+}
+
+#[tauri::command]
+fn get_job_filter_results(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_job_filter_results(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn get_job_evaluation_results(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_job_evaluation_results(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn get_revalidation_results(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_revalidation_results(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn get_boss_submit_results(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_boss_submit_results(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn get_lagou_submit_results(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_lagou_submit_results(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn get_liepin_submit_results(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_liepin_submit_results(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn list_job_applications(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.list_job_applications(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
+}
+
+#[tauri::command]
+fn get_job_application_detail(session_id: String, job_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.get_job_application_detail(session_id={:?}, job_id={:?}))",
+        CONFIG_PATH, session_id, session_id, job_id
+    ))
+}
+
+#[tauri::command]
+fn execute_batch_submission(payload: BatchSubmitPayload) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; from interview_agent.job_platform_adapters import FakeJobPlatformAdapter; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); adapters={{'BOSS': FakeJobPlatformAdapter(platform='BOSS'), '拉勾': FakeJobPlatformAdapter(platform='拉勾'), '猎聘': FakeJobPlatformAdapter(platform='猎聘')}}; print_json(runtime.execute_batch_submission(session_id={:?}, confirmation_batch_id={:?}, adapters=adapters))",
+        CONFIG_PATH, payload.session_id, payload.session_id, payload.confirmation_batch_id
+    ))
+}
+
+#[tauri::command]
+fn clear_job_application_data(session_id: String) -> Result<Value, String> {
+    run_python_json(&format!(
+        "from interview_agent.gui_runtime import load_runtime; runtime=load_runtime({:?}); runtime.create_or_open_session({:?}); print_json(runtime.clear_job_application_data(session_id={:?}))",
+        CONFIG_PATH, session_id, session_id
+    ))
 }
 
 #[tauri::command]
@@ -531,6 +658,19 @@ fn main() {
             update_user_status,
             login_user,
             logout_user,
+            prepare_job_search_profile,
+            get_job_collection_progress,
+            retry_failed_job_collection_platform,
+            get_job_filter_results,
+            get_job_evaluation_results,
+            get_revalidation_results,
+            get_boss_submit_results,
+            get_lagou_submit_results,
+            get_liepin_submit_results,
+            list_job_applications,
+            get_job_application_detail,
+            clear_job_application_data,
+            execute_batch_submission,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Interview Agent desktop shell");

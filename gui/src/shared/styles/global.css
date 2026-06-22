@@ -1638,6 +1638,8 @@ select {
   min-height: 30px;
   padding: 0 12px;
   border: 1px solid rgba(146, 151, 255, 0.26);
+  cursor: pointer;
+  user-select: none;
   border-radius: 8px;
   color: var(--muted);
   font-size: 12px;

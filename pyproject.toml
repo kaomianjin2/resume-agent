@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "interview-agent"
 version = "0.1.0"
-description = "Bootstrap package for the interview agent CLI."
+description = "面试准备 Agent — 桌面 GUI 运行时。"
 readme = "AGENTS.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-interview-agent = "interview_agent.cli:main"
+interview-agent = "interview_agent.__main__:main"
 
 [tool.uv]
 package = true
